@@ -654,6 +654,24 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(stats["tag_cov"], 2)
         self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
 
+    def test_content_tag_stats_include_current_scraper_sources(self):
+        """#596：统计页要认得现行管线的 `javinizer:*:tag` 与 `auto:metadata-tags@*`。"""
+        with closing(sqlite3.connect(self.db_path)) as con:
+            con.executemany(
+                "INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,?)",
+                [(1, "现行站标签", "javinizer:javdb:tag"),
+                 (1, "并集标签", "auto:metadata-tags@20261106T010429"),
+                 (2, "现行站标签", "javinizer:makers:tag"),
+                 (1, "演员标签", "javinizer:makers:performer")],
+            )
+            con.commit()
+        stats = rm_web.q_stats(self.contract)
+        names = {row["k"] for row in stats["top_tags"]}
+        self.assertIn("现行站标签", names)
+        self.assertIn("并集标签", names)
+        self.assertNotIn("演员标签", names)
+        self.assertEqual(stats["tag_cov"], 2)
+
     def test_stats_band_videos_by_length_and_quality_in_probe_order(self):
         stats = rm_web.q_stats(self.contract)
         self.assertEqual(stats["by_length"], [

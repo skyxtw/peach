@@ -478,6 +478,20 @@ STATS_TABLES = ("asset", "asset_entity", "entity", "entity_alias", "asset_tag", 
                 "asset_preference", "follow_playback", "follow_item", "follow_source")
 
 
+#: 内容标签的来源：旧版写入的六个名字，加上现行管线的 `javinizer:<站>:tag` 与并集补标签的
+#: `auto:metadata-tags@<批次>`（#596）。`javinizer:<站>:performer` 是演员标签，不算内容标签。
+CONTENT_TAG_SOURCES = ("name", "r18", "vision", "vision-creator", "vision_creator",
+                       "vision_creator_review")
+
+
+def _content_tag_source(column: str) -> str:
+    """内容标签的 `source` 判据；同一份判据给标签榜与标签覆盖率共用。"""
+    legacy = ",".join(f"'{name}'" for name in CONTENT_TAG_SOURCES)
+    return (f"({column} IN ({legacy}) "
+            f"OR {column} LIKE 'javinizer:%:tag' "
+            f"OR {column} LIKE 'auto:metadata-tags@%')")
+
+
 def q_stats(contract: WebContract):
     """统计页：库存 / 归属 / 标签 / 本地与在线播放 / 各存储卷。
 
@@ -539,12 +553,10 @@ def _ledger_stats(contract: WebContract, libraries) -> dict:
             "FROM asset_tag GROUP BY source ORDER BY n DESC")]
         out["tag_cov"] = one("SELECT count(DISTINCT asset_id) FROM asset_tag "
                              f"WHERE asset_id IN (SELECT id FROM asset WHERE {PRESENT}) "
-                             "AND source IN ('name','r18','vision','vision-creator',"
-                             "'vision_creator','vision_creator_review')")
+                             "AND " + _content_tag_source("source"))
         out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
             "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-            f"WHERE a.medium='video' AND {PRESENT_A} AND t.source IN ('name','r18','vision','vision-creator',"
-            "'vision_creator','vision_creator_review') "
+            f"WHERE a.medium='video' AND {PRESENT_A} AND " + _content_tag_source("t.source") + " "
             "AND " + tag_is_not_a_performer_name("peach_normalize(t.tag)") + " "
             "AND " + tag_not_hidden('t.asset_id', 'peach_normalize(t.tag)') + ' ' +
             "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
