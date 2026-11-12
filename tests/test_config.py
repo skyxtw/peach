@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from peach import config, settings_file
-from peach.settings_file import SettingsFileError
+from peach.settings_file import SettingsFileError, SourceBudgetSettings
 
 
 class TempTree:
@@ -143,6 +143,7 @@ class DefaultsAreGenericTests(unittest.TestCase):
         self.assertEqual(loaded.mounts, {})
         self.assertEqual(loaded.replication.smb_host, "")
         self.assertEqual(loaded.replication.smb_user, "")
+        self.assertEqual(loaded.source_budget, SourceBudgetSettings())
 
     def test_replication_defaults_off_for_a_single_machine(self):
         with TempTree() as tree:
@@ -171,6 +172,10 @@ mdns_name = 'from-file'
 [replication]
 enabled = true
 smb_host = 'file-host'
+[scraping]
+max_requests = 12
+max_bytes = 4096
+max_seconds = 60
 """
 
     def test_file_overrides_builtin_defaults(self):
@@ -182,6 +187,8 @@ smb_host = 'file-host'
         self.assertTrue(loaded.replication.enabled)
         # 文件里没写的项仍然取内建默认，不会因为文件存在就变空。
         self.assertEqual(loaded.server.host, "127.0.0.1")
+        self.assertEqual(loaded.source_budget,
+                         SourceBudgetSettings(max_requests=12, max_bytes=4096, max_seconds=60))
 
     def test_environment_overrides_the_file(self):
         with TempTree() as tree:
@@ -233,6 +240,26 @@ class BadFileTests(unittest.TestCase):
             tree.write("[server]\nport = true\n")
             with self.assertRaises(SettingsFileError):
                 tree.load()
+
+    def test_source_budget_rejects_non_positive_values(self):
+        for text in ("[scraping]\nmax_requests = 0\n",
+                     "[scraping]\nmax_bytes = -1\n",
+                     "[scraping]\nmax_seconds = 0\n"):
+            with self.subTest(text=text):
+                with TempTree() as tree:
+                    tree.write(text)
+                    with self.assertRaises(SettingsFileError) as caught:
+                        tree.load()
+                self.assertIn("scraping.", str(caught.exception))
+
+    def test_source_budget_rejects_non_integer_values(self):
+        for text in ("[scraping]\nmax_requests = '6000'\n",
+                     "[scraping]\nmax_bytes = true\n"):
+            with self.subTest(text=text):
+                with TempTree() as tree:
+                    tree.write(text)
+                    with self.assertRaises(SettingsFileError):
+                        tree.load()
 
     def test_unknown_directory_key_is_rejected_instead_of_ignored(self):
         # 打错一个键名却静默忽略，等于那份数据默默落回默认目录。
@@ -425,6 +452,14 @@ class SerialisationTests(unittest.TestCase):
             captured = settings_file.capture_existing(
                 tree.load(), replication_enabled=False)
         self.assertFalse(captured.replication.enabled)
+
+    def test_source_budget_survives_the_render_round_trip(self):
+        with TempTree() as tree:
+            tree.write("[scraping]\nmax_requests = 123\nmax_bytes = 456\nmax_seconds = 789\n")
+            loaded = tree.load()
+            tree.write(settings_file.render(loaded))
+            reloaded = tree.load()
+        self.assertEqual(reloaded.source_budget, loaded.source_budget)
 
 
 class ModuleConstantTests(unittest.TestCase):

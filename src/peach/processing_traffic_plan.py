@@ -240,7 +240,7 @@ class TrafficPlan:
             self.refresh(list(self.assets))
 
     def remaining(self, rows):
-        from .library_processing import MAX_SOURCE_BYTES
+        from .library_processing import source_budget_limits
         planned = dict.fromkeys(rows, 0)
         for unit in self.units.values():
             for key, amount in unit.items():
@@ -249,7 +249,8 @@ class TrafficPlan:
         download_keys = [key for key, row in rows.items() if not row['root']]
         outside = {key: sum(unit.get(key, 0) for unit in self.outside_budget.values()) for key in download_keys}
         wanted = sum(planned[key] - outside[key] for key in download_keys)
-        budget = max(0, MAX_SOURCE_BYTES - sum(rows[key]['used_bytes'] for key in download_keys))
+        _, max_bytes, _ = source_budget_limits(self.config)
+        budget = max(0, max_bytes - sum(rows[key]['used_bytes'] for key in download_keys))
         if wanted > budget:
             remaining = budget
             for key in download_keys:

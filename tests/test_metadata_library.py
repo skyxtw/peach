@@ -4400,3 +4400,18 @@ class ProcessingLockTests(unittest.TestCase):
         self.assertIsInstance(background[0], ProcessingBusy)
         self.assertIsInstance(user[0], dict)
         self.assertNotEqual(user[0].get('outcome'), 'interrupted')
+
+
+class SourceBudgetTests(unittest.TestCase):
+    def test_provider_transport_uses_the_configured_budget(self):
+        from peach.library_processing import LibraryMetadataProvider, source_budget_limits
+        from peach.settings_file import SourceBudgetSettings
+        config = PeachConfig(Path('C:/data'), Path('C:/data/config.toml'), present=True,
+                             source_budget=SourceBudgetSettings(11, 22, 33))
+        self.assertEqual(source_budget_limits(config), (11, 22, 33))
+        self.assertEqual(source_budget_limits(None), (6000, 1024 * 1024 * 1024, 4 * 3600))
+        with patch('peach.scraping_access.SourceTransport') as transport:
+            LibraryMetadataProvider('C:/data/secrets', budget=source_budget_limits(config))
+        options = transport.call_args.kwargs
+        self.assertEqual((options['max_requests'], options['max_bytes'],
+                          options['max_seconds']), (11, 22, 33))

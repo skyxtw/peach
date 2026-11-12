@@ -366,10 +366,19 @@ COLUMN_OF = {'title': 'catalog_title'}
 #: 一部片问三家目录站、每家 1～2 次，所以 6000 次约等于 1500 部。请求是一条接一条发的，
 #: 同一主机两问之间隔着主机间隔（默认 2 秒，javdb 3 秒，见 `SOURCE_INTERVALS`），不同主机的间隔
 #: 互不阻塞；6000 次按 2 秒算也要三个多小时，和 4 小时的时间闸门同一量级，哪条先到都说得通。
-#: 封面与资料页合计每次约 250 KB，1 GiB 装得下这 6000 次。
+#: 封面与资料页合计每次约 250 KB，1 GiB 装得下这 6000 次。这里只是内建默认值：任务实际
+#: 取 `config.source_budget`（配置文件 `[scraping]`），没给配置对象时才回落到这三个值。
 MAX_SOURCE_REQUESTS = 6000
 MAX_SOURCE_BYTES = 1024 * 1024 * 1024
 MAX_SOURCE_SECONDS = 4 * 3600
+
+
+def source_budget_limits(config):
+    """本趟采集预算（请求数、字节、秒）。没有配置对象时用内建默认值。"""
+    budget = getattr(config, "source_budget", None)
+    if budget is None:
+        return MAX_SOURCE_REQUESTS, MAX_SOURCE_BYTES, MAX_SOURCE_SECONDS
+    return budget.max_requests, budget.max_bytes, budget.max_seconds
 
 
 class CoverKept(NotFound):
@@ -448,7 +457,7 @@ class LibraryMetadataProvider:
     `public_cache` 是匿名 JavDB 资料的快照目录（`<生成目录>/jav-public`），与新作页、发现共用；
     不给就只在本进程内存里复用。
     """
-    def __init__(self, secrets_root, *, tools_root=None, public_cache=None, wiki_root=None):
+    def __init__(self, secrets_root, *, tools_root=None, public_cache=None, wiki_root=None, budget=None):
         from .scraping_access import SourceTransport
         from .jav_cover_fetch import HostLimitedTransport
         self.secrets_root = Path(secrets_root)
@@ -459,9 +468,11 @@ class LibraryMetadataProvider:
         #: 凭据根是数据目录下的 `secrets`。
         self.wiki_root = (Path(wiki_root) if wiki_root is not None
                           else self.secrets_root.parent / 'sources' / 'library-metadata' / 'seesaa-pages')
+        max_requests, max_bytes, max_seconds = budget or (
+            MAX_SOURCE_REQUESTS, MAX_SOURCE_BYTES, MAX_SOURCE_SECONDS)
         self.transport = HostLimitedTransport(
-            SourceTransport(secrets_root, max_requests=MAX_SOURCE_REQUESTS,
-                            max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
+            SourceTransport(secrets_root, max_requests=max_requests,
+                            max_bytes=max_bytes, max_seconds=max_seconds),
             2.0, limiter=SOURCE_LIMITER)
 
     #: 匿名 JavDB 资料的快照目录；没有时只在进程内存里复用。
@@ -906,7 +917,7 @@ class LibraryMetadataProvider:
         self.transport.renew()
 
     def budget_spent(self):
-        """本趟采集预算（`MAX_SOURCE_*`）到顶时的说明，没到顶是空串。"""
+        """本趟采集预算（`[scraping]` 的请求数、字节、时间）到顶时的说明，没到顶是空串。"""
         return self.transport.exhausted()
 
     def close(self):
@@ -1692,7 +1703,8 @@ class _RemoteSession:
                               else LibraryMetadataProvider(
                                   self._config.directory('secrets'), tools_root=self._config.directory('tools'),
                                   public_cache=self._config.directory('generated') / 'jav-public',
-                                  wiki_root=self._config.directory('sources') / 'library-metadata' / 'seesaa-pages'))
+                                  wiki_root=self._config.directory('sources') / 'library-metadata' / 'seesaa-pages',
+                                  budget=source_budget_limits(self._config)))
         return self._provider
 
     def reset(self):
@@ -2113,9 +2125,10 @@ def _enrich_finished_performers(database, groups, config, candidate_root, remote
     from .scraping_access import SourceTransport
 
     def profile_transport():
+        max_requests, max_bytes, max_seconds = source_budget_limits(config)
         return HostLimitedTransport(
-            SourceTransport(config.directory('secrets'), max_requests=MAX_SOURCE_REQUESTS,
-                            max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
+            SourceTransport(config.directory('secrets'), max_requests=max_requests,
+                            max_bytes=max_bytes, max_seconds=max_seconds),
             2.0, limiter=SOURCE_LIMITER)
     # 问题清单要的是这条资产的 id 和路径，候选行上都有。
     rows = {int(group['asset_id']): {'id': int(group['asset_id']),
@@ -2407,7 +2420,7 @@ class _NetworkGate:
 
 
 class _SourceBudget:
-    """整趟采集预算（`MAX_SOURCE_*`）到顶后，后面要出网的行一家都不问。
+    """整趟采集预算（`[scraping]` 的三项）到顶后，后面要出网的行一家都不问。
 
     预算按任务算，换连接、暂停再继续都不重置。到顶之后每一问都只会回同一句「本趟已用完」，
     逐行再问只是空转，还把这一句按来源各记一遍，几千条问题项盖住了真正的原因。
