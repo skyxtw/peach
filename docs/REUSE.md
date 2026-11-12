@@ -447,7 +447,7 @@ Folia（`chthollyphile/folia-major`，AGPL-3.0，revision `9a01e788ed52d25ea01b1
 
 馆藏处理的流量分账复用最长路径前缀、CloudDrive 账号数据代理配置、`ContextVar`、现有任务快照和断点恢复。`media_sources.cost_for` 只控制逐目录代理保护与工作范围。HTTP 下载复用固定版 HTTPX 0.28.1（BSD-3-Clause）的 [`num_bytes_downloaded`](https://www.python-httpx.org/advanced/clients/#monitoring-download-progress)，按压缩传输字节累计，失败的部分响应保留读数。FFmpeg 输入读取复用 verbose 级别的 AVIO Statistics，NFO 与配套图片累计实际应用读取量；挂载缓存、预读、浏览器与外部采集器使读数仅能作为估算。
 
-`processing_traffic_plan` 是 Peach 的工作量策略，复用 `_missing_fields`、`_scrapes_as_jav`、`_RemoteSession` 的来源链、7 天缓存、`_MissCache` 与 `cover_settled`，按番号合并资料请求；只有实际待补全、未命中缓存的来源进入计划。HTTP 下载共用 `MAX_SOURCE_BYTES`，amane 计划不受该 HTTP 预算裁切。按来源连接设置拆分直连与代理；配套文件检查完毕后，用实际字段与核查范围重算，并将完成阶段和番号持久到任务快照，恢复时继续扣除已完成工作。
+`processing_traffic_plan` 是 Peach 的工作量策略，复用 `_missing_fields`、`_scrapes_as_jav`、`_RemoteSession` 的来源链、7 天缓存、`_MissCache` 与 `cover_settled`，按番号合并资料请求；只有实际待补全、未命中缓存的来源进入计划。HTTP 下载共用采集预算里的字节上限（设置文件 `[scraping] max_bytes`），amane 计划不受该 HTTP 预算裁切。按来源连接设置拆分直连与代理；配套文件检查完毕后，用实际字段与核查范围重算，并将完成阶段和番号持久到任务快照，恢复时继续扣除已完成工作。
 
 已有目录的文件数量与资料工作量预检访问账本和本机缓存，连接配置另向 CloudDrive 只读查询。至多采样 256 张封面与 256 份 NFO 的大小中位数；无样本时采用封面 512 KiB、NFO 32 KiB，待探测媒体 8 MiB、九帧 72 MiB，媒体项受文件大小限制。资料每站按两次、每次约 250 KiB 的采集器工作量基准估算。以上是默认计划值，不是实际下载保证。界面以 `estimated_bytes` / `metered_estimated_bytes` 显示约值，逐盘、代理与全部合计共用一份状态；已用量保留实际累计。领域工作量不引入外部估算库，通用统计、目录索引与数据库复用 Python 标准库；无新增依赖。
 

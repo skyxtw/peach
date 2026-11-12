@@ -210,6 +210,19 @@ class TunnelSettings:
 
 
 @dataclass(frozen=True)
+class SourceBudgetSettings:
+    """一趟「扫描与采集」向外部来源要的总量上限（配置文件的 `[scraping]`）。
+
+    三项先到先停：请求数、响应字节、时间。默认值与内建默认一致，现有部署不写这一段
+    时行为不变。`SourceTransport` 把 0 当作不设限，所以这里不接受 0 或负数。
+    """
+
+    max_requests: int = 6000
+    max_bytes: int = 1024 * 1024 * 1024
+    max_seconds: int = 4 * 3600
+
+
+@dataclass(frozen=True)
 class PeachConfig:
     """一次合并的结果。`config.py` 把它投影成模块常量。"""
 
@@ -234,6 +247,7 @@ class PeachConfig:
     server: ServerSettings = ServerSettings()
     replication: ReplicationSettings = ReplicationSettings()
     tunnel: TunnelSettings = TunnelSettings()
+    source_budget: SourceBudgetSettings = SourceBudgetSettings()
 
     @property
     def configured(self) -> bool:
@@ -303,6 +317,13 @@ def _integer(table: dict, key: str, default: int, path: Path, prefix: str) -> in
     # bool 是 int 的子类，端口写成 true 必须报错而不是静默变成 1。
     if isinstance(value, bool) or not isinstance(value, int):
         raise _fail(path, f"`{prefix}{key}` 必须是整数")
+    return value
+
+
+def _positive_integer(table: dict, key: str, default: int, path: Path, prefix: str) -> int:
+    value = _integer(table, key, default, path, prefix)
+    if value <= 0:
+        raise _fail(path, f"`{prefix}{key}` 必须是正整数")
     return value
 
 
@@ -436,6 +457,20 @@ def _merge(
             tunnel_table, "hostname", tunnel_defaults.hostname, path, "tunnel."),
     )
 
+    scraping_table = _table(document, "scraping", path)
+    budget_defaults = SourceBudgetSettings()
+    source_budget = SourceBudgetSettings(
+        max_requests=_positive_integer(
+            scraping_table, "max_requests", budget_defaults.max_requests,
+            path, "scraping."),
+        max_bytes=_positive_integer(
+            scraping_table, "max_bytes", budget_defaults.max_bytes,
+            path, "scraping."),
+        max_seconds=_positive_integer(
+            scraping_table, "max_seconds", budget_defaults.max_seconds,
+            path, "scraping."),
+    )
+
     media_costs = _string_map(_table(media, "costs", path), path, "media.costs.")
     if any(cost not in {"free", "metered"} for cost in media_costs.values()):
         raise _fail(path, "`[media.costs]` 只接受 free 或 metered")
@@ -446,6 +481,7 @@ def _merge(
         library_icons=_string_map(_table(media, "library_icons", path), path, "media.library_icons."),
         media_costs=media_costs,
         server=server, replication=replication, tunnel=tunnel,
+        source_budget=source_budget,
     )
     from . import media_identity
     if "storage_roots" in media or "library_catalog" in media:
@@ -674,6 +710,18 @@ def render(config: PeachConfig) -> str:
         "mdns_name": config.server.mdns_name,
         "review_writer_origin": config.server.review_writer_origin,
         "review_writer_proxy": config.server.review_writer_proxy,
+    })
+    lines += [
+        "",
+        "[scraping]",
+        "# 一趟「扫描与采集」向外部来源要的总量上限；三项先到先停。",
+        "# max_requests = 最多发多少个来源请求，max_bytes = 最多接收多少字节，max_seconds = 最多跑多少秒。",
+        "# 不写这一段时按内建默认值（6000 / 1 GiB / 4 小时）；三项都必须是正整数。",
+    ]
+    lines += _render_pairs({
+        "max_requests": config.source_budget.max_requests,
+        "max_bytes": config.source_budget.max_bytes,
+        "max_seconds": config.source_budget.max_seconds,
     })
     lines += [
         "",
