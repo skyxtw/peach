@@ -4456,6 +4456,110 @@ class CoversStageTests(unittest.TestCase):
         self.assertEqual(pending, {'covers': 1})
 
 
+class LocalEvidenceReuseTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        media = self.root / 'media'
+        media.mkdir()
+        self.media = media
+        self.db = fresh_ledger(self.root)
+        self.config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                                  locations={'local': (str(media),)})
+
+    def _row(self, name='ABW-358.mp4'):
+        (self.media / name).write_bytes(b'video')
+        return {'id': 1, 'path': str(self.media / name), 'name': name, 'location': 'local'}
+
+    def _cache(self, state):
+        from peach.library_processing import _DirectoryIndex, _LocalEvidenceCache
+        return _LocalEvidenceCache(self.config, self.db, self.root / 'covers',
+                                   _DirectoryIndex(), state, state_path(self.config))
+
+    def test_unchanged_video_reuses_memo_and_skips_local_read(self):
+        from peach.library_processing import _file_fingerprint
+        row = self._row()
+        key = f"1:{row['path']}"
+        memo = self.root / 'memo.json'
+        memo.write_text(json.dumps({
+            'local': ['ABW-358', False, None, []],
+            'posters': [],
+            'fingerprint': _file_fingerprint(Path(row['path'])),
+        }), encoding='utf-8')
+        state = {'local_metadata': {key: str(memo)}, 'issue_count': 0}
+        poster_jobs = []
+        with patch('peach.library_processing._read_local_metadata',
+                   side_effect=AssertionError('文件没变不应重读配套资料')):
+            local = self._cache(state).read(row, Mock(), Mock(), poster_jobs)
+        self.assertEqual(local[0], 'ABW-358')
+        self.assertEqual(poster_jobs, [])
+
+    def test_changed_video_rereads_and_refreshes_fingerprint(self):
+        from peach.library_processing import _file_fingerprint
+        row = self._row()
+        key = f"1:{row['path']}"
+        memo = self.root / 'memo.json'
+        memo.write_text(json.dumps({'local': ['ABW-358', False, None, []],
+                                    'posters': [], 'fingerprint': [0, 0]}),
+                        encoding='utf-8')
+        state = {'local_metadata': {key: str(memo)}, 'issue_count': 0}
+        with patch('peach.library_processing._read_local_metadata',
+                   return_value=('ABW-358', False, None, [])):
+            local = self._cache(state).read(row, Mock(), Mock(), [])
+        self.assertEqual(local[0], 'ABW-358')
+        refreshed = json.loads(Path(state['local_metadata'][key]).read_text(encoding='utf-8'))
+        self.assertEqual(refreshed['fingerprint'], _file_fingerprint(Path(row['path'])))
+
+    def test_retry_local_state_carries_only_the_local_index(self):
+        from peach.library_processing import retry_local_state
+        config = self.config
+        config.directory('state').mkdir(parents=True, exist_ok=True)
+        state_path(config).write_text(json.dumps({
+            'local_metadata': {'1:Z:/a.mp4': 'memo.json'},
+            'issue_count': 9,
+            'completed_metadata': ['1:Z:/a.mp4'],
+        }), encoding='utf-8')
+        resumed = retry_local_state(self.config)
+        self.assertEqual(resumed['processing_rule'], upgrade_rules.PROCESSING)
+        self.assertEqual(resumed['local_metadata'], {'1:Z:/a.mp4': 'memo.json'})
+        self.assertNotIn('issue_count', resumed)
+        self.assertNotIn('completed_metadata', resumed)
+
+    def test_retry_run_skips_local_read_for_unchanged_rows(self):
+        from peach.jav_cover_fetch import DeadlineExceeded
+        from peach.library_processing import retry_local_state
+        media_file = self.media / 'ABW-358.mp4'
+        media_file.write_bytes(b'video')
+        (self.media / 'ABW-358.nfo').write_text(
+            '<movie><id>ABW-358</id><title>本地标题</title></movie>', encoding='utf-8')
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code) "
+                "VALUES(1,'local',?,'ABW-358.mp4','video','ABW-358')", (str(media_file),))
+        provider = stub_provider()
+        provider.query.side_effect = DeadlineExceeded('慢')
+        provider.cover = Mock(return_value=False)
+        with patch('peach.library_processing._enrich_finished_performers',
+                   return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):
+            process_library(self.config, self.db, self.root / 'generated', self.root / 'covers',
+                            stage='metadata', provider_factory=lambda: provider,
+                            database=LedgerDatabase(self.db))
+        resumed = retry_local_state(self.config)
+        self.assertTrue(resumed['local_metadata'])
+        provider.query.side_effect = None
+        provider.query.return_value = {'id': 'ABW-358', 'title': '在线标题'}
+        with patch('peach.library_processing._read_local_metadata',
+                   wraps=library_processing._read_local_metadata) as local_read, \
+                patch('peach.library_processing._enrich_finished_performers',
+                      return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):
+            process_library(self.config, self.db, self.root / 'generated', self.root / 'covers',
+                            stage='metadata', provider_factory=lambda: provider,
+                            retry_ids=[1], resume_state=resumed,
+                            database=LedgerDatabase(self.db))
+        self.assertEqual(local_read.call_count, 0)
+
+
 class SourceBudgetTests(unittest.TestCase):
     def test_provider_transport_uses_the_configured_budget(self):
         from peach.library_processing import LibraryMetadataProvider, source_budget_limits
