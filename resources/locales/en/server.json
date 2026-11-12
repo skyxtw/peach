@@ -521,6 +521,7 @@
       "startAll": "Preparing to process",
       "startCollect": "Preparing to fetch metadata",
       "startPreviews": "Preparing to generate preview images",
+      "startCovers": "Preparing to collect covers",
       "startScan": "Preparing to scan files",
       "fillPerformerProfiles": "Fill in actress metadata"
     },
@@ -3381,7 +3382,8 @@
         "checkCompanions": "Check companion files",
         "makePreviews": "Generate previews",
         "checkPreviewSettings": "Check preview settings",
-        "fetchMetadataAndCovers": "Fetch metadata and covers"
+        "fetchMetadataAndCovers": "Fetch metadata and covers",
+        "fetchCovers": "Collect covers"
       },
       "source": {
         "onePondo": "1pondo",

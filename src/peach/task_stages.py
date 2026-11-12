@@ -12,7 +12,7 @@ from functools import lru_cache
 from . import interface_text
 
 STAGE_NAMES = {
-    "library": ("startAll", "startScan", "startCollect", "startPreviews", "scanFiles", "checkCompanions",
+    "library": ("startAll", "startScan", "startCollect", "startPreviews", "startCovers", "scanFiles", "checkCompanions",
                 "probeMedia", "checkNetwork", "checkJunk", "recheckJunk", "prepareImages", "readImages",
                 "preparePreviews", "makePreviews", "prepareMetadata", "prepareSources", "fetchMetadata",
                 "saveCandidates", "fetchCovers", "collectResults", "fillPerformerProfiles", "finished"),

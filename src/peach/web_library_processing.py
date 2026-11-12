@@ -6,7 +6,7 @@ import logging
 from . import interface_text, settings_file
 from .library_processing_scope import scoped_config, scoped_assets
 from .library_processing import (ALL_STAGES, COLLECT_STAGE, SCAN_STAGE, STAGES,
-                                METADATA_STAGE, PREVIEWS_STAGE, _asset_selection,
+                                METADATA_STAGE, PREVIEWS_STAGE, COVERS_STAGE, _asset_selection,
                                 decorate, issues_path, process_library, snapshot)
 from .processing_control import control_for, initial_estimate, valid_mode, mode_ratio
 from .task_stages import stage as stage_fields
@@ -518,7 +518,8 @@ def w_library_processing(contract, body, *, resume=False):
     # 起步那行字按这一趟真正要做的事写：点了「只扫描」却看到「读取本地资料」，
     # 人会以为点错了。
     labels = {ALL_STAGES: 'library.startAll', SCAN_STAGE: 'library.startScan', COLLECT_STAGE: 'library.startCollect',
-              METADATA_STAGE: 'library.startCollect', PREVIEWS_STAGE: 'library.startPreviews'}
+              METADATA_STAGE: 'library.startCollect', PREVIEWS_STAGE: 'library.startPreviews',
+              COVERS_STAGE: 'library.startCovers'}
     estimate_ids = asset_ids if asset_ids is not None else retry_ids
     if incremental:
         from .library_new_assets import pending
