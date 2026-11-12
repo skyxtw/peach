@@ -4,6 +4,7 @@
  * 轮询也由 Query 合成一份，进度、失败与完成状态由服务端统一提供。
  * 端点在 `frontend/src` 里只在这里声明一次（`tests/test_frontend_build.py` 盯着）。 */
 import { apiGet } from '../../api';
+import { t } from '../../i18n';
 import { elapsedText, progressText } from '../activity/tasks';
 import { queryClient } from '../query';
 
@@ -126,7 +127,7 @@ export interface LibraryProcessingCommand {
   library_id?: string;
   incremental?: boolean;
   scope?: 'new';
-  stage?: 'scan' | 'collect' | 'previews' | 'metadata';
+  stage?: 'scan' | 'collect' | 'previews' | 'metadata' | 'covers';
   asset_ids?: number[];
   job_id?: string;
   retry?: number[];
@@ -324,6 +325,10 @@ export function announceCompletion(
     if (state.job_id && localStorage.getItem(ANNOUNCED_KEY) === state.job_id) return;
     if (state.job_id) localStorage.setItem(ANNOUNCED_KEY, state.job_id);
   } catch { /* 存储不可用时照常提示，最多重复一次 */ }
+  if (state.requested_stage === 'covers') {
+    toast(t('library-processing:coverOnlyToast', { count: state.covers || 0 }));
+    return;
+  }
   if (state.requested_stage === 'previews') {
     toast(`视频预览已生成：${state.previews || 0} 部`);
     return;

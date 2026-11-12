@@ -10,6 +10,7 @@ import { formModal } from '@peach/legacy/ui';
 import { useMovingSurface } from '../components/use-moving-surface';
 import { busyProps } from '../settings/use-action';
 import { errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { fetchProcessingEstimate, type LibraryProcessingCommand, type ProcessingSpeed, type ProcessingTraffic } from './library-processing';
 import { ProcessingEffort } from './processing-effort';
 import { TrafficProgress } from './processing-traffic';
@@ -72,6 +73,7 @@ function ProcessingPrompt({ command, speed, dialog, onSpeed, busy, libraryName }
   }, [command, dialog]);
   const scope = command.incremental ? command.stage === 'scan' ? '尚未登记的新增文件' : '新增文件与待补全影片'
     : command.scope === 'new' ? '已登记的待补全影片'
+    : command.stage === 'covers' ? t('library-processing:coverOnlyScope')
     : command.stage === 'previews' ? '已入库的视频（跳过流量保护目录）' : '全部文件与影片';
   return <div className="flex flex-col gap-4">
     <p data-processing-scope className="text-body-2-medium text-text-primary">处理范围：{libraryName || '所有媒体库'} · {scope}</p>
@@ -110,6 +112,7 @@ export function ProcessingActions({ busy, occupied = false, scan = false, metada
     ...(scan ? [{ label: '仅扫描文件', description: '发现文件，读取视频时长和分辨率', command: { stage: 'scan' as const } }] : []),
     ...(scan ? [{ label: '补全资料与预览', description: metadataOnly ? '补已有影片的资料和视频属性' : '补资料和视频属性，生成预览图', command: { stage: 'collect' as const } }] : []),
     { label: '仅补全影片资料', description: '补影片资料、封面和人物资料', command: { stage: 'metadata' as const } },
+    { label: t('library-processing:coverOnly'), description: t('library-processing:coverOnlyDescription'), command: { stage: 'covers' as const } },
     { label: '仅补全预览图', description: '为已入库的视频生成九宫格，跳过流量保护目录', command: { stage: 'previews' as const } },
   ];
   const blocked = busy || occupied;
@@ -128,13 +131,15 @@ export function ProcessingActions({ busy, occupied = false, scan = false, metada
     const previews = command.stage === 'previews';
     const title = command.scope === 'new' ? '补全待处理影片'
       : command.incremental ? command.stage === 'scan' ? '发现新增文件' : '同步新增文件'
-      : previews ? '仅补全预览图' : command.stage === 'scan' ? '扫描全部文件'
+      : previews ? '仅补全预览图' : command.stage === 'covers' ? t('library-processing:coverOnly')
+      : command.stage === 'scan' ? '扫描全部文件'
       : command.stage === 'metadata' ? '仅补全影片资料' : command.stage === 'collect' ? '补全已入库影片' : libraryId ? '同步所选媒体库' : '同步所有媒体库';
     const work = command.scope === 'new' ? '为这组已登记的影片补全资料和视频属性，并按设置生成预览'
       : command.incremental
       ? command.stage === 'scan' ? '发现并登记未入库的新文件，保留已有影片资料'
       : `发现新文件，仅补全新增及未完成影片的资料和视频属性${metadataOnly ? '' : '，并生成预览图'}`
       : previews ? '为已入库的视频补全九宫格预览图，跳过流量保护目录，会读取视频并占用处理器'
+      : command.stage === 'covers' ? t('library-processing:coverOnlyWork')
       : command.stage === 'scan' ? '扫描目录并登记文件，按目录设置读取视频时长和分辨率'
       : command.stage === 'metadata' ? '读取配套资料，补全影片资料、封面和人物资料'
       : `${command.stage === 'collect' ? '为已入库影片补全资料和视频属性' : '扫描目录发现文件，再补全资料和视频属性'}${metadataOnly ? '' : '，并生成预览图'}`;

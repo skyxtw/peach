@@ -1,0 +1,8 @@
+{
+  "coverOnly": "Fetch covers only",
+  "coverOnlyDescription": "Fetch covers only for coded videos that lack one, without other checks",
+  "coverOnlyScope": "Coded videos missing a cover",
+  "coverOnlyWork": "Fetch covers for coded videos that lack one, without scanning files or reading sidecars",
+  "coverOnlyReceipt": "Fetched {{count}} covers.",
+  "coverOnlyToast": "Covers fetched: {{count}}"
+}

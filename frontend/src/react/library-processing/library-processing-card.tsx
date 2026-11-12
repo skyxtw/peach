@@ -16,6 +16,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { Chip } from '@/components/base/badges/chip';
 
 import { apiSend, errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { SCAN_CARD_TEXT, scanCardSkeletonHtml } from '../../management';
 import type { LibraryProcessingProps } from '../bundle';
 import { Fieldset, FieldsetTitle } from '../components/fieldset';
@@ -74,7 +75,8 @@ const profileText = (state: LibraryProcessingData) => {
 };
 
 const receiptText = (state: LibraryProcessingData) =>
-  state.requested_stage === 'previews' ? `已生成 ${state.previews || 0} 部视频预览。`
+  state.requested_stage === 'covers' ? t('library-processing:coverOnlyReceipt', { count: state.covers || 0 })
+  : state.requested_stage === 'previews' ? `已生成 ${state.previews || 0} 部视频预览。`
   : `已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，`
   + `取得 ${state.candidates || 0} 组作品资料，自动保存 ${state.auto_applied || 0} 条。`
   + (state.previews ? `已生成 ${state.previews} 部视频预览。` : '')
