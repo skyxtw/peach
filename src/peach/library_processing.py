@@ -1087,6 +1087,21 @@ def snapshot(config):
     return decorate(state)
 
 
+def retry_local_state(config):
+    """「立即重试」只接回上一趟的本地证据索引：没变的影片不再重读配套文件。
+
+    旧计数、断点与问题清单都不带：重试是一趟新任务，只缺「哪些影片的本地检查
+    结果还能复用」。证据文件里的指纹在 `_LocalEvidenceCache.read` 里逐行核对，
+    文件变了照常重读。
+    """
+    try:
+        previous = json.loads(state_path(config).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        previous = {}
+    return {'processing_rule': upgrade_rules.PROCESSING,
+            'local_metadata': dict(previous.get('local_metadata') or {})}
+
+
 def _queue_local_poster(video, code, cover_root, payload=None, posters=None, *, enqueue, generated=False):
     """`posters` 是调用方已经从同目录索引里挑出的海报候选，给了就不再列目录。"""
     target = cover_root / (code + '.jpg')
@@ -2955,6 +2970,18 @@ def _restore_processing_counts(state, previous):
         state[key] = previous.get(key, 0)
 
 
+def _file_fingerprint(path):
+    """视频文件的（大小, 修改时间纳秒）：跨趟判断本地证据能不能复用的指纹。"""
+    try:
+        stat = file_stat(path)
+    except OSError:
+        return None
+    stamp = getattr(stat, 'st_mtime_ns', None)
+    if stamp is None:
+        stamp = int(getattr(stat, 'st_mtime', 0) * 1_000_000_000)
+    return [int(getattr(stat, 'st_size', 0)), int(stamp)]
+
+
 class _LocalEvidenceCache:
     """保存已经读出的本地证据与待处理图片，供同一影片的后续阶段复用。"""
 
@@ -2976,7 +3003,8 @@ class _LocalEvidenceCache:
             cached = json.loads(Path(cached_path).read_text(encoding='utf-8')) if cached_path else None
         except (OSError, ValueError):
             cached = None
-        if cached is not None:
+        if (cached is not None and cached.get('fingerprint') is not None
+                and cached['fingerprint'] == _file_fingerprint(translate_ledger_path(row['path']))):
             code, verify, payload, entries = cached['local']
             poster_jobs.extend((row, translate_ledger_path(source), name, Path(target))
                                for source, name, target in cached['posters'])
@@ -2987,7 +3015,8 @@ class _LocalEvidenceCache:
         if local is not None and self.state['issue_count'] == issues_before:
             code, verify, payload, entries = local
             record = dict(local=[code, verify, payload, [(source, document, str(path)) for source, document, path in entries]],
-                          posters=[(str(source), name, str(target)) for _, source, name, target in poster_jobs[offset:]])
+                          posters=[(str(source), name, str(target)) for _, source, name, target in poster_jobs[offset:]],
+                          fingerprint=_file_fingerprint(translate_ledger_path(row['path'])))
             encoded = json.dumps(record, ensure_ascii=False)
             digest = hashlib.sha256(encoded.encode()).hexdigest()
             item_path = self.path.parent / (self.path.stem + '-items') / f"{row['id']}-{digest}.json"

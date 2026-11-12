@@ -7,6 +7,7 @@ from . import settings_file
 from .library_processing_scope import scoped_config, scoped_assets
 from .library_processing import (ALL_STAGES, COLLECT_STAGE, SCAN_STAGE, STAGES,
                                 METADATA_STAGE, PREVIEWS_STAGE, COVERS_STAGE, _asset_selection,
+                                retry_local_state,
                                 decorate, issues_path, process_library, snapshot)
 from .processing_control import control_for, initial_estimate, valid_mode, mode_ratio
 
@@ -498,7 +499,8 @@ def w_library_processing(contract, body, *, resume=False):
                 # 自动落库与页面写的是同一个 `LedgerDatabase`：进程内写锁在实例上，
                 # 另建一个就是在同一个进程里开第二条写入路径。
                 database=contract.database,
-                resume_state=previous if resume else None,
+                resume_state=previous if resume else
+                    retry_local_state(config) if retry_ids is not None else None,
                 speed_mode=control_for(config).mode,
                 network=getattr(contract, 'network_reachability', None),
                 active=lambda:(contract.library_processing_job.snapshot() or {}).get('job_id') == job_id,
