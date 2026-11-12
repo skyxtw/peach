@@ -76,8 +76,8 @@ ISSUE_PREVIEW_LIMIT = 20
 
 #: 扫描、资料与预览共用的阶段名，同时用于接口和页面。
 SCAN_STAGE, COLLECT_STAGE, ALL_STAGES = 'scan', 'collect', 'all'
-METADATA_STAGE, PREVIEWS_STAGE = 'metadata', 'previews'
-STAGES = (ALL_STAGES, SCAN_STAGE, COLLECT_STAGE, METADATA_STAGE, PREVIEWS_STAGE)
+METADATA_STAGE, PREVIEWS_STAGE, COVERS_STAGE = 'metadata', 'previews', 'covers'
+STAGES = (ALL_STAGES, SCAN_STAGE, COLLECT_STAGE, METADATA_STAGE, PREVIEWS_STAGE, COVERS_STAGE)
 
 #: 没有动作截止时间的阶段（本地读取）超过这么久没有心跳就在页面上预警。
 STALL_AFTER_SECONDS = 120.0
@@ -2887,6 +2887,10 @@ def _settle_collection_state(state, summary, rows, update):
 def _processing_steps(stage, asset_ids, *, metadata_only_enabled):
     """按本趟真实处理范围构造有序阶段清单。"""
     scanning = asset_ids is None and stage in (ALL_STAGES, SCAN_STAGE)
+    if stage == COVERS_STAGE:
+        return [dict(id=key, label=label, status='current' if index == 0 else 'pending')
+                for index, (key, label) in enumerate((('sources', '检查媒体目录'),
+                                                       ('collect', '采集封面')))]
     steps = [('sources', '扫描文件' if scanning else '检查媒体目录')]
     steps.append(('inspect', '检查垃圾文件' if stage in (SCAN_STAGE, PREVIEWS_STAGE, METADATA_STAGE)
                   else '读取媒体属性与检查垃圾'))
@@ -2914,9 +2918,15 @@ def _complete_processing_step(steps, key):
     return progress
 
 
-def _processing_workload(config, rows, stage, database, completed_previews, allow_metered=False):
+def _processing_workload(config, rows, stage, database, completed_previews, allow_metered=False,
+                         cover_root=None):
     """按处理范围和已完成检查点建立各阶段的待处理数量。"""
     pending = {}
+    if stage == COVERS_STAGE:
+        pending['covers'] = (sum(bool(row.get('code')) and not cover_settled(
+            cover_root / (row['code'] + '.jpg')) for row in rows)
+            if cover_root is not None else len(rows))
+        return pending
     if stage not in (SCAN_STAGE, PREVIEWS_STAGE):
         pending.update(local=len(rows), metadata=len(rows))
     if stage in (ALL_STAGES, COLLECT_STAGE):
@@ -3199,9 +3209,13 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             if incremental and not scope_ids:
                 _settle_collection_state(state, {}, [], update)
                 return state
-            _prepare_processing_media(config, db_path, judgement_database, locations, sources,
-                                      scope_ids, protected_ids, stage, state, update)
-            finish_step('inspect')
+            if stage == COVERS_STAGE:
+                # 只补封面：媒体目录只查在线，不扫文件、不查垃圾、不读媒体属性。
+                update(scanned=sources.scanned, probed=sources.probed)
+            else:
+                _prepare_processing_media(config, db_path, judgement_database, locations, sources,
+                                          scope_ids, protected_ids, stage, state, update)
+                finish_step('inspect')
             if stage == SCAN_STAGE:
                 # `checked`／`total` 在探时长时借给进度条用过；只扫描这一段没有采集，读数归零。
                 update(status='failed' if state['issue_count'] else 'complete',
@@ -3213,7 +3227,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 db_path, locations=locations, online_roots=sources.online_roots, asset_ids=scope_ids)
             traffic.refresh_plan(rows)
             pending = _processing_workload(config, rows, stage, database, checkpoints.completed['completed_previews'],
-                                           allow_metered=allow_metered)
+                                           allow_metered=allow_metered, cover_root=cover_root)
             update(estimate_pending=dict(pending))
             if stage == PREVIEWS_STAGE:
                 _generate_previews(config, rows, database, update=update, issue=issue, guard=guard,
@@ -3264,6 +3278,37 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 state['auto_rejected'] += landed['auto_rejected']
                 flush_candidates()
                 update(candidates=len(scoped_groups()), auto_applied=state['auto_applied'])
+
+            if stage == COVERS_STAGE:
+                gate = _NetworkGate(network, state['offline_skipped'])
+                gate.probe(update)
+                budget = _SourceBudget(remote, state)
+                eligible = [row for row in rows if row.get('code')]
+                for position, row in enumerate(eligible):
+                    guard.check()
+                    issues_before = state['issue_count']
+                    update(stage='采集缺失封面', checked=position, total=len(eligible),
+                           current_asset_id=row['id'],
+                           current_asset_name=Path(str(row['name'] or '')).name)
+                    _, covers = _collect_allowed(
+                        remote, traffic, row, _provider_code(row['code']), [], {'cover'},
+                        cover_root, covered, update=update, issue=issue, answered=(),
+                        received=lambda entries: None,
+                        succeeded=lambda before=issues_before: state['issue_count'] == before,
+                        gate=gate, budget=budget)
+                    state['offline_skipped'] = gate.skipped
+                    state['covers'] += covers
+                    update(checked=position + 1, total=len(eligible), current_asset_id=None,
+                           current_asset_name='', current_action='', current_started_at=None,
+                           current_deadline_at=None)
+                flush_candidates(force=True)
+                budget.summarize(issue)
+                finish_step('collect')
+                summary = dict(followups=[], auto_applied=0, auto_rejected=0, performer_aliases=0,
+                               performer_avatars=0, performer_profile_conflicts=0,
+                               performer_profile_failed=0)
+                _settle_collection_state(state, summary, eligible, update)
+                return state
 
             prepared = []
             poster_jobs = []

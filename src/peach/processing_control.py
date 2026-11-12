@@ -398,7 +398,7 @@ def initial_estimate(config, db_path, stage, asset_ids=None, mode=None, *, allow
     # 抽帧只读取局部数据；文件总大小仅作为编解码复杂度的温和修正，不按全量读取估时。
     size_factor = min(2.0, max(0.8, (size / max(1, count) / 1024**3) ** 0.15))
     seconds = {'scan': 0.2, 'metadata': 8.0, 'previews': 12.0 * size_factor,
-               'collect': 20.0 * size_factor, 'all': 20.2 * size_factor}[stage]
+               'collect': 20.0 * size_factor, 'all': 20.2 * size_factor, 'covers': 8.0}[stage]
     history = _read(config.directory('state') / 'library-processing-timing.json')
     sample = history.get(stage)
     historical = isinstance(sample, (int, float)) and math.isfinite(sample) and sample > 0
@@ -437,7 +437,8 @@ class ProcessingEstimate:
 
     def _phase_estimate(self, state, phase, done, total):
         """阶段切换时用该阶段保守范围起算，采样只消费当前阶段的增量。"""
-        rates = {'local': 0.2, 'metadata': 8.0, 'previews': 12.0, 'probe': 1.0, 'images': 1.0}
+        rates = {'local': 0.2, 'metadata': 8.0, 'previews': 12.0, 'probe': 1.0, 'images': 1.0,
+                 'covers': 8.0}
         seconds = max(0, total - done) * rates.get(phase, 0) * MODE_FACTORS[self.mode]
         known = phase in rates and total > 0
         state.update(eta_seconds_min=math.ceil(seconds * 0.4) if known else None,
@@ -447,7 +448,8 @@ class ProcessingEstimate:
 
     def _total_estimate(self, state, phase, done, total, now):
         """当前阶段用独立样本校准，待执行阶段保留各自的粗估范围。"""
-        rates = {'local': 0.2, 'metadata': 8.0, 'previews': 12.0, 'probe': 1.0, 'images': 1.0}
+        rates = {'local': 0.2, 'metadata': 8.0, 'previews': 12.0, 'probe': 1.0, 'images': 1.0,
+                 'covers': 8.0}
         pending = state.get('estimate_pending')
         if pending is None:
             return

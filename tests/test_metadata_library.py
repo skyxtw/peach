@@ -4372,6 +4372,60 @@ class ProcessingLockTests(unittest.TestCase):
         self.assertNotEqual(user[0].get('outcome'), 'interrupted')
 
 
+class CoversStageTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.media = self.root / 'media'
+        self.media.mkdir()
+
+    def _config(self):
+        return PeachConfig(self.root, self.root / 'config.toml', present=True,
+                           locations={'local': (str(self.media),)})
+
+    def test_covers_stage_fetches_only_coded_rows_without_local_checks(self):
+        for name in ('ABW-358', 'ABW-359', 'no-code'):
+            (self.media / f'{name}.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code) VALUES"
+                "(1,'local',?,'ABW-358.mp4','video','ABW-358'),"
+                "(2,'local',?,'ABW-359.mp4','video','ABW-359'),"
+                "(3,'local',?,'no-code.mp4','video',NULL)",
+                (str(self.media / 'ABW-358.mp4'), str(self.media / 'ABW-359.mp4'),
+                 str(self.media / 'no-code.mp4')))
+        config = self._config()
+        provider = stub_provider()
+        provider.cover = Mock(return_value=True)
+        with patch('peach.library_processing.scan_location',
+                   side_effect=AssertionError('只补封面不扫描文件')), \
+                patch('peach.library_processing.read_nfo',
+                      side_effect=AssertionError('只补封面不读配套文件')), \
+                patch('peach.library_processing._enrich_finished_performers',
+                      return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):
+            result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                     stage='covers', provider_factory=lambda: provider,
+                                     database=LedgerDatabase(db))
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['checked'], 2)
+        self.assertEqual(result['covers'], 2)
+        self.assertIsNone(provider.query.call_args)
+        self.assertEqual(provider.cover.call_count, 2)
+        self.assertEqual([step['id'] for step in result['steps']], ['sources', 'collect'])
+
+    def test_covers_steps_and_workload_names(self):
+        from peach.library_processing import _processing_steps, _processing_workload
+        steps = _processing_steps('covers', None, metadata_only_enabled=False)
+        self.assertEqual([(step['id'], step['label']) for step in steps],
+                         [('sources', '检查媒体目录'), ('collect', '采集封面')])
+        rows = [{'code': 'ABW-358'}, {'code': None}]
+        pending = _processing_workload(PeachConfig(self.root, self.root / 'config.toml'),
+                                       rows, 'covers', None, set(), cover_root=self.root / 'covers')
+        self.assertEqual(pending, {'covers': 1})
+
+
 class SourceBudgetTests(unittest.TestCase):
     def test_provider_transport_uses_the_configured_budget(self):
         from peach.library_processing import LibraryMetadataProvider, source_budget_limits
