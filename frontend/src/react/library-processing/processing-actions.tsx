@@ -10,6 +10,7 @@ import { formModal } from '@peach/legacy/ui';
 import { useMovingSurface } from '../components/use-moving-surface';
 import { busyProps } from '../settings/use-action';
 import { errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { fetchProcessingEstimate, type LibraryProcessingCommand, type ProcessingSpeed, type ProcessingTraffic } from './library-processing';
 import { ProcessingEffort } from './processing-effort';
 import { TrafficProgress } from './processing-traffic';
@@ -73,6 +74,7 @@ function ProcessingPrompt({ command, speed, dialog, onSpeed, busy, libraryName }
   }, [command, dialog]);
   const scope = command.incremental ? command.stage === 'scan' ? t('manage:syncPrompt.scopeNewFiles') : t('manage:syncPrompt.scopeNewAndPending')
     : command.scope === 'new' ? t('manage:syncPrompt.scopePending')
+    : command.stage === 'covers' ? t('library-processing:coverOnlyScope')
     : command.stage === 'previews' ? t('manage:syncPrompt.scopePreviews') : t('manage:syncPrompt.scopeAll');
   return <div className="flex flex-col gap-4">
     <p data-processing-scope className="text-body-2-medium text-text-primary">{t('manage:syncPrompt.scopeLine', { library: libraryName || t('manage:scanFetch.allLibraries'), scope })}</p>
@@ -111,6 +113,7 @@ export function ProcessingActions({ busy, occupied = false, scan = false, metada
     ...(scan ? [{ label: t('manage:syncMenu.scanOnly'), description: t('manage:syncMenu.scanOnlyHint'), command: { stage: 'scan' as const } }] : []),
     ...(scan ? [{ label: t('manage:syncMenu.fillMetadataPreviews'), description: metadataOnly ? t('manage:syncMenu.fillMetadataHintNoPreviews') : t('manage:syncMenu.fillMetadataHint'), command: { stage: 'collect' as const } }] : []),
     { label: t('manage:syncMenu.metadataOnly'), description: t('manage:syncMenu.metadataOnlyHint'), command: { stage: 'metadata' as const } },
+    { label: t('library-processing:coverOnly'), description: t('library-processing:coverOnlyDescription'), command: { stage: 'covers' as const } },
     { label: t('manage:syncMenu.previewsOnly'), description: t('manage:syncMenu.previewsOnlyHint'), command: { stage: 'previews' as const } },
   ];
   const blocked = busy || occupied;
@@ -129,7 +132,8 @@ export function ProcessingActions({ busy, occupied = false, scan = false, metada
     const previews = command.stage === 'previews';
     const title = command.scope === 'new' ? t('manage:syncMenu.fillPending')
       : command.incremental ? command.stage === 'scan' ? t('manage:syncMenu.findNewTitle') : t('manage:syncMenu.syncNewFiles')
-      : previews ? t('manage:syncMenu.previewsOnly') : command.stage === 'scan' ? t('manage:syncMenu.scanAllTitle')
+      : previews ? t('manage:syncMenu.previewsOnly') : command.stage === 'covers' ? t('library-processing:coverOnly')
+      : command.stage === 'scan' ? t('manage:syncMenu.scanAllTitle')
       : command.stage === 'metadata' ? t('manage:syncMenu.metadataOnly') : command.stage === 'collect' ? t('manage:syncMenu.fillImportedTitle')
       : libraryId ? t('manage:syncMenu.syncSelectedLibrary') : t('manage:syncMenu.syncAllLibraries');
     const work = command.scope === 'new' ? t('manage:syncMenu.workPending')
@@ -137,6 +141,7 @@ export function ProcessingActions({ busy, occupied = false, scan = false, metada
       ? command.stage === 'scan' ? t('manage:syncMenu.workFindNew')
       : metadataOnly ? t('manage:syncMenu.workSyncNewNoPreviews') : t('manage:syncMenu.workSyncNew')
       : previews ? t('manage:syncMenu.workPreviews')
+      : command.stage === 'covers' ? t('library-processing:coverOnlyWork')
       : command.stage === 'scan' ? t('manage:syncMenu.workScan')
       : command.stage === 'metadata' ? t('manage:syncMenu.workMetadata')
       : command.stage === 'collect'

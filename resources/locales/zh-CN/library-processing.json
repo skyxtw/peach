@@ -1,0 +1,8 @@
+{
+  "coverOnly": "仅补全封面",
+  "coverOnlyDescription": "只为有番号且缺少封面的影片抓取封面，不做其他检查",
+  "coverOnlyScope": "有番号且缺少封面的影片",
+  "coverOnlyWork": "为有番号且缺少封面的影片抓取封面，不扫描文件、不读配套资料",
+  "coverOnlyReceipt": "已取得 {{count}} 张封面。",
+  "coverOnlyToast": "封面已补全：{{count}} 张"
+}

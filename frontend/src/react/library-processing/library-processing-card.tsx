@@ -16,6 +16,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { Chip } from '@/components/base/badges/chip';
 
 import { apiSend, errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { SCAN_CARD_TEXT, scanCardSkeletonHtml } from '../../management';
 import type { LibraryProcessingProps } from '../bundle';
 import { Fieldset, FieldsetTitle } from '../components/fieldset';
@@ -67,7 +68,8 @@ const profileText = (state: LibraryProcessingData) => {
 };
 
 const receiptText = (state: LibraryProcessingData) =>
-  state.requested_stage === 'previews' ? t('manage:scanFetch.previewsGenerated', { count: state.previews || 0 })
+  state.requested_stage === 'covers' ? t('library-processing:coverOnlyReceipt', { count: state.covers || 0 })
+  : state.requested_stage === 'previews' ? t('manage:scanFetch.previewsGenerated', { count: state.previews || 0 })
   : [
     t('manage:scanFetch.receipt', { count: state.scanned || 0, identified: state.identified || 0, candidates: state.candidates || 0, autoApplied: state.auto_applied || 0 }),
     state.previews ? t('manage:scanFetch.previewsGenerated', { count: state.previews }) : '',

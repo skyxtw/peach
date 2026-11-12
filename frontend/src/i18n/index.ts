@@ -9,6 +9,7 @@ import { SETTINGS_KEY } from '../settings-key';
 import enCatalog from '../../../resources/locales/en/catalog.json' with { type: 'json' };
 import enCleanup from '../../../resources/locales/en/cleanup.json' with { type: 'json' };
 import enFollow from '../../../resources/locales/en/follow.json' with { type: 'json' };
+import enLibraryProcessing from '../../../resources/locales/en/library-processing.json' with { type: 'json' };
 import enManage from '../../../resources/locales/en/manage.json' with { type: 'json' };
 import enNavigation from '../../../resources/locales/en/navigation.json' with { type: 'json' };
 import enOnboarding from '../../../resources/locales/en/onboarding.json' with { type: 'json' };
@@ -18,6 +19,7 @@ import enShell from '../../../resources/locales/en/shell.json' with { type: 'jso
 import zhCatalog from '../../../resources/locales/zh-CN/catalog.json' with { type: 'json' };
 import zhCleanup from '../../../resources/locales/zh-CN/cleanup.json' with { type: 'json' };
 import zhFollow from '../../../resources/locales/zh-CN/follow.json' with { type: 'json' };
+import zhLibraryProcessing from '../../../resources/locales/zh-CN/library-processing.json' with { type: 'json' };
 import zhManage from '../../../resources/locales/zh-CN/manage.json' with { type: 'json' };
 import zhNavigation from '../../../resources/locales/zh-CN/navigation.json' with { type: 'json' };
 import zhOnboarding from '../../../resources/locales/zh-CN/onboarding.json' with { type: 'json' };
@@ -30,8 +32,8 @@ export type InterfaceLanguage = typeof INTERFACE_LANGUAGES[number];
 export const SOURCE_LANGUAGE: InterfaceLanguage = 'zh-CN';
 
 export const resources = {
-  'zh-CN': { navigation: zhNavigation, shell: zhShell, settings: zhSettings, cleanup: zhCleanup, manage: zhManage, follow: zhFollow, catalog: zhCatalog, onboarding: zhOnboarding, server: zhServer },
-  en: { navigation: enNavigation, shell: enShell, settings: enSettings, cleanup: enCleanup, manage: enManage, follow: enFollow, catalog: enCatalog, onboarding: enOnboarding, server: enServer },
+  'zh-CN': { navigation: zhNavigation, shell: zhShell, settings: zhSettings, cleanup: zhCleanup, manage: zhManage, follow: zhFollow, catalog: zhCatalog, onboarding: zhOnboarding, server: zhServer, 'library-processing': zhLibraryProcessing },
+  en: { navigation: enNavigation, shell: enShell, settings: enSettings, cleanup: enCleanup, manage: enManage, follow: enFollow, catalog: enCatalog, onboarding: enOnboarding, server: enServer, 'library-processing': enLibraryProcessing },
 } as const;
 
 /** 设置里能选的值：`auto` 按浏览器与系统语言自动选，其余是固定的界面语言。 */
