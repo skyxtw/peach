@@ -153,8 +153,8 @@ def _question_view(question) -> dict[str, object]:
     elif question.key == "port":
         view.update(input="number", prefix="localhost:")
     elif question.key == "mdns_name":
-        view.update(prefix="http://" if distribution.standalone() else "https://", suffix=".local")
-        if distribution.standalone():
+        view.update(prefix="http://" if distribution.plain_http() else "https://", suffix=".local")
+        if distribution.plain_http():
             view["help"] = "pages.setup.question.mdnsName.standaloneHelp"
     return view
 
@@ -176,12 +176,17 @@ def _setup_destination(config, *, history_guide: bool) -> str:
 def _normal_url(config) -> str:
     """设置完成之后本机浏览器要去的地址。
 
-    独立包即使对局域网监听，本机也走回环；源码部署才走由托盘维护的 HTTPS 固定入口。Docker 的
-    外部地址由宿主机端口映射决定，服务自己不知道，留在当前地址。
+    独立包与 macOS 之外的源码部署走明文 HTTP：即使对局域网监听，本机也走回环；
+    macOS 源码部署走由托盘维护的 HTTPS 固定入口。Docker 的外部地址由宿主机端口
+    映射决定，服务自己不知道，留在当前地址。
     """
     if distribution.docker():
         return "/"
-    if distribution.standalone() or config.server.host in _LOOPBACK:
+    if distribution.plain_http():
+        if config.server.host in _LOOPBACK:
+            return f"http://127.0.0.1:{config.server.port}/"
+        return f"http://{config.server.mdns_name}.local:{config.server.port}/"
+    if config.server.host in _LOOPBACK:
         return f"http://127.0.0.1:{config.server.port}/"
     return f"https://{config.server.mdns_name}.local/"
 
@@ -629,7 +634,8 @@ async def setup_submit_json(request: Request):
             raise HTTPException(status_code=409, detail="settings file already exists")
         try:
             applied = onboarding.apply(resolved, answers, windows=windows, access_password=password,
-                                       peach_proxy_values=proxy_values, require_tls=windows and not standalone)
+                                       peach_proxy_values=proxy_values,
+                                       require_tls=windows and not distribution.plain_http())
             settings_file.remember_data_root(settings_file.active(), applied.config)
         except (OSError, RuntimeError) as exc:
             errors = {"data_root": exc}

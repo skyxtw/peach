@@ -271,7 +271,7 @@ def snapshot(config, reachability=None) -> dict[str, Any]:
         "library_count": 0,
         "windows": os.name == "nt",
         "port": config.server.port,
-        "port_editable": distribution.standalone(),
+        "port_editable": distribution.plain_http(),
         "facts": [],
     }
     readers = (
@@ -347,7 +347,6 @@ def push_discovery_payload(request: Request, payload: dict[str, Any] | None = No
 def network_payload(request: Request, config) -> dict[str, Any]:
     """连接地址来自实际监听信息，编辑值来自托盘配置。"""
     settings = request.app.state.settings
-    standalone = distribution.standalone()
     try:
         local = ipaddress.ip_address(settings.host).is_loopback
     except ValueError:
@@ -365,10 +364,10 @@ def network_payload(request: Request, config) -> dict[str, Any]:
     except ValueError:
         address = ''
     hostname = settings.mdns_name.removesuffix('.local')
-    return {'editable': managed_configuration() and standalone,
+    return {'editable': managed_configuration() and distribution.plain_http(),
             'host': config.server.host, 'mdns_name': config.server.mdns_name,
             'scope': 'local' if local else 'lan',
-            'local_url': f'http://127.0.0.1:{settings.port}/' if standalone else str(request.base_url),
+            'local_url': f'http://127.0.0.1:{settings.port}/' if distribution.plain_http() else str(request.base_url),
             'lan_url': f'{scheme}://{hostname}.local{suffix}/' if not local and settings.mdns_enabled else '',
             'ip_url': f'{scheme}://{address}{suffix}/' if not local and address and not settings.tls_enabled else ''}
 
@@ -1141,7 +1140,7 @@ def _validate_server(body, config):
     errors, validated = {}, {}
     try:
         port = onboarding.validate_port(str(body.get("port", config.server.port)))
-        if distribution.standalone():
+        if distribution.plain_http():
             onboarding.check_available_port(port, config.server.port)
         elif port != config.server.port:
             raise UserValueError("api.configuration.portManagedByTray")
@@ -1668,6 +1667,6 @@ def save_configuration(request: Request, body: dict[str, Any] = Body(default_fac
             (config.directory("state") / RELOAD_NAME).write_text("reload", encoding="utf-8")
         except OSError as exc:
             raise HTTPException(500, message_fields("api.configuration.configurationSaveFailed", {"error": str(exc)})) from exc
-    url = f"http://127.0.0.1:{prepared.server.port}/" if distribution.standalone() else str(request.base_url)
+    url = f"http://127.0.0.1:{prepared.server.port}/" if distribution.plain_http() else str(request.base_url)
     return {"saved": True, "url": url,
             "revision": revision(prepared)}
