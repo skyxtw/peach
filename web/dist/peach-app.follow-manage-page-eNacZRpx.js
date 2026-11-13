@@ -1,13 +1,13 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "496c7fa9-fded-4bea-8a5b-ea6ff1259ff5", e._sentryDebugIdIdentifier = "sentry-dbid-496c7fa9-fded-4bea-8a5b-ea6ff1259ff5");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "05949769-5940-438f-b61c-8fea448b5c1f", e._sentryDebugIdIdentifier = "sentry-dbid-05949769-5940-438f-b61c-8fea448b5c1f");
 	} catch {}
 })();
 import { $2ec61d1d4f780267$export$a8a3e93435678ff9 as e, $542a13ca2fa5b484$export$5b6b19405a83ff9d as t, $76d00c5a4edb230a$export$76ccd210b9029917 as n, $76d00c5a4edb230a$export$816b5d811295e6bc as r, $76d00c5a4edb230a$export$b59bdbef9ce70de2 as i, $76d00c5a4edb230a$export$f6f0c3fe4ec306ea as a, $76d00c5a4edb230a$export$f850895b287ef28e as o, $ea3928288112382f$export$439d29a4e110a164 as s, $l as c, Button as l, ButtonLink as u, Bx as d, COLUMN_SORT as f, Checkbox as p, ChevronSortDown as m, Chip as h, CollapseChevron as g, CollapseRegion as _, DataTableFooter as v, DataTableFrame as y, DataTableSort as b, EmptyFocusButton as x, EmptyState as S, ErrorText as C, ExternalLink as w, FEEDS_KEY as ee, FOLLOW_CHECK_KEY as T, FOLLOW_CREDENTIALS_KEY as te, FOLLOW_MANAGE_KEY as E, FOLLOW_MANAGE_NAV as D, FOLLOW_RESOLVE_KEY as O, FieldLabel as k, Help as A, Input as j, LAYOUTS as M, LoadingDots as N, M6 as P, MENU_ITEM as F, MENU_ITEM_INTERACTIVE as I, MENU_POPOVER_SURFACE as L, ModalFrame as R, Note as z, P7 as ne, SORT_DEFAULT_DIR as B, SORT_OPTIONS as re, STAT_STRIP_SIX as ie, Select as ae, SelectItem as V, SelectionDock as oe, SelectionPopover as H, SiteLabel as U, SortDirectionIcon as se, SortableBoardTabs as ce, Switch as le, Table as ue, TableColumnControls as de, TableColumnResizer as fe, TableSelectionHeader as pe, TagManager as W, TaskProgress as me, Un as he, Wt as G, Xf as ge, __toESM as _e, addAlias as ve, addSource as ye, authorGroups as be, authorName as xe, avatarInner as Se, busyProps as K, cardClass as Ce, checkEvidenceGap as we, checkFailures as Te, checkFeeds as Ee, checkReceipt as De, checkSummary as Oe, checkedText as ke, clickedBlank as Ae, columnVisibilityFeature as je, composingKey as Me, confirmModal as Ne, createColumnHelper as Pe, credentialDone as Fe, cx as Ie, dZ as Le, dropSources as Re, du as ze, errorHeadline as Be, errorMessage as q, feedIntervalText as Ve, fetchCheckJob as He, fetchCredentials as J, fetchFeeds as Ue, fetchFollow as We, fetchResolveJob as Ge, fetchSuggestions as Y, flexRender as Ke, followFeedByName as qe, followFeedEntity as Je, followSuggestKey as Ye, groupByAuthor as Xe, isBroken as Ze, isLayout as Qe, keepSelected as $e, l7 as et, localTime as tt, lookupFeedActor as nt, mapLimit as rt, markAllPending as it, pageSizeOf as at, pageWindow as ot, patchSource as st, pv as ct, queryClient as lt, reloadFollowManage as ut, removeAlias as dt, removeFeed as ft, removeSource as pt, renameAliasGroup as mt, require_jsx_runtime as ht, require_react as gt, resolveFollowSort as _t, rowPaginationFeature as vt, rowSelectionFeature as yt, rowSortingFeature as bt, selectionState as xt, setFeedEnabled as St, setSourceEnabled as Ct, sortLabel as wt, startCheck as Tt, startResolve as Et, tableFeatures as Dt, tableRows as Ot, toggleGroup as kt, useAction as At, useBackgroundJob as jt, useMutation as Mt, useQuery as Nt, useTable as Pt, useTablePreferences as Ft } from "./peach-app.js";
 import { Page as It } from "./peach-app.page-QAncjzM1.js";
 import { AuthorAvatar as Lt, ErrorLine as Rt, SourceIcon as zt, SourceLink as Bt, StatusBadge as Vt } from "./peach-app.source-view-DalWfDkm.js";
-import { createPaginatedRowModel as Ht, createSortedRowModel as Ut, useTableSelection as Wt } from "./peach-app.use-table-selection-CnuGRvGn.js";
+import { createPaginatedRowModel as Ht, createSortedRowModel as Ut, useTableSelection as Wt } from "./peach-app.use-table-selection-BU3D71Yz.js";
 import { LEGACY_AVATAR_IMG as Gt } from "./peach-app.legacy-avatar-NSITxLRS.js";
 // src/react/follow-manage/add-source.tsx
 var X = /* @__PURE__ */ _e(gt(), 1), Z = ht(), Kt = Ie(F, I, "text-body-2-medium"), qt = "粘贴来源链接，或输入创作者名、id…", Jt = "添加创作者关注", Yt = "查找中（首次按名字查要下载创作者索引，可能几十秒）", Xt = "识别中", Zt = "站内没有查到来源", Qt = "/settings/subscriptions", $t = (e, t) => `${e}:${t.url}`;
@@ -2462,7 +2462,7 @@ function Gn(e) {
 		children: "关注来源及其检查状态会显示在这里。"
 	});
 }
-// node_modules/skullet/dist/index.mjs
+// ../../../peach-app/frontend/node_modules/skullet/dist/index.mjs
 var Kn = "skullet-reveal", qn = "skullet-pane", Jn = "skullet-loading", Yn = "skullet-ghost", Xn = "skullet-snapshot", Zn = "skullet-layer", Qn = "skullet-rect", $n = "skullet-bar", er = "skullet-inactive", tr = "skullet-exiting", nr = "skullet-covered", rr = "skullet-own", ir = "skullet-block", ar = Symbol.for("skullet.ghost"), or = Symbol.for("skullet.uncover"), sr = "skullet-status", cr = "skullet-xray", lr = "var(--skullet-base, rgb(128 128 128 / 0.2))", ur = "var(--skullet-highlight, rgb(255 255 255 / 0.12))", dr = 280, fr = 1e4, pr = {
 	shimmer: {
 		slow: 4e3,
@@ -3802,7 +3802,7 @@ function fs(e, t, n) {
 		});
 	}));
 }
-// node_modules/skullet/dist/react/index.mjs
+// ../../../peach-app/frontend/node_modules/skullet/dist/react/index.mjs
 var ps = X.createContext({}), ms = X.createContext(null), hs = () => X.useContext(ps), gs = () => X.useContext(ms), _s = () => hs().reveal;
 function vs({ children: e, ...t }) {
 	let { debug: n, theme: r, mode: i, text: a, nonce: o } = t, s = Dr({
@@ -4270,4 +4270,4 @@ function Rs(e) {
 }
 export { Rs as FollowManagePage };
 
-//# debugId=496c7fa9-fded-4bea-8a5b-ea6ff1259ff5
+//# debugId=05949769-5940-438f-b61c-8fea448b5c1f

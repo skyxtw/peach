@@ -239,6 +239,20 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
         "where": "https://simpcity.cr/",
         "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
     },
+    # JavDB 作品资料接口从 2026-11-10 起要求登录：签名照旧被接受，业务状态回
+    # `JWTVerificationError`、「請登錄帳號」。字段是本机账号，密码只用来换登录令牌，
+    # 令牌只留在内存，所以不同步到另一台。
+    "javdb": {
+        "requirement": "optional",
+        "fields": ["username", "password"],
+        "syncable": [],
+        "label": "JavDB",
+        "why": "库外作品资料、评论、磁链与预览走 JavDB 资料接口；接口现在要求登录，"
+               "不填账号时详情页只说明需要登录。",
+        "where": "https://javdb.com/",
+        "howto": "填 JavDB 的用户名和密码。Peach 只用它换登录令牌，密码不进日志、不回显、"
+                 "不写账本；令牌只留在内存，失效后自动重新登录。",
+    },
 }
 
 

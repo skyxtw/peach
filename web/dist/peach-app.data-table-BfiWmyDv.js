@@ -1,11 +1,11 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "bca450ee-266d-42a3-a1d6-db44088198c4", e._sentryDebugIdIdentifier = "sentry-dbid-bca450ee-266d-42a3-a1d6-db44088198c4");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "91892bc8-d0c3-46c4-87d3-9ebd50ac1f82", e._sentryDebugIdIdentifier = "sentry-dbid-91892bc8-d0c3-46c4-87d3-9ebd50ac1f82");
 	} catch {}
 })();
 import { $76d00c5a4edb230a$export$76ccd210b9029917 as e, $76d00c5a4edb230a$export$816b5d811295e6bc as t, $76d00c5a4edb230a$export$b59bdbef9ce70de2 as n, $76d00c5a4edb230a$export$f6f0c3fe4ec306ea as r, $76d00c5a4edb230a$export$f850895b287ef28e as i, Button as a, Checkbox as o, ChevronSortDown as s, DataTableFooter as c, DataTableFrame as l, DataTableSort as u, SelectionDock as d, Table as f, TableColumnControls as p, TableColumnResizer as m, TableSelectionHeader as h, __toESM as g, cardClass as _, columnVisibilityFeature as v, createColumnHelper as y, flexRender as b, require_jsx_runtime as x, require_react as S, rowPaginationFeature as C, rowSelectionFeature as w, rowSortingFeature as T, tableFeatures as E, useTable as D, useTablePreferences as O } from "./peach-app.js";
-import { createPaginatedRowModel as k, createSortedRowModel as A, useTableSelection as j } from "./peach-app.use-table-selection-CnuGRvGn.js";
+import { createPaginatedRowModel as k, createSortedRowModel as A, useTableSelection as j } from "./peach-app.use-table-selection-BU3D71Yz.js";
 // src/react/components/data-table.tsx
 var M = /* @__PURE__ */ g(S(), 1), N = x(), P = E({
 	rowSortingFeature: T,
@@ -212,4 +212,4 @@ function F({ label: g, items: v, columns: x, rowId: S, rowLabel: C, selected: w,
 }
 export { F as DataTable };
 
-//# debugId=bca450ee-266d-42a3-a1d6-db44088198c4
+//# debugId=91892bc8-d0c3-46c4-87d3-9ebd50ac1f82
