@@ -1,7 +1,7 @@
 """资源搜索的只读 Web 契约；下载仍由云下载写入口接收。"""
 from .javdb_public import public_cache_scope
 from .magnet_chain import HIGH_QUALITY, rank_candidates, search as direct_search
-from .resource_search import Filters, Indexers, Search
+from .resource_search import Filters, Indexers, Search, preference_filters
 
 _SEARCH = Search()
 
@@ -16,6 +16,7 @@ def q_resource_search(contract, args) -> dict:
                           goal=str(args.get("goal") or "quality"))
     except (TypeError, OverflowError):
         raise ValueError("体积区间必须是字节数") from None
+    min_resolution, edition_keywords = preference_filters(args)
     with contract.database.read_connection() as connection:
         blocked = [row[0] for row in connection.execute(
             "SELECT info_hash FROM download_task WHERE blocked_at IS NOT NULL")]
@@ -40,11 +41,19 @@ def q_resource_search(contract, args) -> dict:
             **row, "size_text": "", "files": "", "file_count": 0, "file_list": [],
             "promo_files": 0, "source_url": "", "watermark_check": "pending",
         })
+    warnings = list(direct["warnings"]) + list(indexed.get("warnings") or ())
+    if min_resolution:
+        qualified = [row for row in combined if int(row.get("resolution") or 0) >= min_resolution]
+        if qualified:
+            combined = qualified
+        else:
+            warnings.append(f"没有 ≥{min_resolution}p 的资源，已按不限清晰度排序")
     return {
         "ok": bool(direct["items"]) or indexed.get("ok", False),
         "state": "ready" if direct["items"] or indexed.get("state") == "ready" else indexed.get("state", "error"),
-        "items": rank_candidates(combined, filters.goal),
-        "warnings": direct["warnings"] + list(indexed.get("warnings") or ()),
+        "items": rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)),
+        "warnings": warnings,
+        "filters": {"min_resolution": min_resolution, "edition_keywords": edition_keywords},
         "trace": direct["trace"] + (["索引器后备：已查询"] if indexed.get("state") != "unavailable" else []),
         "next_sources": direct["next_sources"], "reference_only": direct["reference_only"],
         "error": "" if direct["items"] or indexed.get("ok") else indexed.get("error", ""),

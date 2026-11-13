@@ -56,9 +56,9 @@ class BrowserTests(unittest.TestCase):
         self.token = response.json()["token"]
         self.script_headers = {"Authorization": "Bearer " + self.token, "Origin": "https://missav.ws"}
 
-    def configure(self, action, provider="115"):
+    def configure(self, action, provider="115", **extra):
         return self.client.post("/api/configuration/jav-browser", headers=self.headers,
-                                json={"action": action, "provider": provider})
+                                json={"action": action, "provider": provider, **extra})
 
     def add(self, code="ABC-123", **extra):
         return self.client.post("/api/jav-browser", headers=self.script_headers,
@@ -121,6 +121,35 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual((task.provider, task.target, task.code, task.origin),
                          ("115", "/115/Movies", "ABC-123", "browser:" + PAGE))
         self.assertEqual(self.downloads.store.submissions(task.id)[0]["outcome"], "submitted")
+
+    def test_auto_pick_preferences_are_saved_and_used_when_searching(self):
+        response = self.configure("preferences", min_resolution=1080,
+                                  edition_keywords=["新模型无码破解", "LTX", "无码"])
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((response.json()["min_resolution"], response.json()["edition_keywords"]),
+                         (1080, ["新模型无码破解", "LTX", "无码"]))
+        self.add()
+        self.service.search.reset_mock()
+        self.assertTrue(self.service.process_one())
+        args = self.service.search.call_args.args[1]
+        self.assertEqual((args["min_resolution"], args["edition_keywords"]),
+                         (1080, ["新模型无码破解", "LTX", "无码"]))
+
+    def test_auto_pick_preferences_reject_invalid_values(self):
+        self.configure("preferences", min_resolution=2160, edition_keywords=["LTX"])
+        for body in ({"min_resolution": 720}, {"min_resolution": "abc"},
+                     {"edition_keywords": ["长" * 41]}, {"edition_keywords": ["A"] * 9}):
+            with self.subTest(body=body):
+                response = self.configure("preferences", **body)
+                self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(self.service.preferences, {"min_resolution": 2160, "edition_keywords": ["LTX"]})
+
+    def test_auto_pick_preferences_survive_token_rotation_and_disable(self):
+        self.configure("preferences", min_resolution=2160, edition_keywords=["LTX"])
+        self.assertEqual(self.configure("rotate").status_code, 200)
+        self.assertEqual(self.service.preferences, {"min_resolution": 2160, "edition_keywords": ["LTX"]})
+        self.assertEqual(self.configure("disable").status_code, 200)
+        self.assertEqual(self.service.preferences, {"min_resolution": 2160, "edition_keywords": ["LTX"]})
 
     def test_manual_number_queues_without_sending_the_source_page(self):
         response = self.client.post('/api/jav-browser', headers=self.script_headers,
@@ -835,7 +864,9 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(self.add("107STZY-019").json()["code"], "STZY-019")
         self.service.process_one()
         self.assertEqual(self.service.rows["STZY-019"]["state"], "submitted")
-        self.service.search.assert_called_once_with(self.app.state.web_contract, {"code": "STZY-019", "goal": "quality"})
+        self.service.search.assert_called_once_with(
+            self.app.state.web_contract,
+            {"code": "STZY-019", "goal": "quality", "min_resolution": 0, "edition_keywords": []})
         self.assertEqual(self.downloads.store.get(self.service.rows["STZY-019"]["task_id"]).code, "STZY-019")
 
     def test_queue_rows_saved_under_a_store_prefix_move_to_the_plain_release(self):
@@ -857,7 +888,9 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(self.add(code).status_code, 200)
         self.service.process_one()
         self.assertEqual(self.service.rows[code]["state"], "submitted")
-        self.service.search.assert_called_once_with(self.app.state.web_contract, {"code": code, "goal": "quality"})
+        self.service.search.assert_called_once_with(
+            self.app.state.web_contract,
+            {"code": code, "goal": "quality", "min_resolution": 0, "edition_keywords": []})
         self.assertEqual(self.downloads.store.get(self.service.rows[code]["task_id"]).code, code)
 
     def test_explicit_product_suffix_does_not_adopt_the_plain_release(self):

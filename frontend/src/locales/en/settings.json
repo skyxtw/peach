@@ -6,5 +6,16 @@
     "saved": "Language saved",
     "title": "Language",
     "unavailable": "Couldn't read the language from the database. Reopen settings."
+  },
+  "javBrowser": {
+    "editionKeywords": "Preferred edition keywords",
+    "editionKeywordsHelp": "Earlier keywords win: titles matching a higher keyword rank first. Leave empty for no edition preference. Separate with commas.",
+    "editionKeywordsPlaceholder": "新模型无码破解,LTX,无码,破解,Reducing Mosaic",
+    "minResolution": "Minimum resolution",
+    "minResolution1080": "1080p or higher",
+    "minResolution2160": "2160p or higher",
+    "minResolutionOff": "Any",
+    "preferencesSaved": "Auto-pick preferences saved",
+    "savePreferences": "Save pick preferences"
   }
 }

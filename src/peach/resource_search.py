@@ -126,6 +126,39 @@ class Filters:
             raise ValueError("质量目标只能是高清、中字或无码")
 
 
+#: 自动挑选偏好里的最低清晰度：不限、1080p、2160p。
+MIN_RESOLUTIONS = (0, 1080, 2160)
+MAX_EDITION_KEYWORDS = 8
+MAX_EDITION_KEYWORD_LENGTH = 40
+
+
+def preference_filters(args) -> tuple[int, list[str]]:
+    """解析最低清晰度与版本优先关键词；浏览器添加与手动搜索共用这一套校验。
+
+    关键词按给定次序表达优先级，标题里先命中的词排在前面；空列表表示不设偏好。
+    """
+    try:
+        min_resolution = int(args.get("min_resolution") or 0)
+    except (TypeError, ValueError):
+        raise ValueError("最低清晰度必须是 1080p 或 2160p") from None
+    if min_resolution not in MIN_RESOLUTIONS:
+        raise ValueError("最低清晰度必须是 1080p 或 2160p")
+    raw = args.get("edition_keywords") or ()
+    if isinstance(raw, str):
+        raw = [part for part in re.split(r"[,，、]", raw)]
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("版本优先关键词格式不正确")
+    keywords: list[str] = []
+    for value in raw:
+        word = str(value or "").strip()
+        if not word:
+            continue
+        if len(word) > MAX_EDITION_KEYWORD_LENGTH or len(keywords) >= MAX_EDITION_KEYWORDS:
+            raise ValueError("版本优先关键词过多或过长")
+        keywords.append(word)
+    return min_resolution, keywords
+
+
 def qualities(title: str, tags: list[str], code: str) -> dict:
     text = " ".join([title, *tags])
     resolution = next((value for pattern, value in (

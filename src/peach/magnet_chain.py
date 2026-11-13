@@ -142,8 +142,14 @@ def _normalise(item: dict, source: Source, code: str) -> dict | None:
     }
 
 
-def rank_candidates(items: list[dict], goal: str = "quality") -> list[dict]:
-    """先画质、再做种、最后正片体积；附属文件只轻微降序，不作硬门槛。"""
+def rank_candidates(items: list[dict], goal: str = "quality", *,
+                    edition_keywords: tuple[str, ...] = ()) -> list[dict]:
+    """先版本关键词、再画质、再做种、最后正片体积；附属文件只轻微降序，不作硬门槛。
+
+    `edition_keywords` 是用户给的版本优先词（如「无码破解」「LTX」「无码」）：按给定次序
+    在标题里找第一个命中的词，越靠前越优先；一个都没命中的排最后，于是没设偏好或没有
+    偏好版本时仍回到原来的画质排序。
+    """
     unique: dict[str, dict] = {}
     for item in items:
         prior = unique.get(item["info_hash"])
@@ -156,11 +162,21 @@ def rank_candidates(items: list[dict], goal: str = "quality") -> list[dict]:
             prior["file_list"] = item["file_list"]
             prior["file_count"] = item["file_count"]
             prior["promo_files"] = item["promo_files"]
+    keywords = tuple(word for word in (str(value).strip().casefold() for value in edition_keywords)
+                     if word)
+
+    def edition_rank(row) -> int:
+        name = str(row.get("name") or "").casefold()
+        for index, word in enumerate(keywords):
+            if word in name:
+                return index
+        return len(keywords)
+
     def rank(row):
         trailer = bool(re.search(r"(?i)\b(?:sample|trailer|preview)\b|予告|预告|預告", row["name"]))
         preferred = bool(row.get(goal)) if goal in {"chinese", "uncensored"} else False
-        return (trailer, -int(preferred), -row["resolution"], -row["seeders"], row["promo_files"],
-                -row["size"], row["info_hash"])
+        return (trailer, edition_rank(row), -int(preferred), -row["resolution"], -row["seeders"],
+                row["promo_files"], -row["size"], row["info_hash"])
     return sorted(unique.values(), key=rank)[:MAX_RESULTS]
 
 

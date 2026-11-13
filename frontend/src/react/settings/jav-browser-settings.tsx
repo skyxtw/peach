@@ -5,6 +5,7 @@ import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { Select, SelectItem } from '@/components/base/select/select';
 import { apiGet, apiSend, errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { javBrowserSkeleton, rememberShape } from '../../configuration-skeleton';
 import { SourceLabel } from '../components/source-label';
 import { ErrorText, FieldLabel, Footer, Help, Section, SectionSkeleton, Stack } from './section';
@@ -15,6 +16,7 @@ const URL = '/api/configuration/jav-browser';
 interface State {
   enabled: boolean; provider: string; available: boolean; token?: string;
   active_provider?: string; problems?: string[];
+  min_resolution?: number; edition_keywords?: string[];
   userscript: { version: string; minimum_version: string; install_url: string };
   providers: { key: string; label: string; configured: boolean; target: string }[];
 }
@@ -30,6 +32,8 @@ export function JavBrowserSettings({ receipt, refreshKey }: { receipt(message: s
 function BrowserForm({ initial, receipt }: { initial: State; receipt(message: string): void }) {
   const [state, setState] = useState(initial);
   const [provider, setProvider] = useState(initial.provider);
+  const [minResolution, setMinResolution] = useState(String(initial.min_resolution ?? 0));
+  const [keywords, setKeywords] = useState((initial.edition_keywords ?? []).join(', '));
   const [token, setToken] = useState('');
   const action = useAction();
   useEffect(() => {
@@ -38,6 +42,8 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       ready: initial.providers.some(item => item.key === initial.provider && item.configured && item.target) });
     setState(initial);
     setProvider(current => initial.providers.some(item => item.key === current) ? current : initial.provider);
+    setMinResolution(String(initial.min_resolution ?? 0));
+    setKeywords((initial.edition_keywords ?? []).join(', '));
     if (!initial.enabled) setToken('');
   }, [initial]);
   const save = (kind: 'enable' | 'rotate' | 'disable') => {
@@ -47,6 +53,17 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       setProvider(settings.provider);
       setToken(issued);
       receipt(kind === 'disable' ? '已关闭浏览器添加' : '已生成专用令牌');
+    });
+  };
+  const savePreferences = () => {
+    void action.run('preferences', signal => apiSend<State>(URL, {
+      action: 'preferences', min_resolution: Number(minResolution),
+      edition_keywords: keywords.split(/[,，、]/).map(part => part.trim()).filter(Boolean),
+    }, 'POST', signal), result => {
+      setState(result);
+      setMinResolution(String(result.min_resolution ?? 0));
+      setKeywords((result.edition_keywords ?? []).join(', '));
+      receipt(t('settings:javBrowser.preferencesSaved'));
     });
   };
   const ready = state.providers.some(item => item.key === provider && item.configured && item.target);
@@ -64,6 +81,22 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       </Select></div>
       {!ready ? <Help>请在媒体库中添加支持云下载的网盘，并配置账号与目标目录。</Help> : null}
       {state.problems?.map(problem => <Help key={problem}>{problem}</Help>)}
+      <div className="flex flex-col gap-1"><FieldLabel>{t('settings:javBrowser.minResolution')}</FieldLabel>
+      <Select aria-label={t('settings:javBrowser.minResolution')} selectedKey={minResolution}
+        onSelectionChange={key => { if (key !== null) setMinResolution(String(key)); }}
+        isDisabled={Boolean(action.busy)}>
+        <SelectItem id="0">{t('settings:javBrowser.minResolutionOff')}</SelectItem>
+        <SelectItem id="1080">{t('settings:javBrowser.minResolution1080')}</SelectItem>
+        <SelectItem id="2160">{t('settings:javBrowser.minResolution2160')}</SelectItem>
+      </Select></div>
+      <Input label={t('settings:javBrowser.editionKeywords')} value={keywords} maxLength={320}
+        placeholder={t('settings:javBrowser.editionKeywordsPlaceholder')} isReadOnly={Boolean(action.busy)}
+        onChange={setKeywords} />
+      <Help>{t('settings:javBrowser.editionKeywordsHelp')}</Help>
+      <div><Button variant="secondary" type="button" disabled={Boolean(action.busy)}
+        onClick={savePreferences} {...busyProps(action.busy === 'preferences')}>
+        {t('settings:javBrowser.savePreferences')}
+      </Button></div>
       {state.enabled && state.active_provider && !state.providers.some(item => item.key === state.active_provider)
         ? <Help>已启用的下载渠道不可用，请选择渠道并更新令牌。</Help> : null}
       <Input label="Peach 地址" value={window.location.origin} isReadOnly autoComplete="off" />

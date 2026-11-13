@@ -1,11 +1,11 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "639383b0-1ae3-4c44-a488-8d6f1955c764", e._sentryDebugIdIdentifier = "sentry-dbid-639383b0-1ae3-4c44-a488-8d6f1955c764");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "0098747c-ee3e-470b-a9fa-39c221030d1f", e._sentryDebugIdIdentifier = "sentry-dbid-0098747c-ee3e-470b-a9fa-39c221030d1f");
 	} catch {}
 })();
 import { beginPlayerGuidePreview as e, closeDrawerAfterNav as t, disposeStage as n, peachHistory$1 as r } from "./peach-app.js";
-// ../../../peach-app/frontend/node_modules/driver.js/dist/driver.js.mjs
+// node_modules/driver.js/dist/driver.js.mjs
 var i = [
 	"pointerdown",
 	"mousedown",
@@ -955,4 +955,4 @@ function we(i) {
 }
 export { we as createGuideSession };
 
-//# debugId=639383b0-1ae3-4c44-a488-8d6f1955c764
+//# debugId=0098747c-ee3e-470b-a9fa-39c221030d1f

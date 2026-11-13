@@ -143,6 +143,22 @@ class MagnetChainTests(unittest.TestCase):
         plain = item(HASH_B, resolution=2160)
         self.assertEqual(rank_candidates([plain, chinese], "chinese")[0]["info_hash"], HASH_A)
 
+    def test_edition_keywords_win_before_resolution(self):
+        plain = item(HASH_A, resolution=2160, name="ABC-123 4K")
+        uncensored = item(HASH_B, resolution=1080, name="ABC-123 无码破解 1080p")
+        ranked = rank_candidates([plain, uncensored], edition_keywords=("无码破解", "无码"))
+        self.assertEqual([row["info_hash"] for row in ranked], [HASH_B, HASH_A])
+
+    def test_edition_keyword_order_is_respected_and_unknown_editions_come_last(self):
+        first = item("1" * 40, resolution=1080, name="ABC-123 LTX")
+        second = item("2" * 40, resolution=1080, name="ABC-123 Reducing Mosaic")
+        uncensored = item(HASH_B, resolution=2160, name="ABC-123 4K 无码")
+        plain = item(HASH_A, resolution=2160, name="ABC-123 4K")
+        ranked = rank_candidates([plain, uncensored, second, first],
+                                 edition_keywords=("LTX", "Reducing Mosaic", "无码"))
+        self.assertEqual([row["info_hash"] for row in ranked],
+                         ["1" * 40, "2" * 40, HASH_B, HASH_A])
+
     def test_mismatched_release_is_rejected(self):
         candidate = _normalise({"uri": item(HASH_A)["uri"], "name": "ABC-124 FHD"},
                                CHAIN[1], "ABC-123")

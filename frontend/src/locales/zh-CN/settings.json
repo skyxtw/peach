@@ -6,5 +6,16 @@
     "saved": "已保存界面语言",
     "title": "界面语言",
     "unavailable": "未取得数据库中的界面语言，请重新打开设置。"
+  },
+  "javBrowser": {
+    "editionKeywords": "版本优先关键词",
+    "editionKeywordsHelp": "按先后顺序优先：标题里先命中靠前关键词的资源排前面；留空表示不设版本偏好。用逗号分隔。",
+    "editionKeywordsPlaceholder": "新模型无码破解,LTX,无码,破解,Reducing Mosaic",
+    "minResolution": "最低清晰度",
+    "minResolution1080": "1080p 及以上",
+    "minResolution2160": "2160p 及以上",
+    "minResolutionOff": "不限",
+    "preferencesSaved": "已保存自动挑选偏好",
+    "savePreferences": "保存挑片偏好"
   }
 }

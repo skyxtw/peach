@@ -28,10 +28,14 @@ from .task_retry import RETRY_DELAYS, RetryableTaskError, retry_delay
 from .follow_secrets import CredentialError
 from .feeds import scan_code
 from .fsutil import atomic_write_text
+from .resource_search import preference_filters
 from .sources.dmm import code_from_cid
 
 LOGGER = logging.getLogger(__name__)
 CREDENTIAL = "jav-browser"
+#: 自动挑选偏好：最低清晰度与版本优先关键词，和令牌无关，关闭/更新令牌都不清。
+PREFERENCES = "jav-browser-preferences.json"
+DEFAULT_PREFERENCES = {"min_resolution": 0, "edition_keywords": []}
 ACTIVE = {"queued", "searching"}
 #: 共享进度列表的上限，与持久队列同为 200；结束的任务保留 10 分钟，供各窗口看到完成。
 ACTIVE_LIMIT = 200
@@ -170,6 +174,8 @@ class JavBrowser:
         self.credentials = self.downloads.credentials
         self.path = Path(contract.follow_state_root) / "jav-browser-queue.json"
         self.ended_path = Path(contract.follow_state_root) / "jav-browser-ended.json"
+        self.preferences_path = Path(contract.follow_state_root) / PREFERENCES
+        self.preferences = self._load_preferences()
         self.search = search
         self._lock = threading.RLock()
         self._wake = threading.Event()
@@ -205,6 +211,32 @@ class JavBrowser:
 
     def _save(self):
         atomic_write_text(self.path, json.dumps(self.rows, ensure_ascii=False, indent=2) + "\n")
+
+    def _load_preferences(self) -> dict:
+        """自动挑选偏好读本机状态；文件坏或格式不对时按默认值，不挡住浏览器添加。"""
+        try:
+            payload = json.loads(self.preferences_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return dict(DEFAULT_PREFERENCES)
+        except (OSError, ValueError):
+            LOGGER.warning("浏览器添加偏好读不出来，按默认值跑：%s", self.preferences_path)
+            return dict(DEFAULT_PREFERENCES)
+        if not isinstance(payload, dict):
+            return dict(DEFAULT_PREFERENCES)
+        try:
+            min_resolution, keywords = preference_filters(payload)
+        except ValueError:
+            LOGGER.warning("浏览器添加偏好不合规则，按默认值跑：%s", self.preferences_path)
+            return dict(DEFAULT_PREFERENCES)
+        return {"min_resolution": min_resolution, "edition_keywords": keywords}
+
+    def _save_preferences(self, body: dict) -> dict:
+        min_resolution, keywords = preference_filters(body)
+        preferences = {"min_resolution": min_resolution, "edition_keywords": keywords}
+        atomic_write_text(self.preferences_path,
+                          json.dumps(preferences, ensure_ascii=False, indent=2) + "\n")
+        self.preferences = preferences
+        return preferences
 
     def _load_ended(self) -> dict:
         """结束留存的确认记录：`since` 之前结束的都算确认过，之后的逐条记在 `dismissed` 里。
@@ -253,7 +285,9 @@ class JavBrowser:
         selected = preferred if any(row["key"] == preferred for row in providers) else (
             providers[0]["key"] if providers else "")
         return {"enabled": bool(config.get("token_hash")), "provider": selected,
-                "active_provider": preferred, "available": self.downloads.available, **catalog,
+                "active_provider": preferred, "available": self.downloads.available,
+                "min_resolution": self.preferences["min_resolution"],
+                "edition_keywords": list(self.preferences["edition_keywords"]), **catalog,
                 "userscript": {"version": release["version"],
                                "minimum_version": release.get("bridge_min_version", release["version"]),
                                "install_url": release.get("install_url", "/integrations/peach-jav.user.js")},
@@ -262,10 +296,13 @@ class JavBrowser:
 
     def configure(self, body: dict) -> dict:
         action = body.get("action")
-        if action not in {"enable", "rotate", "disable"}:
+        if action not in {"enable", "rotate", "disable", "preferences"}:
             raise ValueError("请选择启用、更新令牌或关闭")
         if not self.downloads.available:
             raise ValueError("浏览器添加只在允许修改数据库的设备上可用")
+        if action == "preferences":
+            self._save_preferences(body)
+            return self.settings()
         provider = str(body.get("provider") or "")
         if action != "disable":
             self._ready(provider)
@@ -470,7 +507,13 @@ class JavBrowser:
         try:
             self._ready(provider)
             skip = list(row.get("skip", ()))
-            result = self.search(self.contract, {"code": code, "goal": "quality", **({"skip": skip} if skip else {})})
+            preferences = self.preferences
+            result = self.search(self.contract, {
+                "code": code, "goal": "quality",
+                "min_resolution": preferences["min_resolution"],
+                "edition_keywords": list(preferences["edition_keywords"]),
+                **({"skip": skip} if skip else {}),
+            })
             candidate = _download_candidate(result.get("items", ()), code, frozenset(row.get("skip", ())))
             should_submit = False
             with self._lock:
