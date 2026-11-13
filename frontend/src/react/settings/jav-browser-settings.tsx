@@ -7,6 +7,7 @@ import { Input } from '@/components/base/input/input';
 import { Select, SelectItem } from '@/components/base/select/select';
 import { Switch } from '@/components/base/switch/switch';
 import { apiGet, apiSend, errorMessage } from '../../api';
+import { t } from '../../i18n';
 import { javBrowserSkeleton, rememberShape } from '../../configuration-skeleton';
 import { SourceLabel } from '../components/source-label';
 import { ErrorText, FieldLabel, Footer, Help, Section, SectionSkeleton, Stack } from './section';
@@ -17,7 +18,9 @@ import { t } from '../../i18n';
 const URL = '/api/configuration/jav-browser';
 interface State {
   enabled: boolean; provider: string; available: boolean; token?: string;
-  active_provider?: string; problems?: string[]; want_on_no_match: boolean;
+  active_provider?: string; problems?: string[];
+  min_resolution?: number; edition_keywords?: string[];
+  want_on_no_match: boolean;
   userscript: { version: string; minimum_version: string; install_url: string };
   providers: { key: string; label: string; configured: boolean; target: string }[];
 }
@@ -33,6 +36,8 @@ export function JavBrowserSettings({ receipt, refreshKey }: { receipt(message: s
 function BrowserForm({ initial, receipt }: { initial: State; receipt(message: string): void }) {
   const [state, setState] = useState(initial);
   const [provider, setProvider] = useState(initial.provider);
+  const [minResolution, setMinResolution] = useState(String(initial.min_resolution ?? 0));
+  const [keywords, setKeywords] = useState((initial.edition_keywords ?? []).join(', '));
   const [token, setToken] = useState('');
   const action = useAction();
   useEffect(() => {
@@ -41,6 +46,8 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       ready: initial.providers.some(item => item.key === initial.provider && item.configured && item.target) });
     setState(initial);
     setProvider(current => initial.providers.some(item => item.key === current) ? current : initial.provider);
+    setMinResolution(String(initial.min_resolution ?? 0));
+    setKeywords((initial.edition_keywords ?? []).join(', '));
     if (!initial.enabled) setToken('');
   }, [initial]);
   const save = (kind: 'enable' | 'rotate' | 'disable') => {
@@ -60,6 +67,17 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       () => receipt(t('settings:shared.settingsSaved')),
       cause => { setState(current => ({ ...current, want_on_no_match: !enabled })); action.setError(errorMessage(cause)); });
   };
+  const savePreferences = () => {
+    void action.run('preferences', signal => apiSend<State>(URL, {
+      action: 'preferences', min_resolution: Number(minResolution),
+      edition_keywords: keywords.split(/[,，、]/).map(part => part.trim()).filter(Boolean),
+    }, 'POST', signal), result => {
+      setState(result);
+      setMinResolution(String(result.min_resolution ?? 0));
+      setKeywords((result.edition_keywords ?? []).join(', '));
+      receipt(t('settings:javBrowser.preferencesSaved'));
+    });
+  };
   const ready = state.providers.some(item => item.key === provider && item.configured && item.target);
   return <Section guide="browser" title={t('settings:javBrowser.title')}>
     <Stack>
@@ -75,6 +93,22 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
       </Select></div>
       {!ready ? <Help>{t('settings:browserAdd.needsCloudDrive')}</Help> : null}
       {state.problems?.map(problem => <Help key={problem}>{problem}</Help>)}
+      <div className="flex flex-col gap-1"><FieldLabel>{t('settings:javBrowser.minResolution')}</FieldLabel>
+      <Select aria-label={t('settings:javBrowser.minResolution')} selectedKey={minResolution}
+        onSelectionChange={key => { if (key !== null) setMinResolution(String(key)); }}
+        isDisabled={Boolean(action.busy)}>
+        <SelectItem id="0">{t('settings:javBrowser.minResolutionOff')}</SelectItem>
+        <SelectItem id="1080">{t('settings:javBrowser.minResolution1080')}</SelectItem>
+        <SelectItem id="2160">{t('settings:javBrowser.minResolution2160')}</SelectItem>
+      </Select></div>
+      <Input label={t('settings:javBrowser.editionKeywords')} value={keywords} maxLength={320}
+        placeholder={t('settings:javBrowser.editionKeywordsPlaceholder')} isReadOnly={Boolean(action.busy)}
+        onChange={setKeywords} />
+      <Help>{t('settings:javBrowser.editionKeywordsHelp')}</Help>
+      <div><Button variant="secondary" type="button" disabled={Boolean(action.busy)}
+        onClick={savePreferences} {...busyProps(action.busy === 'preferences')}>
+        {t('settings:javBrowser.savePreferences')}
+      </Button></div>
       {state.enabled && state.active_provider && !state.providers.some(item => item.key === state.active_provider)
         ? <Help>{t('settings:browserAdd.channelUnavailable')}</Help> : null}
       <div><SettingsRow label={t('settings:browserAdd.wantOnNoMatch')} description={t('settings:browserAdd.wantOnNoMatchHelp')}>

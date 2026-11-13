@@ -543,14 +543,45 @@ class ResourceIndexerRoutes(_App):
         self.assertEqual(direct.call_args.kwargs["goal"], "chinese")
         self.assertEqual(self.client.get("/api/resources/search?code=ABC-123&min_size=-1").status_code, 400)
 
+    def test_search_preferences_filter_by_min_resolution_and_rank_editions(self):
+        from peach.web_resource_search import q_resource_search
+
+        def candidate(info_hash, name, resolution):
+            return {"source": "sukebei", "resolution": resolution, "info_hash": info_hash, "name": name,
+                    "size": 0, "seeders": 1, "promo_files": 0, "file_list": [], "file_count": 0,
+                    "origins": ["sukebei"]}
+
+        low = candidate("a" * 40, "ABC-123 720p", 720)
+        hd_decensored = candidate("b" * 40, "ABC-123 无码破解 1080p", 1080)
+        hd_plain = candidate("c" * 40, "ABC-123 4K", 2160)
+        with mock.patch("peach.web_resource_search.direct_search", return_value={
+                "items": [hd_plain], "warnings": [], "trace": [], "next_sources": [], "reference_only": []}), \
+             mock.patch("peach.web_resource_search._SEARCH.run", return_value={
+                "ok": True, "state": "ready", "items": [low, hd_decensored], "warnings": [], "error": ""}):
+            result = q_resource_search(self.app.state.web_contract, {
+                "code": "ABC-123", "min_resolution": 1080, "edition_keywords": ["无码破解"]})
+        self.assertEqual(result["filters"], {"min_resolution": 1080, "edition_keywords": ["无码破解"]})
+        self.assertEqual([row["info_hash"] for row in result["items"]], ["b" * 40, "c" * 40])
+        with mock.patch("peach.web_resource_search.direct_search", return_value={
+                "items": [low], "warnings": [], "trace": [], "next_sources": [], "reference_only": []}), \
+             mock.patch("peach.web_resource_search._SEARCH.run", return_value={
+                "ok": False, "state": "unavailable", "items": [], "warnings": [], "error": ""}):
+            fallback = q_resource_search(self.app.state.web_contract, {
+                "code": "ABC-123", "min_resolution": 2160})
+        self.assertEqual([row["info_hash"] for row in fallback["items"]], ["a" * 40])
+        self.assertTrue(any("不限清晰度" in warning for warning in fallback["warnings"]))
+
     def test_switching_magnets_searches_every_source_and_drops_skipped_hashes(self):
         from peach.web_resource_search import q_resource_search
         failed, other = "a" * 40, "b" * 40
         hd = {"source": "manko.fun", "resolution": 1080, "info_hash": failed, "name": "ABC-123"}
         fallback = {"source": "sukebei", "resolution": 1080, "info_hash": other, "name": "ABC-123 FHD"}
         with mock.patch("peach.web_resource_search.direct_search", return_value={
-                "items": [hd, fallback], "warnings": [], "trace": [], "next_sources": [], "reference_only": []}) as direct,              mock.patch("peach.web_resource_search._SEARCH.run", return_value={
-                "ok": True, "state": "ready", "items": [], "warnings": [], "error": ""}) as search,              mock.patch("peach.web_resource_search.rank_candidates", side_effect=lambda rows, goal: rows):
+                "items": [hd, fallback], "warnings": [], "trace": [], "next_sources": [], "reference_only": []}) as direct, \
+             mock.patch("peach.web_resource_search._SEARCH.run", return_value={
+                "ok": True, "state": "ready", "items": [], "warnings": [], "error": ""}) as search, \
+             mock.patch("peach.web_resource_search.rank_candidates",
+                        side_effect=lambda rows, goal, **kwargs: rows):
             result = q_resource_search(self.app.state.web_contract, {"code": "ABC-123", "skip": [failed]})
             self.assertFalse(direct.call_args.kwargs["stop_on_preferred"])
             self.assertIn(failed, search.call_args.args[3])

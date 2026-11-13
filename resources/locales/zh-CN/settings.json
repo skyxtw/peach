@@ -572,7 +572,16 @@
   },
   "javBrowser": {
     "disable": "关闭浏览器添加",
+    "editionKeywords": "版本优先关键词",
+    "editionKeywordsHelp": "按先后顺序优先：标题里先命中靠前关键词的资源排前面；留空表示不设版本偏好。用逗号分隔。",
+    "editionKeywordsPlaceholder": "新模型无码破解,LTX,无码,破解,Reducing Mosaic",
     "enable": "启用并生成令牌",
+    "minResolution": "最低清晰度",
+    "minResolution1080": "1080p 及以上",
+    "minResolution2160": "2160p 及以上",
+    "minResolutionOff": "不限",
+    "preferencesSaved": "已保存自动挑选偏好",
+    "savePreferences": "保存挑片偏好",
     "title": "浏览器添加 JAV",
     "updateChannelToken": "更新渠道与令牌"
   },

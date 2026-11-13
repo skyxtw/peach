@@ -2,7 +2,7 @@
 from .coded_text import parallel
 from .javdb_public import public_cache_scope
 from .magnet_chain import HIGH_QUALITY, rank_candidates, search as direct_search
-from .resource_search import Filters, Indexers, Search
+from .resource_search import Filters, Indexers, Search, preference_filters
 from .user_messages import UserValueError
 
 _SEARCH = Search()
@@ -26,6 +26,7 @@ def q_resource_search(contract, args) -> dict:
                           goal=str(args.get("goal") or "quality"))
     except (TypeError, OverflowError):
         raise UserValueError("api.resourceSearch.invalidSizeRange") from None
+    min_resolution, edition_keywords = preference_filters(args)
     with contract.database.read_connection() as connection:
         blocked = [row[0] for row in connection.execute(
             "SELECT info_hash FROM download_task WHERE blocked_at IS NOT NULL")]
@@ -51,11 +52,19 @@ def q_resource_search(contract, args) -> dict:
             "promo_files": 0, "source_url": "", "watermark_check": "pending",
         })
     warnings = direct["warnings"] + list(indexed.get("warnings") or ())
+    if min_resolution:
+        qualified = [row for row in combined if int(row.get("resolution") or 0) >= min_resolution]
+        if qualified:
+            combined = qualified
+        else:
+            warnings.append(f"没有 ≥{min_resolution}p 的资源，已按不限清晰度排序")
     return {
         "ok": bool(direct["items"]) or indexed.get("ok", False),
         "state": "ready" if direct["items"] or indexed.get("state") == "ready" else indexed.get("state", "error"),
-        "items": rank_candidates(combined, filters.goal),
-        "warnings": warnings, **parallel("warning", warnings),
+        "items": rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)),
+        "warnings": warnings,
+        "filters": {"min_resolution": min_resolution, "edition_keywords": edition_keywords},
+        **parallel("warning", warnings),
         "trace": direct["trace"] + (["indexer fallback: queried"] if indexed.get("state") != "unavailable" else []),
         "next_sources": direct["next_sources"], "reference_only": direct["reference_only"],
         # 后备索引器答复了也补不上直连来源没查成的那部分：浏览器添加据此等来源恢复，不记成无资源。
