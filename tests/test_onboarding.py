@@ -12,6 +12,7 @@ import io
 import ntpath
 import os
 import sqlite3
+import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -480,18 +481,16 @@ class SetupJsonContractTests(_SetupHttpCase):
     QUESTIONS = "/api/setup/questions"
     SUBMIT = "/api/setup"
 
-    @unittest.skipUnless(NATIVE_WINDOWS, 'Windows 源码首设需要 TLS')
-    def test_windows_source_setup_reports_missing_openssl_and_accepts_a_retry(self):
+    @unittest.skipUnless(NATIVE_WINDOWS, 'Windows 源码首设不再要求 TLS')
+    def test_windows_source_setup_completes_without_tls(self):
         with mock.patch.object(distribution, 'standalone', return_value=False), \
                 mock.patch.object(onboarding.certs, 'require_openssl',
                                   side_effect=RuntimeError('未找到 OpenSSL')) as require:
             response = self._send('POST', self.SUBMIT, json=self._body(scan_now=False))
-            self.assertEqual(response.status_code, 400, response.text)
-            self.assertIn('OpenSSL', response.json()['errors']['data_root'])
-            self.assertFalse((self.data_root / 'config.toml').exists())
-            require.side_effect = None
-            response = self._send('POST', self.SUBMIT, json=self._body(scan_now=False))
             self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['url'], 'http://127.0.0.1:8900/?onboarding=1')
+            self.assertTrue((self.data_root / 'config.toml').exists())
+        require.assert_not_called()
 
     def _rows(self, *paths, location="local"):
         return [{"path": str(path), "location": location,
@@ -749,7 +748,8 @@ class SetupJsonContractTests(_SetupHttpCase):
         self.assertEqual(by_key["host"]["options"], [{"value": "2", "label": "同一局域网的设备"},
                                                      {"value": "1", "label": "只有这台电脑"}])
         self.assertEqual((by_key["port"]["input"], by_key["port"]["prefix"]), ("number", "localhost:"))
-        self.assertEqual((by_key["mdns_name"]["prefix"], by_key["mdns_name"]["suffix"]), ("https://", ".local"))
+        self.assertEqual((by_key["mdns_name"]["prefix"], by_key["mdns_name"]["suffix"]),
+                         ("https://" if sys.platform == "darwin" else "http://", ".local"))
         self.assertEqual(by_key["mdns_name"]["visible_when"], {"host": "2"})
         self.assertEqual(by_key["media_dir"]["input"], "folders")
         self.assertEqual(data["windows"], NATIVE_WINDOWS)
@@ -1262,23 +1262,28 @@ class StandaloneConfigurationTests(_Case):
                     for path in ("/api/configuration", "/api/pick-folder"):
                         self.assertEqual(client.post(path, headers=headers, json={}).status_code, 403)
 
-    def test_tray_managed_source_configuration_keeps_the_https_origin_and_managed_port(self):
+    def test_tray_managed_source_configuration_keeps_the_origin_and_managed_port(self):
         from peach.routes_configuration import RELOAD_NAME
+        macos_tls = sys.platform == "darwin"
+        base_url = "https://peach-writer.local" if macos_tls else "http://peach-writer.local:9123"
         with mock.patch("peach.distribution.standalone", return_value=False), mock.patch.dict(
                 os.environ, {"PEACH_TRAY_MANAGED": "1"}), self.client(
-                address="192.0.2.10", server="192.0.2.10", base_url="https://peach-writer.local") as client:
+                address="192.0.2.10", server="192.0.2.10", base_url=base_url) as client:
             headers = {"X-Token": "test-token"}
             self.assertTrue(client.get("/healthz").json()["configurable"])
             snapshot = client.get("/api/configuration", headers=headers).json()
             self.assertTrue(snapshot["editable"])
-            self.assertFalse(snapshot["port_editable"])
+            self.assertEqual(snapshot["port_editable"], not macos_tls)
             body = {"revision": snapshot["revision"], "media_dirs": [str(self.media)], "port": "9124"}
-            self.assertEqual(client.post("/api/configuration", headers=headers, json=body).status_code, 400)
+            if macos_tls:
+                self.assertEqual(client.post("/api/configuration", headers=headers, json=body).status_code, 400)
             with mock.patch("peach.onboarding.check_available_port") as check:
                 saved = client.post("/api/configuration", headers=headers, json={**body, "port": "9123"})
-            check.assert_not_called()
+            if not macos_tls:
+                check.assert_called_once()
             self.assertEqual(saved.status_code, 200, saved.text)
-            self.assertEqual(saved.json()["url"], "https://peach-writer.local/")
+            self.assertEqual(saved.json()["url"], "https://peach-writer.local/" if macos_tls
+                             else "http://127.0.0.1:9123/")
             self.assertTrue((self.config.directory("state") / RELOAD_NAME).is_file())
         with mock.patch("peach.distribution.standalone", return_value=False), mock.patch.dict(
                 os.environ, {"PEACH_TRAY_MANAGED": ""}), self.client() as client:
@@ -1509,6 +1514,42 @@ class StandaloneConfigurationTests(_Case):
         self.assertNotIn("--no-mdns", spec.command)
         self.assertIn("--no-ledger-sync", spec.command)
         self.assertEqual(normal_url(lan), "http://127.0.0.1:9123/")
+
+    def test_source_windows_tray_uses_configured_loopback_port_without_tls(self):
+        if sys.platform == "darwin":
+            self.skipTest("macOS 源码部署保持 80/443 的 TLS 固定入口")
+        from peach.tray import configured_service_specs, normal_url
+        spec, = configured_service_specs(self.config)
+        self.assertEqual(spec.name, "http")
+        self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
+        self.assertIn("9123", spec.command)
+        self.assertIn("--no-mdns", spec.command)
+        self.assertNotIn("--ssl-certfile", spec.command)
+        self.assertEqual(normal_url(self.config), "http://127.0.0.1:9123/")
+
+    def test_source_windows_lan_publishes_mdns_on_configured_port(self):
+        if sys.platform == "darwin":
+            self.skipTest("macOS 源码部署保持 80/443 的 TLS 固定入口")
+        from dataclasses import replace
+        from peach.tray import configured_service_specs, normal_url
+        lan = replace(self.config, server=replace(
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
+        spec, = configured_service_specs(lan)
+        self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
+        self.assertEqual(spec.command[spec.command.index("--host") + 1], "0.0.0.0")
+        self.assertNotIn("--no-mdns", spec.command)
+        self.assertNotIn("--ssl-certfile", spec.command)
+        self.assertEqual(normal_url(lan), "http://127.0.0.1:9123/")
+
+    def test_source_windows_setup_destination_uses_http_and_the_configured_port(self):
+        if sys.platform == "darwin":
+            self.skipTest("macOS 源码部署保持 80/443 的 TLS 固定入口")
+        from dataclasses import replace
+        from peach import routes_pages
+        lan = replace(self.config, server=replace(
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
+        self.assertEqual(routes_pages._normal_url(lan), "http://peach-test.local:9123/")
+        self.assertEqual(routes_pages._normal_url(self.config), "http://127.0.0.1:9123/")
 
     def test_standalone_version_inspection_does_not_execute_git(self):
         from peach.versioning import VersionManager

@@ -943,32 +943,32 @@ def normal_hostname(config) -> str:
 
 
 def normal_url(config) -> str:
-    """正常服务的固定地址。macOS 上 80/443 由 pf 转到高位端口
-    （scripts/setup_macos_port80.sh）。
+    """正常服务的本机地址。macOS 上 80/443 由 pf 转到高位端口
+    （scripts/setup_macos_port80.sh）；其余部署（独立包与 macOS 之外的源码运行）
+    直接在设置文件指定的端口提供 HTTP。
     """
-    from .distribution import standalone
-    if standalone():
+    from .distribution import plain_http
+    if plain_http():
         return setup_url(config)
     return f"https://{normal_hostname(config)}/"
 
 
 def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
-    """独立测试包按设置文件启动服务；源码入口沿用其生命周期。
-
-    独立包不接管 80/443，也不要求安装本机 CA：局域网模式直接在用户填写的高位端口
-    提供 HTTP，并发布带端口的 mDNS 服务。托盘自己仍从回环地址打开和做健康检查，
-    不把本机操作绕去网卡、代理或 mDNS。
+    """独立包与 macOS 之外的源码部署按设置文件启动服务：直接在用户填写的主机与
+    端口提供 HTTP，局域网模式发布带端口的 mDNS，不接管 80/443、也不要求本机 CA。
+    macOS 源码部署维持 80/443 pf 转发的 TLS 规格。托盘自己仍从回环地址打开和做
+    健康检查，不把本机操作绕去网卡、代理或 mDNS。
     """
-    from .distribution import standalone
-    if not standalone():
-        return build_service_specs(tls_dir=config.directory("secrets") / "tls",
-                                   mdns_hostname=normal_hostname(config))
-    return (ServiceSpec("http", setup_url(config) + "healthz",
-                        (str(_peach_executable()), "serve", "--host", config.server.host,
-                         "--port", str(config.server.port),
-                         *(("--no-mdns",) if config.server.host == "127.0.0.1" else ()),
-                         "--no-ledger-sync"),
-                        True),)
+    from .distribution import plain_http
+    if plain_http():
+        return (ServiceSpec("http", setup_url(config) + "healthz",
+                            (str(_peach_executable()), "serve", "--host", config.server.host,
+                             "--port", str(config.server.port),
+                             *(("--no-mdns",) if config.server.host == "127.0.0.1" else ()),
+                             "--no-ledger-sync"),
+                            True),)
+    return build_service_specs(tls_dir=config.directory("secrets") / "tls",
+                               mdns_hostname=normal_hostname(config))
 
 
 class SetupGate:
@@ -1910,8 +1910,9 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
     stopped = threading.Event()
     threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
     watcher = None
-    if not standalone():
-        # 源码部署维护本机 CA；独立应用使用设置中的高位端口。
+    from .distribution import plain_http
+    if not plain_http():
+        # macOS 源码部署维护本机 CA；其余部署使用设置中的端口，没有证书要维护。
         refresh_certificate_with_retry()
         watcher = NetworkChangeWatcher(on_network_change)
         watcher.start()

@@ -31,6 +31,9 @@ def load_script(name: str):
 
 from peach import appid, onboarding, runtime_prepare, settings_file
 from peach import tray as tray_module
+# 提前导入：launchd 相关用例会把 `sys.platform` 换成 darwin，首次导入
+# `standalone_update`（连带 filelock）必须在换之前完成，否则 ctypes 初始化会崩。
+from peach import standalone_update as _standalone_update_preimport  # noqa: F401
 from peach.config import SECRETS_DIR
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SetupGate,
@@ -611,7 +614,9 @@ class SetupGateTests(unittest.TestCase):
         self.assertEqual(manager.log_dir, self.data_root / "logs")
         self.assertEqual(manager.child_environment()["PEACH_DATA_ROOT"], str(self.data_root))
         self.assertEqual(gate.open_label(), "打开 Peach")
-        self.assertEqual(gate.open_url(), "https://peach-writer.local/")
+        self.assertEqual(gate.open_url(),
+                         "https://peach-writer.local/" if sys.platform == "darwin"
+                         else "http://127.0.0.1:9100/")
 
         scan = scan_popen.call_args
         self.assertEqual(list(scan.args[0][1:]), ["process", "local"])
@@ -637,10 +642,17 @@ class SetupGateTests(unittest.TestCase):
         (self.data_root / "config.toml").write_text(
             "[server]\nport = 9100\nmdns_name = 'peach-writer'\n", encoding="utf-8")
 
-        # 打进去的是 import 期那份旧名字；跳转目标必须是表单刚写下的那个。
+        # 打进去的是 import 期那份旧名字；macOS 的跳转目标必须是表单刚写下的那个。
         with patch("peach.tray.MDNS_HOSTNAME", "peach-reader.local"), patch(
                 "peach.tray.lan_ipv4", return_value="192.0.2.10"):
             self.assertTrue(gate.poll())
+        if sys.platform != "darwin":
+            specs = {spec.name: spec for spec in manager.specs}
+            self.assertEqual(set(specs), {"http"})
+            self.assertNotIn("--redirect-origin", specs["http"].command)
+            self.assertEqual(specs["http"].command[specs["http"].command.index("--port") + 1], "9100")
+            self.assertEqual(gate.open_url(), "http://127.0.0.1:9100/")
+            return
         redirecting = [spec for spec in manager.specs
                        if "--redirect-origin" in spec.command]
         self.assertTrue(redirecting, "正常规格里必须有一条只做跳转的明文口")
@@ -671,9 +683,9 @@ class SetupGateTests(unittest.TestCase):
             self.assertFalse(gate.waiting)
             self.assertEqual([spec.name for spec in manager.specs], ["http"])
             return
-        self.assertFalse(opened)
-        self.assertTrue(gate.waiting)
-        self.assertEqual([spec.name for spec in manager.specs], ["setup"])
+        self.assertTrue(opened)
+        self.assertFalse(gate.waiting)
+        self.assertEqual([spec.name for spec in manager.specs], ["http"])
         popen.assert_not_called()
 
 
@@ -763,6 +775,8 @@ class LaunchdRelaunchExitCodeTests(unittest.TestCase):
                 mock.patch.object(tray_module, "configured_service_specs", return_value=()), \
                 mock.patch.object(tray_module, "ServiceManager") as manager, \
                 mock.patch.object(tray_module, "tray_preparation", return_value=preparation), \
+                mock.patch.object(tray_module, "ensure_certificate", return_value=None), \
+                mock.patch.object(tray_module, "NetworkChangeWatcher"), \
                 mock.patch.object(tray_module, "run_macos_menu_bar") as menu, \
                 mock.patch.object(tray_module, "show_message"), \
                 self.assertLogs(level="WARNING") as logs:

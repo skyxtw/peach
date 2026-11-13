@@ -414,7 +414,7 @@ Peach 配置页地址是 `/configuration`。从管理菜单或设置弹窗的「
 - 这台电脑可以用配置的 `.local` 名字、回环地址或服务绑定的 IP 打开配置页。Peach 按连接两端的 IP 判断是不是本机。
 - 「选择文件夹」会在运行 Peach 的这台电脑上弹出系统的文件夹选择框（Windows 资源管理器、macOS Finder），同样只对本机开放。
 - 保存后托盘会重新载入设置，本机服务会重启。
-- 源码部署的托盘服务保持固定的 HTTPS 地址和端口；Windows 测试包可以在配置页修改端口。
+- Windows 与 Linux 的源码部署和 Windows 测试包一样使用设置文件里的主机与端口（HTTP），可以在配置页修改端口；macOS 源码部署保持固定的 HTTPS 地址。
 
 媒体修复在「数据管理」页，订阅源在「关注管理」页的「订阅源」页签（分工见 [ADR-0050](adr/0050-settings-modal-holds-values-pages-hold-work.md)）。
 
@@ -513,7 +513,7 @@ Windows 测试包在 Peach 配置「应用与维护 → 卸载 Peach」里卸载
 - `/healthz?ready=1` 还会检查配置、页面、数据库查询和数据库迁移校验，没准备好时返回 503。
 - 返回内容里的 `configured` 表示这台电脑有没有设置文件，`ledger_sync` 表示这台电脑在两机复制里的角色（`writer`、`reader` 或 `disabled`）。
 
-源码部署的托盘（Windows，以及配置了 TLS 的 macOS）同时运行一个 HTTP 服务和一个 HTTPS 服务。HTTP 那个只负责把浏览器引到 HTTPS 地址，所以 HTTP 口的 `/healthz` 正常只能说明它自己活着。
+macOS 源码部署的托盘同时运行一个 HTTP 服务和一个 HTTPS 服务。HTTP 那个只负责把浏览器引到 HTTPS 地址，所以 HTTP 口的 `/healthz` 正常只能说明它自己活着。其余部署（独立包与 macOS 之外的源码运行）只运行设置端口上的一个 HTTP 服务。
 
 托盘菜单的状态行会逐个列出每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常时附上最近一次失败的原因。
 
@@ -533,7 +533,7 @@ Peach 配置「应用与维护 → 运行信息」可打开 `/diagnostics`。库
 
 minnano-av 与 javdb 使用实际解析并核对身份后落库的记录，显示上次成功时间与冷却截止。一天内有成功证据且未在冷却时显示正常；旧记录保留时间，当前状态为未取得。打开诊断不发起来源抓取。
 
-独立包默认诊断配置端口；源码环境有完整 TLS 材料时诊断托盘的 HTTPS 入口（Windows 443、macOS 8443）。直接启动服务时，可用 `--host` 与 `--port` 指定实际监听地址。
+独立包与 macOS 之外的源码部署默认诊断配置端口；macOS 源码环境有完整 TLS 材料时诊断托盘的 HTTPS 入口（8443）。直接启动服务时，可用 `--host` 与 `--port` 指定实际监听地址。
 
 `failed` 表示需要处理，命令退出码为 1；`warning` 或 `unknown` 保留具体原因，退出码为 0。诊断只在数据目录创建并清理临时写入探针，不执行迁移或修复。端口正在使用时只报告占用状态，进程归属需另行核对。公开 `/healthz` 只提供状态与原因，完整工具路径只在本机诊断中显示。
 
@@ -542,7 +542,8 @@ minnano-av 与 javdb 使用实际解析并核对身份后落库的记录，显�
 ### 从哪个地址打开
 
 - **Windows 测试包**：选「只有这台电脑」时打开 `http://127.0.0.1:<端口>`；选「同一局域网的设备」时，其他设备打开 `http://<mdns_name>.local:<端口>`。测试包用 HTTP，不加密。
-- **源码部署**：托盘在 80 端口提供 HTTP、在本机局域网 IPv4 地址的 443 端口提供 HTTPS，浏览器打开 `https://<mdns_name>.local`。局域网地址默认自动选择，也可以用启动参数或 `PEACH_LAN_ADDRESS` 指定。
+- **macOS 源码部署**：托盘在 80 端口提供 HTTP、在本机局域网 IPv4 地址的 443 端口提供 HTTPS，浏览器打开 `https://<mdns_name>.local`。局域网地址默认自动选择，也可以用启动参数或 `PEACH_LAN_ADDRESS` 指定。
+- **Windows / Linux 源码部署**：与 Windows 测试包相同。选「只有这台电脑」时打开 `http://127.0.0.1:<端口>`；选「同一局域网的设备」时，其他设备打开 `http://<mdns_name>.local:<端口>`。
 
 `<mdns_name>` 是设置文件 `[server].mdns_name` 的值，Peach 会在局域网里广播这个名字。
 
@@ -572,7 +573,7 @@ minnano-av 与 javdb 使用实际解析并核对身份后落库的记录，显�
 
 ### 让其他设备信任 HTTPS 证书
 
-源码部署用本机自签的 CA 签发 HTTPS 证书（`.local` 名字无法使用 Let's Encrypt 这类公开证书）。证书和私钥都在本机 `<Peach 数据目录>/secrets/tls/`。
+macOS 源码部署用本机自签的 CA 签发 HTTPS 证书（`.local` 名字无法使用 Let's Encrypt 这类公开证书）。证书和私钥都在本机 `<Peach 数据目录>/secrets/tls/`。
 
 托盘启动或本机地址变化时检查叶子证书的覆盖范围、到期时间及颁发者密钥标识（AKI）。缺少 AKI 的存量叶子会使用原 CA 补签并保留备份，已安装的 CA 信任继续有效，无需手动重建 CA 或重装信任；符合条件的叶子不会重复补签。运行期和 TLS 设置脚本均显式签入 SKI、AKI，以满足严格 TLS 校验。
 
@@ -627,7 +628,7 @@ Windows 上 TLS 私钥禁用了权限继承，只允许实际运行服务的账�
 命名隧道的地址固定，重启后不变。Windows 测试包不支持这种方式，配置页也不会显示这一块。
 
 1. 在 Cloudflare Zero Trust 的 Networks → Tunnels 里新建一条 Cloudflared 隧道，复制它的隧道令牌（Token）。
-2. 给这条隧道加一个 Public hostname，主机名用自己的域名。Service 填本机的 HTTPS 地址：源码部署是 `https://<局域网 IP>:443`（macOS 按实际 TLS 端口）。再在 Additional settings 里把 Origin Server Name 填成 `<mdns_name>.local`，并把项目 CA 填进 CA Pool，否则本机自签证书过不了校验。
+2. 给这条隧道加一个 Public hostname，主机名用自己的域名。Service 填本机的服务地址：macOS 源码部署是 `https://<局域网 IP>:443`（按实际 TLS 端口），Windows / Linux 源码部署与独立包是 `http://<局域网 IP>:<端口>`。macOS 还要在 Additional settings 里把 Origin Server Name 填成 `<mdns_name>.local`，并把项目 CA 填进 CA Pool，否则本机自签证书过不了校验。
 3. 在配置页「Cloudflare 公网入口」里切到「命名隧道」，填公开主机名和隧道令牌，点「保存配置」。令牌只写进设置文件的 `[tunnel] token`，页面不会再显示它，数据库、日志和 `/healthz` 里也没有它。换令牌时填新的；留空表示沿用已保存的那一份。
 4. 建议在 Cloudflare Access 里给这个主机名配一条身份策略。这一层完全在 Cloudflare 后台配置，Peach 不读取也不管理；Peach 自己的访问密码仍然是启动隧道的前提，两道门同时存在。
 
@@ -809,7 +810,7 @@ Windows 托盘在取得单实例锁后启动独立监视器。监视器用 Win32
 
 - 不要用 Computer Use 点托盘。`python scripts/restart_windows_tray.py` 按精确的 EXE 路径找到 pystray 隐藏窗口，发送正常停止消息，等托盘自己关掉子服务，再静默启动新托盘，并确认新托盘接管了两个服务。
 - 找不到唯一的窗口或退出超时就拒绝执行，绝不强杀后另起。旧托盘退出后，要等它名下的子服务退干净才起新托盘。端口被不归旧托盘管的 `serve` 进程占着时，开工前就拒绝并报出它们的 PID，因为换托盘换不掉它们。
-- 托盘把自己拉起的子服务放进 kill-on-close Job：托盘被 `Stop-Process -Force` 之类强杀时，整棵 `serve` 子树一起退出，不会留下孤儿进程继续占着 80/443 跑旧代码。托盘每轮健康检查发现端口没响应会补拉；看到健康但不归自己的服务只记 warning，不接管。启动与补拉记录在 `<Peach 数据目录>/logs/tray.log`。
+- 托盘把自己拉起的子服务放进 kill-on-close Job：托盘被 `Stop-Process -Force` 之类强杀时，整棵 `serve` 子树一起退出，不会留下孤儿进程继续占着端口跑旧代码。托盘每轮健康检查发现端口没响应会补拉；看到健康但不归自己的服务只记 warning，不接管。启动与补拉记录在 `<Peach 数据目录>/logs/tray.log`。
 - `--swap-from <暂存包>` 在旧托盘退出后、新托盘启动前顺手换掉二进制，这是整个换包过程中唯一一个目标文件没有被进程占用的时机。换生产二进制请用 `deploy_windows_tray.py`，不要单独调用它。
 - 找不到打包托盘的窗口时，命令自动改走源码托盘：`find_source_tray_windows()` 按同一窗口类名加「命令行含 `peach.tray`」认出源码托盘，`restart_source_tray()` 照原命令行（含 `--show`／Peach 数据目录）在托盘退出后重新启动，不换包也不备份。`--source` 显式跳过打包入口。
 - 重启自动准备运行环境（ADR-0091），不用手工补依赖、跑迁移：
@@ -886,7 +887,7 @@ Windows 托盘在取得单实例锁后启动独立监视器。监视器用 Win32
 - 对本机服务的 HTTP 探测必须设 `trust_env=False`：代理客户端会设置系统级 HTTP 代理，httpx 默认通过 `urllib.getproxies()` 读取它，探测 `127.0.0.1` 的请求会被送进代理、由代理返回 503，服务活着却被判为「未运行」。实现在 `peach.tray.ServiceManager.healthy`，由 `test_health_check_never_goes_through_a_proxy` 守门，新写的健康检查同样要这样做。
 - `peach serve` 按平台发布固定的 mDNS 主机名，源码里不写死任何家庭 IP，并保留 `Zeroconf()` 在所有合格网卡上监听。mDNS 验收要包含单元测试、运行时 health、DNS-SD、主机名解析和真实局域网客户端。
 - FastAPI 是唯一的 Web 服务器，不要恢复平行的 `http.server` 或动态 legacy loader。
-- 切换服务前检查 80、443、8900 端口和实际的进程归属。
+- 切换服务前检查 80、443、8900 端口（macOS 源码部署）或设置文件指定的端口（独立包与 macOS 之外的源码部署）和实际的进程归属。
 - 长任务只能停止自己拥有、且命令行匹配的 Python/FFmpeg 进程树，禁止结束整台机器上的 FFmpeg。
 - FFmpeg 解析不回退到 Stash 的私有目录。转码由 `TranscodeService` 负责，走和普通播放相同的 Range 端点；探测与每次转码都受 2 槽并发闸门、1 小时总时限和 stream session 取消保护。
 - 115/PikPak 的 `B:`／`A:` 盘符对不同 Windows token 的可见性不同，最终以 Peach 对已知作品的 `/stream` 实测为准。
