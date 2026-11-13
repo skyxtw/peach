@@ -1364,12 +1364,18 @@ class UpgradeRepairs:
         （`queued` 且 `run_id` 对得上），和旧版留下、表里没有结论的。处理器自己写过结论的不动。
         任务已被清退的，清退只删成功与取消的后继（`TaskRunStore.prune(keep_errors=True)`），按完成算。
         本版派出的失败按退避自动重派（`retry_at`）；旧版留下的失败照旧只等用户点重试
-        （`retry_at` 为空），不会被自动重派。
+        （`retry_at` 为空），不会被自动重派。人物、厂牌这类不是影片补全的键进不了状态表，
+        跑完（成功、失败、取消）也要从队列里去掉：留着会让一次旧失败永远算作「需要重试」，
+        而且 `_plan` 的 `seen` 会一直挡住重派。
         """
         queued = receipt.get('queued', {})
         media = {key: int(run_id) for key, run_id in queued.items() if item_of(key)}
-        states = self._run_states(media.values())
+        people = {key: int(run_id) for key, run_id in queued.items() if item_of(key) is None}
+        states = {**self._run_states(media.values()), **self._run_states(people.values())}
         finished = {key: run_id for key, run_id in media.items() if states.get(run_id) not in ('pending', 'running')}
+        for key, run_id in people.items():
+            if states.get(run_id) not in ('pending', 'running'):
+                del queued[key]
         if not finished:
             return None
         targets = {item_of(key)[:2] for key in finished}

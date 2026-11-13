@@ -411,6 +411,30 @@ class UpgradeRepairTests(unittest.TestCase):
         self.assertEqual(sorted(upgrade_repairs._read(self.service.receipt)['queued']),
                          sorted([self.display_key(1), 'upgrade-library:processing-v2:3']))
 
+    def test_finished_people_followups_leave_the_queue_instead_of_counting_as_failed(self):
+        """人物补全不是影片项，进不了状态表：跑完（含失败）就要从回执队列去掉。
+
+        留着会让旧失败永久显示「需要重试」，`_plan` 的 `seen` 也一直挡住重派。
+        """
+        self.display_sample()
+        parent = self.store.start('old-upgrade', trigger='manual')
+        [run_id] = self.store.enqueue_followups(parent.id, [
+            ('entity-avatar:performer:88', 'entity-avatar', '资料图片补全')])['queued']
+        self.store.finish(run_id, 'failed', error='文件锁超时')
+        self.store.finish(parent.id, 'succeeded')
+        receipt = upgrade_repairs._read(self.service.receipt)
+        receipt['queued'] = {'entity-avatar:performer:88': run_id}
+        receipt['dispatch_complete'] = True
+        self.seed_receipt(receipt)
+        with patch('peach.library_processing._people_allowed', return_value=False), \
+                patch('peach.seed_followup.plan', return_value=[]), \
+                patch.object(upgrade_repairs, '_stale_previews', return_value=False), \
+                patch.object(self.service, '_plan', return_value=[]):
+            self.service.tick()
+        self.assertNotIn('entity-avatar:performer:88',
+                         upgrade_repairs._read(self.service.receipt)['queued'])
+        self.assertEqual(self.service.snapshot()['items'][1]['failed'], 0)
+
     def test_committed_measurement_survives_an_older_receipt_being_saved_again(self):
         """完成结果只写状态表里这部片那一行；调度拿着补测前读到的回执再保存，也盖不掉它。"""
         self.display_sample()
