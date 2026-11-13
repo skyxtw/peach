@@ -48,9 +48,25 @@ API_INTERVAL = 0.5
 #: 接口要求登录后，搜索与作品资料这么久内不再问接口，直接读网页；过后再试一次接口。
 LOGIN_SECONDS = 6 * 3600
 _UNAVAILABLE = "errors.javdbPublic.unavailable"
+#: 未登录时接口回的业务动作。2026-11-10 起签名照旧被接受，缺的是登录令牌；这三家与
+#: javdb.com 的匿名搜索都回 `success=0`、`action=JWTVerificationError`。
+AUTH_ACTIONS = frozenset({"JWTVerificationError", "Unauthenticated", "Unauthorized",
+                          "TokenExpired", "LoginRequired"})
+#: 没有可用账号时给界面的说明。账号在「配置 → 来源 → 来源凭据」里填。
+AUTH_REQUIRED_MESSAGE = ("JavDB 作品资料现在需要登录：请在「配置 → 来源 → 来源凭据」里"
+                         "填写 JavDB 账号后重试")
 _JS_IDENTIFIER = r'[A-Za-z_$][A-Za-z0-9_$]*'
 _CACHE_ROOT = ContextVar('jav_public_cache_root', default=None)
 _CACHE_READS = ContextVar('jav_public_cache_reads', default=None)
+
+
+def signature_header(parts: tuple[str, str] | None = None,
+                     *, stamp: float | None = None) -> dict[str, str]:
+    """`jdsignature` 请求头：`<秒>.<中段>.<md5(秒 + 后段)>`，与网页前端同一算法。"""
+    middle, suffix = parts or APP_SIGNATURE
+    second = str(int(time.time() if stamp is None else stamp))
+    digest = hashlib.md5((second + suffix).encode(), usedforsecurity=False).hexdigest()
+    return {"jdsignature": f"{second}.{middle}.{digest}"}
 
 
 def public_signature_parts(script: str) -> tuple[str, str] | None:
@@ -178,6 +194,10 @@ class PublicLoginRequired(PublicSourceUnavailable):
     """接口要求登录（`JWTVerificationError`）。2026-11-10 起搜索与作品资料匿名都回它，评论与磁链仍答。"""
 
 
+class PublicSourceAuthRequired(PublicSourceUnavailable):
+    """来源要求登录，而这台机器上没有可用的 JavDB 账号或令牌被拒。"""
+
+
 class PublicBudgetExceeded(PublicSourceUnavailable):
     """本轮匿名资料请求预算已用完。"""
 
@@ -218,7 +238,8 @@ class PublicAPI:
     """匿名资料按发行日期复用；来源请求限速，同键请求合并。"""
 
     def __init__(self, transport=None, *, clock=time.monotonic, sleeper=time.sleep,
-                 cache_root=None, wallclock=time.time):
+                 cache_root=None, wallclock=time.time, token_provider=None,
+                 token_refresh=None):
         self.transport = transport
         self.clock = clock
         self.limiter = HostLimiter({}, default_interval=API_INTERVAL, clock=clock, sleeper=sleeper)
@@ -239,6 +260,9 @@ class PublicAPI:
         self.request_context = ContextVar("jav_public_request_budget", default=None)
         self.login_until = 0.0
         self.page_context = ContextVar("jav_public_pages", default=None)
+        #: 资料请求的 `authorization` 由账号模块现取现换；测试注入替身即可。
+        self.token_provider = token_provider or _account_token
+        self.token_refresh = token_refresh or _account_refresh
 
     @contextmanager
     def page_reader(self, reader):
@@ -259,7 +283,7 @@ class PublicAPI:
         if self.clock() >= self.login_until:
             try:
                 return ask()
-            except PublicLoginRequired:
+            except (PublicLoginRequired, PublicSourceAuthRequired):
                 pass
         reader = self.page_context.get()
         if reader is None:
@@ -292,7 +316,8 @@ class PublicAPI:
         else:
             self.paused_until = until
 
-    def _get(self, url: str, *, signed=False, limit=2 * 1024 * 1024, image=False, host=None):
+    def _get(self, url: str, *, signed=False, limit=2 * 1024 * 1024, image=False, host=None,
+             authorization: str = ""):
         """`host` 给出时失败只冷却这个主机，抛 `PublicHostFailed` 交调用方换下一家。"""
         failed = PublicHostFailed if host else PublicSourceUnavailable
         paused = self.image_paused_until if image else self.paused_until
@@ -307,10 +332,9 @@ class PublicAPI:
             limit = min(limit, budget.max_bytes - budget.bytes)
         headers = {"Accept": "application/json" if signed else "*/*"}
         if signed:
-            stamp = str(int(time.time()))
-            middle, suffix = self._signature()
-            digest = hashlib.md5((stamp + suffix).encode(), usedforsecurity=False).hexdigest()
-            headers["jdsignature"] = f"{stamp}.{middle}.{digest}"
+            headers.update(signature_header(self._signature()))
+            if authorization:
+                headers["authorization"] = authorization
             if self.signature_app:
                 headers.update(APP_HEADERS)
         if self.transport is None:
@@ -361,13 +385,49 @@ class PublicAPI:
         if self.signature_app:
             query = {**APP_QUERY, **(query or {})}
         tail = "/api" + path + ("?" + urlencode(query) if query else "")
+        authorization = self._authorization()
+        try:
+            return self._json_once(tail, authorization)
+        except PublicSourceAuthRequired:
+            if not authorization:
+                raise
+            # 令牌过期或换了账号：换一份令牌重发一次；再被拒就报账号而不是「稍后重试」。
+            try:
+                return self._json_once(tail, self._renewed_token())
+            except PublicSourceAuthRequired:
+                raise PublicSourceAuthRequired(
+                    "JavDB 登录令牌被拒绝：请在「配置 → 来源 → 来源凭据」里重新保存 JavDB 账号"
+                ) from None
+
+    def _authorization(self) -> str:
+        """本次请求带的登录令牌；没配账号返回空串，账号被拒转成来源层异常。"""
+        try:
+            return self.token_provider() or ""
+        except PublicSourceAuthRequired:
+            raise
+        except Exception as error:
+            raise PublicSourceAuthRequired(str(error) or AUTH_REQUIRED_MESSAGE) from error
+
+    def _renewed_token(self) -> str:
+        try:
+            renewed = self.token_refresh() or ""
+        except PublicSourceAuthRequired:
+            raise
+        except Exception as error:
+            raise PublicSourceAuthRequired(str(error) or AUTH_REQUIRED_MESSAGE) from error
+        if not renewed:
+            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE)
+        return renewed
+
+    def _json_once(self, tail: str, authorization: str) -> dict:
         attempted = False
         for host in API_HOSTS:
             if self.host_paused.get(host, 0.0) > self.clock():
                 continue
             attempted = True
             try:
-                response = self._get(host + tail, signed=True, host=host)
+                response = self._get(host + tail, signed=True, host=host,
+                                     authorization=authorization)
             except PublicHostFailed:
                 continue
             try:
@@ -385,6 +445,10 @@ class PublicAPI:
             self.login_until = self.clock() + LOGIN_SECONDS
             raise PublicLoginRequired(_UNAVAILABLE)
         if not isinstance(payload, dict) or payload.get("success") != 1:
+            action = str(payload.get("action") or "") if isinstance(payload, dict) else ""
+            if action in AUTH_ACTIONS:
+                # 登录问题不是配额问题：不整源冷却，交给 `_json` 换令牌或报账号。
+                raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE)
             self.paused_until = self.clock() + 60
             raise PublicSourceUnavailable(_UNAVAILABLE)
         data = payload.get("data")
@@ -787,6 +851,16 @@ def decode_image(body: bytes, *, original=False) -> bytes:
         except (OSError, ValueError, Image.DecompressionBombError):
             continue
     raise PublicSourceUnavailable("errors.javdbPublic.imageUnavailable")
+
+
+def _account_token() -> str | None:
+    from . import javdb_account
+    return javdb_account.token()
+
+
+def _account_refresh() -> str | None:
+    from . import javdb_account
+    return javdb_account.refresh()
 
 
 PUBLIC_API = PublicAPI(cache_root=lambda: _CACHE_ROOT.get())

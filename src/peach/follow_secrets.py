@@ -244,6 +244,20 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
         "where": "https://simpcity.cr/",
         "howto_code": "labels.followSecrets.howto.simpcity",
     },
+    # JavDB 作品资料接口从 2026-11-10 起要求登录：签名照旧被接受，业务状态回
+    # `JWTVerificationError`、「請登錄帳號」。字段是本机账号，密码只用来换登录令牌，
+    # 令牌只留在内存，所以不同步到另一台。
+    "javdb": {
+        "requirement": "optional",
+        "fields": ["username", "password"],
+        "syncable": [],
+        "label": "JavDB",
+        "why": "库外作品资料、评论、磁链与预览走 JavDB 资料接口；接口现在要求登录，"
+               "不填账号时详情页只说明需要登录。",
+        "where": "https://javdb.com/",
+        "howto": "填 JavDB 的用户名和密码。Peach 只用它换登录令牌，密码不进日志、不回显、"
+                 "不写账本；令牌只留在内存，失效后自动重新登录。",
+    },
 }
 #: 给人看的说明只在语言资源里（`why_code`、`howto_code`）；`why`、`howto` 是按 zh-CN 渲染的原句，
 #: 给还不认 code 的调用方兜底；接口把 `why_code`、`howto_code` 一起交给界面取当前语言。
