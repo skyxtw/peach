@@ -445,7 +445,7 @@ minnano-av 也在 Cloudflare 后面，但对 HTTP 客户端是间歇拦截：202
 
 ### 库内采集的节奏
 
-- javdb 的刮削走匿名接口（ADR-0144），不带 Cookie，不占 javdb.com 的出口配额。接口间隔 0.5 秒由用户
+- javdb 的刮削走接口（ADR-0144），带账号换来的登录令牌、不带 Cookie，不占 javdb.com 的出口配额。接口间隔 0.5 秒由用户
   2026-11-05 定，实测依据见 ADR-0144；间隔、失败冷却与每问 6 次请求的预算在 `javdb_public.PUBLIC_API`，
   与新作页、发现、待找磁链共用一条队；快照写进 `<生成目录>/jav-public`。
 - 接口有三个主机（`javdb_public.API_HOSTS`，ADR-0148），按序用 `jdforrepam.com`、`apidd.czssdgz.com`、
@@ -454,6 +454,10 @@ minnano-av 也在 Cloudflare 后面，但对 HTTP 客户端是间歇拦截：202
   一小时后再回头读网页前端。
 - 接口冷却或未取得（2026-11-10 起三家主机都回 `JWTVerificationError` 要求登录）时，刮削那一问改读 javdb.com
   搜索页与详情页（ADR-0160），按下一条详情页的主机间隔排队，每部片两页；缺失、歧义与预算仍按接口的结论。
+- **账号登录（可选补强）：** 在「配置 → 来源 → 来源凭据 → JavDB」填账号后，`javdb_account` 用
+  `/api/v1/sessions` 换令牌，资料请求带 `authorization`；接口回登录错误时换一次令牌重试，令牌只留在内存，
+  登录被拒 5 分钟内不再重试。没配账号时继续走上面的网页回退，详情页报「需要登录」而不是「稍后重试」
+  （ADR-0163）。账号用于程序化请求可能触发站点风控，比匿名接口多一层封号风险。
 - 详情页那一路（视频预览）的主机间隔由用户定：`library_processing.SOURCE_INTERVALS` 里 `javdb.com` 与
   `jdbstatic.com` 都是 3 秒，两个主机要一起改。这份间隔由 `SOURCE_LIMITER` 整个进程共用，问同一主机仍按一条队排；
   补女优资料取 javdb 女优页、详情页视频预告和订阅源也排在这条队里，几条同时跑合计仍是每分钟 20 页。
