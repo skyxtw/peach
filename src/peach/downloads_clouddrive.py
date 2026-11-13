@@ -20,6 +20,7 @@ Peach 不另申请 115 应用，复用 CloudDrive2 已有的 115open 授权：�
 """
 from __future__ import annotations
 
+import logging
 import posixpath
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
@@ -33,6 +34,8 @@ from .downloads import (
     classify_remote_message, clean_address, magnet_info_hash,
 )
 from .push_discovery import CloudPrefix, normalise_prefix
+
+LOGGER = logging.getLogger(__name__)
 
 SERVICE = "/clouddrive.CloudDriveFileSrv/"
 #: 单次调用的上限。离线列表要强制刷新，115 那一侧偶尔要几秒。
@@ -302,7 +305,16 @@ class CloudDriveProvider:
             folder = client.folder(target)
             if not folder.can_offline:
                 raise DownloadError("config", f"{target} 所在的网盘不支持离线下载")
-            existing = match_offline(client.offline_files(target), magnet.info_hash) if folder.can_manage else None
+            existing = None
+            if folder.can_manage:
+                try:
+                    existing = match_offline(client.offline_files(target), magnet.info_hash)
+                except DownloadError as error:
+                    # CloudDrive2 的「查离线任务」接口卡死时（连重启都不恢复），去重这一步
+                    # 不能把整条提交链挡住：跳过去重直接交，重复风险由用户重试时承担。
+                    if error.failure != "network":
+                        raise
+                    LOGGER.warning("查离线任务失败，跳过去重直接提交：%s", error.detail)
             if existing is not None:
                 status = offline_status(existing)
                 return RemoteStatus(status.state, status.remote_id, status.name, status.progress,
@@ -322,7 +334,17 @@ class CloudDriveProvider:
         with self.client() as client:
             if not client.folder(task.target).can_manage:
                 return RemoteStatus(DONE if self._landed(client, task) else RUNNING, name=task.remote_name or task.display_name)
-            return offline_status(match_offline(client.offline_files(task.target), task.info_hash or ""))
+            try:
+                files = client.offline_files(task.target)
+            except DownloadError as error:
+                # 离线列表不可用时退回「目标目录里有没有落地文件」，至少别让任务永远卡在
+                # 网络错误上；文件出现后照常进入后处理。
+                if error.failure != "network":
+                    raise
+                LOGGER.warning("查离线任务失败，改看落地文件：%s", error.detail)
+                name = task.remote_name or task.display_name
+                return RemoteStatus(DONE if self._landed(client, task) else RUNNING, name=name)
+            return offline_status(match_offline(files, task.info_hash or ""))
 
     def landed(self, task: DownloadTask) -> bool:
         with self.client() as client:

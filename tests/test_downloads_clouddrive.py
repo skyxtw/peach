@@ -37,6 +37,7 @@ class FakeCloudDrive:
         self.files: set[str] = set()
         self.files_after_refresh: set[str] = set()
         self.list_error = None
+        self.offline_error = None
         self.can_manage = True
 
     def _auth(self, name, request, context):
@@ -124,6 +125,8 @@ class FakeCloudDrive:
 
     def ListOfflineFilesByPath(self, request, context):
         self._auth("ListOfflineFilesByPath", request, context)
+        if self.offline_error is not None:
+            context.abort(self.offline_error, 'offline list unavailable')
         return pb.OfflineFileListResult(offlineFiles=self.offline)
 
     def GetOfflineQuotaInfo(self, request, context):
@@ -207,6 +210,14 @@ class SubmitTests(_Server):
         self.assertNotIn("AddOfflineFiles", self.methods())
         self.assertNotIn("GetOfflineQuotaInfo", self.methods())
 
+    def test_a_stuck_offline_list_skips_dedupe_and_still_adds(self):
+        """CloudDrive2 的「查离线任务」卡死时不能把提交整条挡住：跳过去重直接交。"""
+        self.fake.offline_error = grpc.StatusCode.DEADLINE_EXCEEDED
+        status = self.provider.submit(MAGNET, TARGET)
+        self.assertEqual(status.state, dl.RUNNING)
+        self.assertIn("AddOfflineFiles", self.methods())
+        self.assertEqual(len(self.fake.offline), 1)
+
     def test_an_exhausted_quota_stops_before_adding(self):
         self.fake.quota = pb.OfflineQuotaInfo(total=200, used=200, left=0)
         with self.assertRaises(dl.DownloadError) as caught:
@@ -263,6 +274,12 @@ class TrackingTests(_Server):
         name, request, header = self.fake.calls[0]
         self.assertEqual((name, request.path, request.forceRefresh), ('GetSubFiles', TARGET, True))
         self.assertEqual(header, f'Bearer {TOKEN}')
+
+    def test_status_falls_back_to_the_landed_file_when_offline_list_is_stuck(self):
+        self.fake.offline_error = grpc.StatusCode.DEADLINE_EXCEEDED
+        self.assertEqual(self.provider.status(self.task()).state, dl.RUNNING)
+        self.fake.files.add(f"{TARGET}/ABC-123")
+        self.assertEqual(self.provider.status(self.task()).state, dl.DONE)
 
     def test_directory_refresh_network_failure_remains_retryable(self):
         self.fake.list_error = grpc.StatusCode.UNAVAILABLE
