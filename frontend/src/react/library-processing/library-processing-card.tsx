@@ -46,7 +46,6 @@ import { useLibraryTints } from '../components/library-tint';
 import { LibraryLabel } from '../components/library-label';
 import { useOrderedLibraries } from '../components/library-order';
 import { jobText } from '../../core/server-text';
-import { t } from '../../i18n';
 
 const ALL_LIBRARIES = { id: '', name: t('manage:scanFetch.allLibraries'), icon: 'database' };
 

@@ -13,7 +13,6 @@ import { SourceLabel } from '../components/source-label';
 import { ErrorText, FieldLabel, Footer, Help, Section, SectionSkeleton, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 import { UserscriptStatus } from './userscript-status';
-import { t } from '../../i18n';
 
 const URL = '/api/configuration/jav-browser';
 interface State {

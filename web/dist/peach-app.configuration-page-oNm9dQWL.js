@@ -1,7 +1,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "f3189a39-14fd-49a0-8449-09ed95f93e3c", e._sentryDebugIdIdentifier = "sentry-dbid-f3189a39-14fd-49a0-8449-09ed95f93e3c");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "6f776a09-9c7d-4562-b77a-aff0f7e9ff3b", e._sentryDebugIdIdentifier = "sentry-dbid-6f776a09-9c7d-4562-b77a-aff0f7e9ff3b");
 	} catch {}
 })();
 import { $2ec61d1d4f780267$export$a8a3e93435678ff9 as e, $3a442827418ebe87$export$eb2fcfdbd7ba97d4 as t, $542a13ca2fa5b484$export$5b6b19405a83ff9d as n, $72abaeab4d80592f$export$78efe591171d7d45 as r, $bd263d78e9bf3c56$export$f5c9f3c2c4054eec as i, $ea3928288112382f$export$439d29a4e110a164 as a, $f2ff30fde7b014be$export$3ddf2d174ce01153 as o, $fe21c36db05242bb$export$a98f0dcb43a68a25 as s, $fe21c36db05242bb$export$d7b12c4107be0d61 as c, ACCENTS as l, ActivityStatus as u, ApiError as d, Button as f, ButtonLink as p, CLOUD_LOCATIONS as m, CLOUD_PROXY_HELP as h, CONFIGURATION_KEY as g, CONFIGURATION_SECTIONS as _, CONFIGURATION_URL as v, CREDENTIAL_STATE as y, Checkbox as b, Chip as x, CommandSteps as S, Disclosure as C, ENTRY_LINKS_HELP as ee, ENTRY_LINKS_HINT as te, EmptyState as w, ErrorText as T, Eu as ne, ExternalLink as E, FEED_SCHEDULE_KEY as re, FOLLOW_CREDENTIALS_KEY as ie, FOLLOW_INITIAL_RANGE_OPTIONS as ae, FOLLOW_SCHEDULE_KEY as oe, Fact as D, FactList as O, FieldLabel as se, Footer as k, Help as A, HintText as ce, Input as j, L1 as le, LIBRARY_FOLDER_HELP as ue, LIBRARY_PROCESSING_KEY as de, Label as fe, LinkButton as pe, M6 as me, MEDIA_PROCESSING_KEY as he, MEDIA_PROCESSING_URL as ge, MEDIA_SOURCE_ICONS as _e, MENU_POPOVER_SURFACE as ve, Note as M, PICK_FOLDER_URL as ye, POLICY_COLUMNS as be, POLICY_COVER_NOTE as xe, POLICY_MATRIX as Se, POLICY_SUMMARY as Ce, PathLine as we, ProcessingMode as Te, Progress as Ee, RELEASE_NOTICE_EVENT as De, REPAIR_CENTER_PATH as Oe, Rows as N, SEGMENT as ke, SEGMENTED_TRACK as Ae, SETTINGS_KEY as je, SETTINGS_URL as Me, Section as P, SectionSkeleton as Ne, SegmentedRadioGroup as Pe, Select as Fe, Select$1 as F, SelectItem as I, SettingsCard as Ie, SettingsRow as L, SiteLabel as Le, SortableBoardTabs as Re, SourceLabel as ze, SourceMark as Be, Stack as R, StatusLabel as z, Switch as B, THUMBNAIL_JOBS_KEY as Ve, TaskCenterLink as He, TaskProgress as Ue, TextField as We, TextFieldContext as Ge, Uz as Ke, __toESM as qe, _p as Je, activityKind as Ye, animate as Xe, apiGet as V, apiSend as H, appSettingsStore as Ze, bodyFieldErrors as Qe, boundedPreference as $e, busyProps as U, cardClass as et, checkClientUpdates as tt, cloudProxySkeleton as nt, clsx as rt, cn as it, codedText as W, confirmModal as at, credentialDone as ot, credentialsSkeleton as st, cx as ct, d6 as lt, devicesSkeleton as ut, errorMessage as G, fetchConfiguration as dt, fetchCredentials as ft, fetchFeedSchedule as pt, fetchFollowSchedule as mt, fetchLibraryProcessing as ht, fetchMediaProcessing as gt, fetchSettings as _t, fetchThumbnailJobs as vt, fmtSize as K, i2 as yt, indexersSkeleton as bt, interfaceLanguage as xt, javBrowserSkeleton as St, jobText as Ct, joinList as wt, l1 as Tt, ledgerBackupsSkeleton as Et, localizedFact as Dt, momentText as Ot, motion as kt, overlayHost as At, peachHistory$1 as jt, pickServerFolder as Mt, pollUntil as Nt, previewLibraryColor as Pt, processingActive as Ft, providerIcon as It, queryClient as Lt, randomId as Rt, rememberShape as zt, require_jsx_runtime as Bt, require_react as Vt, restartEffectText as Ht, saveCredential as Ut, schedulePollInterval as Wt, sectionTitle as Gt, serverLabel as q, serverLabelList as Kt, serverText as qt, settingsPath as Jt, shellNavigate as Yt, sortCx as Xt, sourceDefaultCost as Zt, stageText as Qt, t as J, translateWithNodes as $t, useAction as Y, useClientUpdates as en, useLibraryTints as tn, useMutation as nn, useOrderedLibraries as rn, useQuery as X, useQueryClient as an, useReducedMotion as on, useRunSchedule as sn, useSaveFollowSchedule as cn, useSaveSettings as ln, useSaveThumbnailMode as un, we as dn, z3 as fn } from "./peach-app.js";
@@ -156,32 +156,40 @@ function Ur({ receipt: e, refreshKey: t }) {
 	}) : null;
 }
 function Wr({ initial: e, receipt: t }) {
-	let [n, r] = (0, Z.useState)(e), [i, a] = (0, Z.useState)(e.provider), [o, s] = (0, Z.useState)(""), c = Y();
+	let [n, r] = (0, Z.useState)(e), [i, a] = (0, Z.useState)(e.provider), [o, s] = (0, Z.useState)(String(e.min_resolution ?? 0)), [c, l] = (0, Z.useState)((e.edition_keywords ?? []).join(", ")), [u, d] = (0, Z.useState)(""), p = Y();
 	(0, Z.useEffect)(() => {
 		zt("javBrowser", {
 			enabled: e.enabled,
 			ready: e.providers.some((t) => t.key === e.provider && t.configured && t.target)
-		}), r(e), a((t) => e.providers.some((e) => e.key === t) ? t : e.provider), e.enabled || s("");
+		}), r(e), a((t) => e.providers.some((e) => e.key === t) ? t : e.provider), s(String(e.min_resolution ?? 0)), l((e.edition_keywords ?? []).join(", ")), e.enabled || d("");
 	}, [e]);
-	let l = (e) => {
-		c.run(e, (t) => H(Hr, {
+	let m = (e) => {
+		p.run(e, (t) => H(Hr, {
 			action: e,
 			provider: i
 		}, "POST", t), (n) => {
 			let { token: i = "", ...o } = n;
-			r(o), a(o.provider), s(i), t(J(e === "disable" ? "settings:browserAdd.turnedOff" : "settings:browserAdd.tokenIssued"));
+			r(o), a(o.provider), d(i), t(J(e === "disable" ? "settings:browserAdd.turnedOff" : "settings:browserAdd.tokenIssued"));
 		});
-	}, u = (e) => {
-		c.busy || (r((t) => ({
+	}, h = (e) => {
+		p.busy || (r((t) => ({
 			...t,
 			want_on_no_match: e
-		})), c.run("want", (t) => H("/api/settings", { javBrowserWantOnNoMatch: e }, "POST", t), () => t(J("settings:shared.settingsSaved")), (t) => {
+		})), p.run("want", (t) => H("/api/settings", { javBrowserWantOnNoMatch: e }, "POST", t), () => t(J("settings:shared.settingsSaved")), (t) => {
 			r((t) => ({
 				...t,
 				want_on_no_match: !e
-			})), c.setError(G(t));
+			})), p.setError(G(t));
 		}));
-	}, d = n.providers.some((e) => e.key === i && e.configured && e.target);
+	}, g = () => {
+		p.run("preferences", (e) => H(Hr, {
+			action: "preferences",
+			min_resolution: Number(o),
+			edition_keywords: c.split(/[,，、]/).map((e) => e.trim()).filter(Boolean)
+		}, "POST", e), (e) => {
+			r(e), s(String(e.min_resolution ?? 0)), l((e.edition_keywords ?? []).join(", ")), t(J("settings:javBrowser.preferencesSaved"));
+		});
+	}, _ = n.providers.some((e) => e.key === i && e.configured && e.target);
 	return /* @__PURE__ */ (0, Q.jsxs)(P, {
 		guide: "browser",
 		title: J("settings:javBrowser.title"),
@@ -201,7 +209,7 @@ function Wr({ initial: e, receipt: t }) {
 						onSelectionChange: (e) => {
 							e !== null && a(String(e));
 						},
-						isDisabled: !n.providers.length || !!c.busy,
+						isDisabled: !n.providers.length || !!p.busy,
 						children: n.providers.map((e) => /* @__PURE__ */ (0, Q.jsx)(I, {
 							id: e.key,
 							textValue: e.label,
@@ -212,8 +220,50 @@ function Wr({ initial: e, receipt: t }) {
 						}, e.key))
 					})]
 				}),
-				d ? null : /* @__PURE__ */ (0, Q.jsx)(A, { children: J("settings:browserAdd.needsCloudDrive") }),
+				_ ? null : /* @__PURE__ */ (0, Q.jsx)(A, { children: J("settings:browserAdd.needsCloudDrive") }),
 				n.problems?.map((e) => /* @__PURE__ */ (0, Q.jsx)(A, { children: e }, e)),
+				/* @__PURE__ */ (0, Q.jsxs)("div", {
+					className: "flex flex-col gap-1",
+					children: [/* @__PURE__ */ (0, Q.jsx)(se, { children: J("settings:javBrowser.minResolution") }), /* @__PURE__ */ (0, Q.jsxs)(F, {
+						"aria-label": J("settings:javBrowser.minResolution"),
+						selectedKey: o,
+						onSelectionChange: (e) => {
+							e !== null && s(String(e));
+						},
+						isDisabled: !!p.busy,
+						children: [
+							/* @__PURE__ */ (0, Q.jsx)(I, {
+								id: "0",
+								children: J("settings:javBrowser.minResolutionOff")
+							}),
+							/* @__PURE__ */ (0, Q.jsx)(I, {
+								id: "1080",
+								children: J("settings:javBrowser.minResolution1080")
+							}),
+							/* @__PURE__ */ (0, Q.jsx)(I, {
+								id: "2160",
+								children: J("settings:javBrowser.minResolution2160")
+							})
+						]
+					})]
+				}),
+				/* @__PURE__ */ (0, Q.jsx)(j, {
+					label: J("settings:javBrowser.editionKeywords"),
+					value: c,
+					maxLength: 320,
+					placeholder: J("settings:javBrowser.editionKeywordsPlaceholder"),
+					isReadOnly: !!p.busy,
+					onChange: l
+				}),
+				/* @__PURE__ */ (0, Q.jsx)(A, { children: J("settings:javBrowser.editionKeywordsHelp") }),
+				/* @__PURE__ */ (0, Q.jsx)("div", { children: /* @__PURE__ */ (0, Q.jsx)(f, {
+					variant: "secondary",
+					type: "button",
+					disabled: !!p.busy,
+					onClick: g,
+					...U(p.busy === "preferences"),
+					children: J("settings:javBrowser.savePreferences")
+				}) }),
 				n.enabled && n.active_provider && !n.providers.some((e) => e.key === n.active_provider) ? /* @__PURE__ */ (0, Q.jsx)(A, { children: J("settings:browserAdd.channelUnavailable") }) : null,
 				/* @__PURE__ */ (0, Q.jsx)("div", { children: /* @__PURE__ */ (0, Q.jsx)(L, {
 					label: J("settings:browserAdd.wantOnNoMatch"),
@@ -221,8 +271,8 @@ function Wr({ initial: e, receipt: t }) {
 					children: /* @__PURE__ */ (0, Q.jsx)(B, {
 						"aria-label": J("settings:browserAdd.wantOnNoMatch"),
 						isSelected: n.want_on_no_match,
-						isDisabled: !!c.busy,
-						onChange: u
+						isDisabled: !!p.busy,
+						onChange: h
 					})
 				}) }),
 				/* @__PURE__ */ (0, Q.jsx)(j, {
@@ -231,11 +281,11 @@ function Wr({ initial: e, receipt: t }) {
 					isReadOnly: !0,
 					autoComplete: "off"
 				}),
-				o ? /* @__PURE__ */ (0, Q.jsxs)(Q.Fragment, { children: [
+				u ? /* @__PURE__ */ (0, Q.jsxs)(Q.Fragment, { children: [
 					/* @__PURE__ */ (0, Q.jsx)(j, {
 						label: J("settings:browserAdd.token"),
 						type: "password",
-						value: o,
+						value: u,
 						isReadOnly: !0,
 						autoComplete: "new-password"
 					}),
@@ -243,29 +293,29 @@ function Wr({ initial: e, receipt: t }) {
 						variant: "secondary",
 						type: "button",
 						onClick: () => {
-							c.run("copy", async () => navigator.clipboard.writeText(JSON.stringify({
+							p.run("copy", async () => navigator.clipboard.writeText(JSON.stringify({
 								peach_pairing: 1,
 								base: window.location.origin,
-								token: o
+								token: u
 							})), () => t(J("settings:browserAdd.pairingCopied")));
 						},
-						...U(c.busy === "copy"),
+						...U(p.busy === "copy"),
 						children: J("settings:browserAdd.copyPairing")
 					}) }),
 					/* @__PURE__ */ (0, Q.jsx)(A, { children: J("settings:browserAdd.pairingHelp") })
 				] }) : null
 			]
-		}), c.error ? /* @__PURE__ */ (0, Q.jsx)(T, { children: c.error }) : null] }), /* @__PURE__ */ (0, Q.jsxs)(k, { children: [n.enabled ? /* @__PURE__ */ (0, Q.jsx)(f, {
+		}), p.error ? /* @__PURE__ */ (0, Q.jsx)(T, { children: p.error }) : null] }), /* @__PURE__ */ (0, Q.jsxs)(k, { children: [n.enabled ? /* @__PURE__ */ (0, Q.jsx)(f, {
 			variant: "secondary",
 			type: "button",
-			disabled: !!c.busy,
-			onClick: () => l("disable"),
+			disabled: !!p.busy,
+			onClick: () => m("disable"),
 			children: J("settings:javBrowser.disable")
 		}) : null, /* @__PURE__ */ (0, Q.jsx)(f, {
 			type: "button",
-			disabled: !n.available || !d || !!c.busy,
-			onClick: () => l(n.enabled ? "rotate" : "enable"),
-			...U(c.busy === "enable" || c.busy === "rotate"),
+			disabled: !n.available || !_ || !!p.busy,
+			onClick: () => m(n.enabled ? "rotate" : "enable"),
+			...U(p.busy === "enable" || p.busy === "rotate"),
 			children: n.enabled ? J("settings:javBrowser.updateChannelToken") : J("settings:javBrowser.enable")
 		})] })]
 	});
@@ -6418,4 +6468,4 @@ function Mc({ data: e, receipt: t, reopenTutorial: n, section: r, diagnostics: i
 }
 export { kc as ConfigurationPage };
 
-//# debugId=f3189a39-14fd-49a0-8449-09ed95f93e3c
+//# debugId=6f776a09-9c7d-4562-b77a-aff0f7e9ff3b

@@ -10,7 +10,6 @@ import { formModal } from '@peach/legacy/ui';
 import { useMovingSurface } from '../components/use-moving-surface';
 import { busyProps } from '../settings/use-action';
 import { errorMessage } from '../../api';
-import { t } from '../../i18n';
 import { fetchProcessingEstimate, type LibraryProcessingCommand, type ProcessingSpeed, type ProcessingTraffic } from './library-processing';
 import { ProcessingEffort } from './processing-effort';
 import { TrafficProgress } from './processing-traffic';
