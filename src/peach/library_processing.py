@@ -3204,6 +3204,62 @@ def _prepare_library_scope(config, db_path, stage, asset_ids, retry_ids, databas
     return config, library_id, selected_ids
 
 
+
+def _settle_scan_stage(state, update):
+    """只扫描：探时长借给进度条用的读数归零，再按问题数收尾。"""
+    update(status='failed' if state['issue_count'] else 'complete',
+           outcome='partial' if state['issue_count'] else 'complete',
+           **stage_fields('library.finished'), completed_at=time.time(), checked=0, total=0,
+           **_error_fields(issue_summary(state['issue_count'], state['paused_count'])))
+    return state
+
+
+def _prepare_processing_scope(stage, *, config, db_path, judgement_database, locations, sources,
+                              scope_ids, protected_ids, state, update, finish_step):
+    """只补封面时媒体目录只查在线；其余阶段扫文件、查垃圾、读媒体属性。"""
+    if stage == COVERS_STAGE:
+        # 只补封面：媒体目录只查在线，不扫文件、不查垃圾、不读媒体属性。
+        update(scanned=sources.scanned, probed=sources.probed)
+        return
+    _prepare_processing_media(config, db_path, judgement_database, locations, sources,
+                              scope_ids, protected_ids, stage, state, update)
+    finish_step('inspect')
+
+
+def _run_covers_stage(rows, *, cover_root, network, remote, traffic, state, update, issue, guard,
+                      finish_step, flush_candidates, covered):
+    """只补封面：媒体目录只查在线，逐部有番号的影片取封面后收尾。"""
+    gate = _NetworkGate(network, state['offline_skipped'])
+    gate.probe(update)
+    budget = _SourceBudget(remote, state)
+    eligible = [row for row in rows if row.get('code')]
+    for position, row in enumerate(eligible):
+        guard.check()
+        issues_before = state['issue_count']
+        update(**stage_fields('library.fetchCovers'), checked=position, total=len(eligible),
+               current_asset_id=row['id'],
+               current_asset_name=Path(str(row['name'] or '')).name)
+        _, covers = _collect_allowed(
+            remote, traffic, row, _provider_code(row['code']), [], {'cover'},
+            cover_root, covered, update=update, issue=issue, answered=(),
+            received=lambda entries: None,
+            succeeded=lambda before=issues_before: state['issue_count'] == before,
+            gate=gate, budget=budget)
+        state['offline_skipped'] = gate.skipped
+        state['covers'] += covers
+        update(checked=position + 1, total=len(eligible), current_asset_id=None,
+               current_asset_name='', current_action='', current_started_at=None,
+               current_deadline_at=None)
+    flush_candidates(force=True)
+    budget.summarize(issue)
+    finish_step('covers')
+    summary = dict(followups=[], auto_applied=0, auto_rejected=0, performer_aliases=0,
+                   performer_avatars=0, performer_profile_conflicts=0,
+                   performer_profile_failed=0)
+    _settle_collection_state(state, summary, eligible, update)
+    return state
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
@@ -3358,20 +3414,12 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             if incremental and not scope_ids:
                 _settle_collection_state(state, {}, [], update)
                 return state
-            if stage == COVERS_STAGE:
-                # 只补封面：媒体目录只查在线，不扫文件、不查垃圾、不读媒体属性。
-                update(scanned=sources.scanned, probed=sources.probed)
-            else:
-                _prepare_processing_media(config, db_path, judgement_database, locations, sources,
-                                          scope_ids, protected_ids, stage, state, update)
-                finish_step('inspect')
+            _prepare_processing_scope(stage, config=config, db_path=db_path,
+                                      judgement_database=judgement_database, locations=locations,
+                                      sources=sources, scope_ids=scope_ids, protected_ids=protected_ids,
+                                      state=state, update=update, finish_step=finish_step)
             if stage == SCAN_STAGE:
-                # `checked`／`total` 在探时长时借给进度条用过；只扫描这一段没有采集，读数归零。
-                update(status='failed' if state['issue_count'] else 'complete',
-                       outcome='partial' if state['issue_count'] else 'complete',
-                       **stage_fields('library.finished'), completed_at=time.time(), checked=0, total=0,
-                       **_error_fields(issue_summary(state['issue_count'], state['paused_count'])))
-                return state
+                return _settle_scan_stage(state, update)
             rows, genre_decisions = _collection_rows(
                 db_path, locations=locations, online_roots=sources.online_roots, asset_ids=scope_ids)
             traffic.refresh_plan(rows)
@@ -3430,35 +3478,10 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 update(candidates=len(scoped_groups()), auto_applied=state['auto_applied'])
 
             if stage == COVERS_STAGE:
-                gate = _NetworkGate(network, state['offline_skipped'])
-                gate.probe(update)
-                budget = _SourceBudget(remote, state)
-                eligible = [row for row in rows if row.get('code')]
-                for position, row in enumerate(eligible):
-                    guard.check()
-                    issues_before = state['issue_count']
-                    update(**stage_fields('library.fetchCovers'), checked=position, total=len(eligible),
-                           current_asset_id=row['id'],
-                           current_asset_name=Path(str(row['name'] or '')).name)
-                    _, covers = _collect_allowed(
-                        remote, traffic, row, _provider_code(row['code']), [], {'cover'},
-                        cover_root, covered, update=update, issue=issue, answered=(),
-                        received=lambda entries: None,
-                        succeeded=lambda before=issues_before: state['issue_count'] == before,
-                        gate=gate, budget=budget)
-                    state['offline_skipped'] = gate.skipped
-                    state['covers'] += covers
-                    update(checked=position + 1, total=len(eligible), current_asset_id=None,
-                           current_asset_name='', current_action='', current_started_at=None,
-                           current_deadline_at=None)
-                flush_candidates(force=True)
-                budget.summarize(issue)
-                finish_step('covers')
-                summary = dict(followups=[], auto_applied=0, auto_rejected=0, performer_aliases=0,
-                               performer_avatars=0, performer_profile_conflicts=0,
-                               performer_profile_failed=0)
-                _settle_collection_state(state, summary, eligible, update)
-                return state
+                return _run_covers_stage(
+                    rows, cover_root=cover_root, network=network, remote=remote, traffic=traffic,
+                    state=state, update=update, issue=issue, guard=guard,
+                    finish_step=finish_step, flush_candidates=flush_candidates, covered=covered)
 
             prepared = []
             poster_jobs = []

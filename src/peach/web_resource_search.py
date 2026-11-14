@@ -16,6 +16,17 @@ def _merged_error(direct: dict, indexed: dict) -> dict:
             **{key: indexed[key] for key in ("error_code", "error_params") if key in indexed}}
 
 
+def _rank_with_preferences(combined, warnings, filters, min_resolution, edition_keywords):
+    """按用户偏好挑候选：先按最低清晰度过滤（全不达标就退回不限），再按版本关键词排序。"""
+    if min_resolution:
+        qualified = [row for row in combined if int(row.get("resolution") or 0) >= min_resolution]
+        if qualified:
+            combined = qualified
+        else:
+            warnings.append(f"没有 ≥{min_resolution}p 的资源，已按不限清晰度排序")
+    return rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)), warnings
+
+
 def q_resource_search(contract, args) -> dict:
     service = getattr(contract, "downloads", None)
     if service is None:
@@ -52,16 +63,11 @@ def q_resource_search(contract, args) -> dict:
             "promo_files": 0, "source_url": "", "watermark_check": "pending",
         })
     warnings = direct["warnings"] + list(indexed.get("warnings") or ())
-    if min_resolution:
-        qualified = [row for row in combined if int(row.get("resolution") or 0) >= min_resolution]
-        if qualified:
-            combined = qualified
-        else:
-            warnings.append(f"没有 ≥{min_resolution}p 的资源，已按不限清晰度排序")
+    ranked, warnings = _rank_with_preferences(combined, warnings, filters, min_resolution, edition_keywords)
     return {
         "ok": bool(direct["items"]) or indexed.get("ok", False),
         "state": "ready" if direct["items"] or indexed.get("state") == "ready" else indexed.get("state", "error"),
-        "items": rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)),
+        "items": ranked,
         "warnings": warnings,
         "filters": {"min_resolution": min_resolution, "edition_keywords": edition_keywords},
         **parallel("warning", warnings),

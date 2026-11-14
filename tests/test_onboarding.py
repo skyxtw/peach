@@ -1586,7 +1586,7 @@ class StandaloneConfigurationTests(_Case):
         from dataclasses import replace
         from peach.tray import configured_service_specs, normal_url
         lan = replace(self.config, server=replace(
-            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-writer"))
         spec, = configured_service_specs(lan)
         self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
         self.assertEqual(spec.command[spec.command.index("--host") + 1], "0.0.0.0")
@@ -1612,7 +1612,7 @@ class StandaloneConfigurationTests(_Case):
         from dataclasses import replace
         from peach.tray import configured_service_specs, normal_url
         lan = replace(self.config, server=replace(
-            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-writer"))
         spec, = configured_service_specs(lan)
         self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
         self.assertEqual(spec.command[spec.command.index("--host") + 1], "0.0.0.0")
@@ -1626,8 +1626,8 @@ class StandaloneConfigurationTests(_Case):
         from dataclasses import replace
         from peach import routes_pages
         lan = replace(self.config, server=replace(
-            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
-        self.assertEqual(routes_pages._normal_url(lan), "http://peach-test.local:9123/")
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-writer"))
+        self.assertEqual(routes_pages._normal_url(lan), "http://peach-writer.local:9123/")
         self.assertEqual(routes_pages._normal_url(self.config), "http://127.0.0.1:9123/")
 
     def test_standalone_version_inspection_does_not_execute_git(self):
