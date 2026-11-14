@@ -3986,7 +3986,7 @@
         "rule34xxx": "Sign in, generate an API key in account settings, and put user_id and api_key in the credentials file.",
         "f95zone": "Sign in, copy the full Cookie request header from the browser, and put it in the cookie field of the credentials file.",
         "simpcity": "Sign in, copy the full Cookie request header from the browser, and put it in the cookie field of the credentials file.",
-        "javdb": "Fill in the JavDB username and password. Peach only uses them to obtain a login token; the password is never logged, echoed or written to the ledger, and the token stays in memory and is renewed automatically."
+        "javdb": "Fill in the JavDB username and password. Peach only uses them to obtain a login token; the password is never logged, echoed or written to the database, and the token stays in memory and is renewed automatically."
       }
     },
     "subtitles": {
