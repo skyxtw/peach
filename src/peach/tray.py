@@ -1934,9 +1934,8 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
     stopped = threading.Event()
     threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
     watcher = None
-    from .distribution import plain_http
-    if not plain_http():
-        # macOS 源码部署维护本机 CA；其余部署使用设置中的端口，没有证书要维护。
+    if not standalone():
+        # 源码部署维护本机 CA；独立应用使用设置中的高位端口。
         refresh_certificate_with_retry()
         watcher = NetworkChangeWatcher(on_network_change)
         watcher.start()

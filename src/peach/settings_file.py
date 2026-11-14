@@ -315,7 +315,7 @@ def _integer(table: dict, key: str, default: int, path: Path, prefix: str) -> in
 def _positive_integer(table: dict, key: str, default: int, path: Path, prefix: str) -> int:
     value = _integer(table, key, default, path, prefix)
     if value <= 0:
-        raise _fail(path, f"`{prefix}{key}` 必须是正整数")
+        raise _fail(path, "errors.settingsFile.notPositiveInteger", key=prefix + key)
     return value
 
 
@@ -649,27 +649,13 @@ def render(config: PeachConfig, *, language: str | None = None) -> str:
         "review_writer_origin": config.server.review_writer_origin,
         "review_writer_proxy": config.server.review_writer_proxy,
     })
-    lines += [
-        "",
-        "[scraping]",
-        "# 一趟「扫描与采集」向外部来源要的总量上限；三项先到先停。",
-        "# max_requests = 最多发多少个来源请求，max_bytes = 最多接收多少字节，max_seconds = 最多跑多少秒。",
-        "# 不写这一段时按内建默认值（6000 / 1 GiB / 4 小时）；三项都必须是正整数。",
-    ]
+    lines += ["", "[scraping]", *comment("scraping")]
     lines += _render_pairs({
         "max_requests": config.source_budget.max_requests,
         "max_bytes": config.source_budget.max_bytes,
         "max_seconds": config.source_budget.max_seconds,
     })
-    lines += [
-        "",
-        "[replication]",
-        "# 两台电脑之间的数据库复制设置（ADR-0017）；只有一台允许修改数据库，另一台只读。",
-        "# 单机与独立 Docker 部署保持 enabled = false。",
-        "# 关闭时不启动同步观察器、不探测 SMB；桌面托盘不显示 Ledger 菜单项。",
-        "# shared_root 是两台电脑交换数据库副本的目录；留空时使用 Peach 数据目录旁的 peach-sync。",
-        "# smb_* 用于连接另一台电脑的共享目录；留空时不连接共享目录。",
-    ]
+    lines += ["", "[replication]", *comment("replication")]
     lines += _render_pairs({
         "enabled": config.replication.enabled,
         "shared_root": config.replication.shared_root,

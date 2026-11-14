@@ -104,6 +104,12 @@ def probe(root: Path, tag: str, payload: dict) -> dict:
                                   capture_output=True, check=True).stdout
         with tarfile.open(fileobj=io.BytesIO(exported)) as archive:
             archive.extractall(folder, filter="data")
+        # 0.58 起界面文字改从 resources/locales 读；只导出 src 的话旧客户端导入就会缺文案。
+        locales = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", tag, "resources/locales"],
+                                 capture_output=True, check=False).stdout
+        if locales:
+            with tarfile.open(fileobj=io.BytesIO(locales)) as archive:
+                archive.extractall(folder, filter="data")
         completed = subprocess.run([sys.executable, "-I", "-X", "utf8", "-c", PROBE, str(Path(folder) / "src")],
                                    input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8")
     if completed.returncode != 0:

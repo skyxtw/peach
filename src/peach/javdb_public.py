@@ -53,8 +53,7 @@ _UNAVAILABLE = "errors.javdbPublic.unavailable"
 AUTH_ACTIONS = frozenset({"JWTVerificationError", "Unauthenticated", "Unauthorized",
                           "TokenExpired", "LoginRequired"})
 #: 没有可用账号时给界面的说明。账号在「配置 → 来源 → 来源凭据」里填。
-AUTH_REQUIRED_MESSAGE = ("JavDB 作品资料现在需要登录：请在「配置 → 来源 → 来源凭据」里"
-                         "填写 JavDB 账号后重试")
+AUTH_REQUIRED_MESSAGE = "errors.javdbPublic.authRequired"
 _JS_IDENTIFIER = r'[A-Za-z_$][A-Za-z0-9_$]*'
 _CACHE_ROOT = ContextVar('jav_public_cache_root', default=None)
 _CACHE_READS = ContextVar('jav_public_cache_reads', default=None)
@@ -395,9 +394,7 @@ class PublicAPI:
             try:
                 return self._json_once(tail, self._renewed_token())
             except PublicSourceAuthRequired:
-                raise PublicSourceAuthRequired(
-                    "JavDB 登录令牌被拒绝：请在「配置 → 来源 → 来源凭据」里重新保存 JavDB 账号"
-                ) from None
+                raise PublicSourceAuthRequired("errors.javdbPublic.tokenRejected") from None
 
     def _authorization(self) -> str:
         """本次请求带的登录令牌；没配账号返回空串，账号被拒转成来源层异常。"""
@@ -406,7 +403,7 @@ class PublicAPI:
         except PublicSourceAuthRequired:
             raise
         except Exception as error:
-            raise PublicSourceAuthRequired(str(error) or AUTH_REQUIRED_MESSAGE) from error
+            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE) from error
 
     def _renewed_token(self) -> str:
         try:
@@ -414,7 +411,7 @@ class PublicAPI:
         except PublicSourceAuthRequired:
             raise
         except Exception as error:
-            raise PublicSourceAuthRequired(str(error) or AUTH_REQUIRED_MESSAGE) from error
+            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE) from error
         if not renewed:
             raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE)
         return renewed
@@ -441,9 +438,11 @@ class PublicAPI:
                 raise PublicSourceUnavailable("errors.javdbPublic.sourcePaused")
             raise PublicSourcePaused("errors.javdbPublic.sourcePaused")
         if isinstance(payload, dict) and payload.get("action") == "JWTVerificationError":
-            # 只停搜索与作品资料：评论与磁链端点匿名仍答，不能跟着整源冷却。
-            self.login_until = self.clock() + LOGIN_SECONDS
-            raise PublicLoginRequired(_UNAVAILABLE)
+            if not authorization:
+                # 没有账号令牌：搜索与作品资料先停一会儿，等调用方回退网页或用户填账号。
+                self.login_until = self.clock() + LOGIN_SECONDS
+            # 交给 `_json` 换令牌/报账号，或由 `_login_walled` 改用网页；不整源冷却。
+            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE)
         if not isinstance(payload, dict) or payload.get("success") != 1:
             action = str(payload.get("action") or "") if isinstance(payload, dict) else ""
             if action in AUTH_ACTIONS:

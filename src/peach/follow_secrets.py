@@ -252,11 +252,9 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
         "fields": ["username", "password"],
         "syncable": [],
         "label": "JavDB",
-        "why": "库外作品资料、评论、磁链与预览走 JavDB 资料接口；接口现在要求登录，"
-               "不填账号时详情页只说明需要登录。",
+        "why_code": "labels.followSecrets.why.javdb",
         "where": "https://javdb.com/",
-        "howto": "填 JavDB 的用户名和密码。Peach 只用它换登录令牌，密码不进日志、不回显、"
-                 "不写账本；令牌只留在内存，失效后自动重新登录。",
+        "howto_code": "labels.followSecrets.howto.javdb",
     },
 }
 #: 给人看的说明只在语言资源里（`why_code`、`howto_code`）；`why`、`howto` 是按 zh-CN 渲染的原句，

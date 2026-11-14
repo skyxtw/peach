@@ -370,14 +370,14 @@ class JavBrowser:
         except FileNotFoundError:
             return dict(DEFAULT_PREFERENCES)
         except (OSError, ValueError):
-            LOGGER.warning("浏览器添加偏好读不出来，按默认值跑：%s", self.preferences_path)
+            LOGGER.warning("browser-add preferences unreadable; using defaults: %s", self.preferences_path)
             return dict(DEFAULT_PREFERENCES)
         if not isinstance(payload, dict):
             return dict(DEFAULT_PREFERENCES)
         try:
             min_resolution, keywords = preference_filters(payload)
         except ValueError:
-            LOGGER.warning("浏览器添加偏好不合规则，按默认值跑：%s", self.preferences_path)
+            LOGGER.warning("browser-add preferences invalid; using defaults: %s", self.preferences_path)
             return dict(DEFAULT_PREFERENCES)
         return {"min_resolution": min_resolution, "edition_keywords": keywords}
 

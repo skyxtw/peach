@@ -50,7 +50,6 @@
   "scripts/revert_misread_code.py": 5,
   "scripts/scrape_codes.py": 7,
   "scripts/smoke_desktop.py": 23,
-  "scripts/smoke_docker.py": 2,
   "scripts/smoke_online_update.py": 1,
   "scripts/smoke_overlay_upgrade.py": 3,
   "scripts/smoke_split_update.py": 12,

@@ -1123,7 +1123,15 @@
       "noDecodableReference": "No reference produced a decodable cut",
       "backupExists": "A backup already exists in the same directory: {{name}}"
     },
+    "javdbAccount": {
+      "noResponse": "The JavDB login got no response. Check the network and proxy and retry.",
+      "rejected": "JavDB login was rejected: {{reason}}. Update the JavDB account under Configuration → Sources → Source credentials.",
+      "rejectedUnknown": "login rejected",
+      "noToken": "The JavDB login response carried no token."
+    },
     "javdbPublic": {
+      "authRequired": "JavDB work details now require a login: fill in the JavDB account under Configuration → Sources → Source credentials and retry",
+      "tokenRejected": "JavDB rejected the login token: save the JavDB account again under Configuration → Sources → Source credentials",
       "budgetExceeded": "The metadata request budget for this run is used up",
       "imageSourcePaused": "The image source is temporarily unavailable. Try again later.",
       "sourcePaused": "The metadata source is temporarily unavailable. Try again later.",
@@ -1500,6 +1508,9 @@
       "requestFailed": "SMB request failed"
     },
     "resourceSearch": {
+      "minResolutionInvalid": "Minimum resolution must be 1080p or 2160p",
+      "editionKeywordsInvalid": "Invalid edition keyword format",
+      "editionKeywordsTooLong": "Too many or too long edition keywords",
       "invalidEndpoint": "Indexer address is not valid",
       "endpointFormat": "Enter an HTTP or HTTPS API address; enter the API key separately and leave query parameters out of the address",
       "unreadableConfig": "Indexer settings can't be read. Save them again in Settings → Downloads on this device",
@@ -2566,6 +2577,7 @@
       "notTable": "Can't read the settings file {{path}}: `{{key}}` must be a table ([{{key}}])",
       "notString": "Can't read the settings file {{path}}: `{{key}}` must be a string",
       "notInteger": "Can't read the settings file {{path}}: `{{key}}` must be an integer",
+      "notPositiveInteger": "Can't read the settings file {{path}}: `{{key}}` must be a positive integer",
       "notBoolean": "Can't read the settings file {{path}}: `{{key}}` must be true or false",
       "notStringOrArray": "Can't read the settings file {{path}}: `{{key}}` must be a string or an array of strings",
       "emptyArrayItem": "Can't read the settings file {{path}}: the `{{key}}` array can't contain empty strings",
@@ -3911,6 +3923,7 @@
         "mounts": "Uses the same storage keys as [media.locations]; values are the directories Peach actually reads files from.\nIn Docker, use paths inside the container, for example local = '/media'; set the host directory in the Compose volumes.\nLinux and macOS also use absolute paths on this device, for example /mnt/media or /Volumes/Media.\nWhen a storage has several directories, write arrays in both tables with the same number and order of directories.\nDocker, Linux and macOS must provide the real directory, or that storage's media files can't be read; media records are kept.\nWindows reads the directories in [media.locations] directly and doesn't need this table.",
         "server": "In Docker the server always listens on 0.0.0.0:8900; Compose sets the host address and port.\nhost and port here apply when running peach serve directly; Docker entry arguments take priority.\nmdns_name must be unique on the LAN: two machines with the same name take it from each other.\nreview_writer_origin is the address of the device allowed to change the database; read-only devices get items to review through it.\nLeave it empty to not show the other device's items to review on this device.",
         "replication": "Database replication between two computers (ADR-0017): only one may change the database, the other is read-only.\nSingle-machine and standalone Docker deployments keep enabled = false.\nWhen off, the sync watcher doesn't start, SMB isn't probed, and the desktop tray hides the database menu items.\nshared_root is where the two computers exchange database copies; empty uses peach-sync next to the Peach data directory.\nsmb_* connects to the other computer's shared directory; leave them empty to not connect.",
+        "scraping": "Total limits for one scan-and-collect run against external sources; whichever comes first stops it.\nmax_requests = source requests, max_bytes = bytes received, max_seconds = wall-clock seconds.\nWhen omitted the built-in defaults apply (6000 / 1 GiB / 4 hours); all three must be positive integers.",
         "tunnel": "Cloudflare Tunnel is off by default; set an access password before turning it on.\nWith binary empty, cloudflared is looked up in the bundled package, PEACH_CLOUDFLARED, then PATH.\nmode = \"quick\" is a temporary link with a random address; \"named\" uses your own named tunnel, only in a source\ncheckout, and needs hostname (the public hostname bound in Cloudflare) and token (the tunnel token).\ntoken is a credential: this file is the only place it's kept. Don't copy it elsewhere or commit it to Git."
       }
     },
@@ -3963,7 +3976,8 @@
         "iwara": "Public videos work without signing in. Restricted videos need an account with access and valid credentials.",
         "rule34xxx": "The website sits behind a Cloudflare CAPTCHA. Peach doesn't bypass CAPTCHAs, so it uses the official API.",
         "f95zone": "Finding updates works without signing in. Only attachments and masked download links need a session.",
-        "simpcity": "The site doesn't let guests read threads, so checking for updates needs a signed-in session. DDoS-Guard doesn't challenge a standard desktop browser identity, and Peach solves no challenges: an expired cookie is reported as is."
+        "simpcity": "The site doesn't let guests read threads, so checking for updates needs a signed-in session. DDoS-Guard doesn't challenge a standard desktop browser identity, and Peach solves no challenges: an expired cookie is reported as is.",
+        "javdb": "JavDB work details, comments, magnets and previews use the JavDB API; it now requires a login, and without an account the detail page only says a login is required."
       },
       "howto": {
         "fanbox": "Sign in to FANBOX, then copy the full Cookie request header from a successful api.fanbox.cc/post.info request.",
@@ -3971,7 +3985,8 @@
         "iwara": "Sign in to Iwara, then copy the value after Bearer in the Authorization header of a successful apiq.iwara.tv/video request into access_token. Copy it again when the token expires.",
         "rule34xxx": "Sign in, generate an API key in account settings, and put user_id and api_key in the credentials file.",
         "f95zone": "Sign in, copy the full Cookie request header from the browser, and put it in the cookie field of the credentials file.",
-        "simpcity": "Sign in, copy the full Cookie request header from the browser, and put it in the cookie field of the credentials file."
+        "simpcity": "Sign in, copy the full Cookie request header from the browser, and put it in the cookie field of the credentials file.",
+        "javdb": "Fill in the JavDB username and password. Peach only uses them to obtain a login token; the password is never logged, echoed or written to the ledger, and the token stays in memory and is renewed automatically."
       }
     },
     "subtitles": {
@@ -4109,6 +4124,7 @@
         "hash": "no infohash"
       },
       "rejectedCount": "{{reason}}: {{count}}",
+      "resolutionFallback": "No result at {{min}}p or higher; sorted by quality without the minimum",
       "allRejected": "Indexers returned {{total}} results, but none passed the filters: {{counts}}",
       "noIndexer": "Add and enable an indexer in Settings → Downloads on this device",
       "busy": "A torrent search is already running. Try again later",

@@ -358,7 +358,7 @@ class CloudDriveProvider:
                     # 不能把整条提交链挡住：跳过去重直接交，重复风险由用户重试时承担。
                     if error.failure != "network":
                         raise
-                    LOGGER.warning("查离线任务失败，跳过去重直接提交：%s", error.detail)
+                    LOGGER.warning("offline list failed; skipping dedupe: %s", error.detail)
             if existing is not None:
                 status = offline_status(existing)
                 return dataclasses.replace(status, adopted=True)
@@ -385,7 +385,7 @@ class CloudDriveProvider:
                 # 网络错误上；文件出现后照常进入后处理。
                 if error.failure != "network":
                     raise
-                LOGGER.warning("查离线任务失败，改看落地文件：%s", error.detail)
+                LOGGER.warning("offline list failed; checking landed files: %s", error.detail)
                 name = task.remote_name or task.display_name
                 return RemoteStatus(DONE if self._landed(client, task) else RUNNING, name=name)
             return offline_status(match_offline(files, task.info_hash or ""))

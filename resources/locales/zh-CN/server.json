@@ -1123,7 +1123,15 @@
       "noDecodableReference": "没有一个参照切得出能解码的片子",
       "backupExists": "同目录已有一份留档：{{name}}"
     },
+    "javdbAccount": {
+      "noResponse": "JavDB 登录没有取得响应，请检查网络与代理后重试。",
+      "rejected": "JavDB 账号登录未通过：{{reason}}。请在「配置 → 来源 → 来源凭据」里更新 JavDB 账号。",
+      "rejectedUnknown": "登录被拒",
+      "noToken": "JavDB 登录回执里没有登录令牌。"
+    },
     "javdbPublic": {
+      "authRequired": "JavDB 作品资料现在需要登录：请在「配置 → 来源 → 来源凭据」里填写 JavDB 账号后重试",
+      "tokenRejected": "JavDB 登录令牌被拒绝：请在「配置 → 来源 → 来源凭据」里重新保存 JavDB 账号",
       "budgetExceeded": "本轮作品资料预算已用完",
       "imageSourcePaused": "图片来源暂时不可用，请稍后重试",
       "sourcePaused": "作品资料来源暂时不可用，请稍后重试",
@@ -1500,6 +1508,9 @@
       "requestFailed": "SMB 请求失败"
     },
     "resourceSearch": {
+      "minResolutionInvalid": "最低清晰度必须是 1080p 或 2160p",
+      "editionKeywordsInvalid": "版本优先关键词格式不正确",
+      "editionKeywordsTooLong": "版本优先关键词过多或过长",
       "invalidEndpoint": "索引器地址格式不正确",
       "endpointFormat": "填写 HTTP 或 HTTPS API 地址；API key 单独填写，地址不带查询参数",
       "unreadableConfig": "索引器配置读不出来，请在本机「配置 → 下载」中重新保存",
@@ -2566,6 +2577,7 @@
       "notTable": "设置文件读不出来：{{path}}：`{{key}}` 必须是一个表（[{{key}}]）",
       "notString": "设置文件读不出来：{{path}}：`{{key}}` 必须是字符串",
       "notInteger": "设置文件读不出来：{{path}}：`{{key}}` 必须是整数",
+      "notPositiveInteger": "设置文件读不出来：{{path}}：`{{key}}` 必须是正整数",
       "notBoolean": "设置文件读不出来：{{path}}：`{{key}}` 必须是 true 或 false",
       "notStringOrArray": "设置文件读不出来：{{path}}：`{{key}}` 必须是字符串，或者字符串数组",
       "emptyArrayItem": "设置文件读不出来：{{path}}：`{{key}}` 的数组里不能有空串",
@@ -3911,6 +3923,7 @@
         "mounts": "与 [media.locations] 使用相同的媒体来源键；值是 Peach 实际读取文件的目录。\nDocker 填容器内路径，例如 local = '/media'；宿主机目录在 Compose 的 volumes 中配置。\nLinux / macOS 也使用本机绝对路径，例如 /mnt/media 或 /Volumes/Media。\n一个来源有多个目录时，两表都写数组，目录数量和顺序必须相同。\nDocker / Linux / macOS 必须提供实际目录，否则无法读取该来源的媒体文件；媒体记录仍保留。\nWindows 直接读取 [media.locations] 中的目录，无需填写本表。",
         "server": "Docker 服务固定监听 0.0.0.0:8900；宿主机访问地址与端口由 Compose 配置。\n此处 host、port 用于直接运行 peach serve；Docker 入口参数优先。\nmdns_name 在局域网里必须唯一：两台机器同名会互相抢占。\nreview_writer_origin 是允许修改数据库的设备的地址；只读设备通过它获取待确认资料。\n留空表示本机不显示另一台设备的待确认资料。",
         "replication": "两台电脑之间的数据库复制设置（ADR-0017）；只有一台允许修改数据库，另一台只读。\n单机与独立 Docker 部署保持 enabled = false。\n关闭时不启动同步观察器、不探测 SMB；桌面托盘不显示 Ledger 菜单项。\nshared_root 是两台电脑交换数据库副本的目录；留空时使用 Peach 数据目录旁的 peach-sync。\nsmb_* 用于连接另一台电脑的共享目录；留空时不连接共享目录。",
+        "scraping": "一趟「扫描与采集」向外部来源要的总量上限；三项先到先停。\nmax_requests = 最多发多少个来源请求，max_bytes = 最多接收多少字节，max_seconds = 最多跑多少秒。\n不写这一段时按内建默认值（6000 / 1 GiB / 4 小时）；三项都必须是正整数。",
         "tunnel": "Cloudflare Tunnel 默认关闭；打开前必须先设置访问密码。\nbinary 留空时按内置包、PEACH_CLOUDFLARED 和 PATH 的顺序寻找 cloudflared。\nmode = \"quick\" 是随机地址的临时链接；\"named\" 用自建命名隧道，只在源码开发\n环境可用，需要 hostname（Cloudflare 后台绑定的公开主机名）和 token（隧道令牌）。\ntoken 是凭据：这个文件是它唯一的存放处，不要复制到别处，也不要提交进 Git。"
       }
     },
@@ -3963,7 +3976,8 @@
         "iwara": "公开作者视频无需登录；有访问限制的视频需要账号访问权及有效登录凭据。",
         "rule34xxx": "网页版挂了 Cloudflare 验证码，Peach 不绕验证码，只能走官方 API。",
         "f95zone": "发现更新不需要登录；只有取附件和 masked 下载链接才需要会话。",
-        "simpcity": "站点不让游客读帖，检查更新必须带登录会话；前面的 DDoS-Guard 对标准桌面浏览器标识不出质询，Peach 也不解任何质询，cookie 失效就原样报错。"
+        "simpcity": "站点不让游客读帖，检查更新必须带登录会话；前面的 DDoS-Guard 对标准桌面浏览器标识不出质询，Peach 也不解任何质询，cookie 失效就原样报错。",
+        "javdb": "库外作品资料、评论、磁链与预览走 JavDB 资料接口；接口现在要求登录，不填账号时详情页只说明需要登录。"
       },
       "howto": {
         "fanbox": "登录 FANBOX 后，从一次成功的 api.fanbox.cc/post.info 请求复制整条 Cookie 请求头。",
@@ -3971,7 +3985,8 @@
         "iwara": "登录 Iwara 后，从成功的 apiq.iwara.tv/video 请求复制 Authorization 中 Bearer 后的值，填写 access_token。令牌过期后需重新复制。",
         "rule34xxx": "登录后在账号设置页生成 API key，把 user_id 和 api_key 写进凭据文件。",
         "f95zone": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
-        "simpcity": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。"
+        "simpcity": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
+        "javdb": "填 JavDB 的用户名和密码。Peach 只用它换登录令牌，密码不进日志、不回显、不写账本；令牌只留在内存，失效后自动重新登录。"
       }
     },
     "subtitles": {
@@ -4109,6 +4124,7 @@
         "hash": "取不到 infohash"
       },
       "rejectedCount": "{{reason}} {{count}} 条",
+      "resolutionFallback": "没有 ≥{{min}}p 的资源，已按不限清晰度排序",
       "allRejected": "索引器返回了 {{total}} 条结果，都没通过筛选：{{counts}}",
       "noIndexer": "请在本机「配置 → 下载」中添加并启用索引器",
       "busy": "资源搜索正在进行，请稍后重试",

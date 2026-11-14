@@ -4443,13 +4443,13 @@ class CoversStageTests(unittest.TestCase):
         self.assertEqual(result['covers'], 2)
         self.assertIsNone(provider.query.call_args)
         self.assertEqual(provider.cover.call_count, 2)
-        self.assertEqual([step['id'] for step in result['steps']], ['sources', 'collect'])
+        self.assertEqual([step['id'] for step in result['steps']], ['sources', 'covers'])
 
     def test_covers_steps_and_workload_names(self):
         from peach.library_processing import _processing_steps, _processing_workload
         steps = _processing_steps('covers', None, metadata_only_enabled=False)
         self.assertEqual([(step['id'], step['label']) for step in steps],
-                         [('sources', '检查媒体目录'), ('collect', '采集封面')])
+                         [('sources', '检查媒体目录'), ('covers', '采集封面')])
         rows = [{'code': 'ABW-358'}, {'code': None}]
         pending = _processing_workload(PeachConfig(self.root, self.root / 'config.toml'),
                                        rows, 'covers', None, set(), cover_root=self.root / 'covers')
@@ -4538,7 +4538,7 @@ class LocalEvidenceReuseTests(unittest.TestCase):
                 "INSERT INTO asset(id,location,path,name,medium,code) "
                 "VALUES(1,'local',?,'ABW-358.mp4','video','ABW-358')", (str(media_file),))
         provider = stub_provider()
-        provider.query.side_effect = DeadlineExceeded('慢')
+        provider.query.side_effect = DeadlineExceeded('errors.javCoverFetch.deadline')
         provider.cover = Mock(return_value=False)
         with patch('peach.library_processing._enrich_finished_performers',
                    return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):

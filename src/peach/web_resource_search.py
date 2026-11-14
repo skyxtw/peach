@@ -1,4 +1,5 @@
 """资源搜索的只读 Web 契约；下载仍由云下载写入口接收。"""
+from . import interface_text
 from .coded_text import parallel
 from .javdb_public import public_cache_scope
 from .magnet_chain import HIGH_QUALITY, rank_candidates, search as direct_search
@@ -23,7 +24,8 @@ def _rank_with_preferences(combined, warnings, filters, min_resolution, edition_
         if qualified:
             combined = qualified
         else:
-            warnings.append(f"没有 ≥{min_resolution}p 的资源，已按不限清晰度排序")
+            warnings.append(interface_text.text("server:labels.resourceSearch.resolutionFallback",
+                                               {"min": min_resolution}))
     return rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)), warnings
 
 

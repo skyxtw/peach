@@ -15,7 +15,7 @@ import logging
 import threading
 import time
 
-from . import peach_proxy
+from . import interface_text, peach_proxy
 from .follow_secrets import CredentialError, CredentialStore
 
 LOGGER = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def _login(username: str, password: str, *, fingerprint: str, client=None) -> st
                                        headers={"accept": "application/json", **signature_header(),
                                                 **APP_HEADERS})
             except Exception as error:  # 一家没连上就换下一家，与资料请求同一套主机顺序
-                LOGGER.warning("JavDB 登录请求没有到达 %s：%s", host, type(error).__name__)
+                LOGGER.warning("JavDB login request failed for %s: %s", host, type(error).__name__)
                 continue
             try:
                 payload = response.json()
@@ -120,10 +120,11 @@ def _login(username: str, password: str, *, fingerprint: str, client=None) -> st
         if owned:
             client.close()
     if not isinstance(payload, dict):
-        raise AccountUnavailable("JavDB 登录没有取得响应，请检查网络与代理后重试。")
+        raise AccountUnavailable(interface_text.text("server:errors.javdbAccount.noResponse"))
     if payload.get("success") != 1:
-        reason = str(payload.get("message") or payload.get("action") or "登录被拒")
-        message = f"JavDB 账号登录未通过：{reason}。请在「配置 → 来源 → 来源凭据」里更新 JavDB 账号。"
+        reason = str(payload.get("message") or payload.get("action")
+                     or interface_text.text("server:errors.javdbAccount.rejectedUnknown"))
+        message = interface_text.text("server:errors.javdbAccount.rejected", {"reason": reason})
         with _LOCK:
             _STATE.update(token="", fingerprint=fingerprint,
                           rejected_until=time.monotonic() + REJECTED_COOLDOWN, reason=message)
@@ -131,7 +132,7 @@ def _login(username: str, password: str, *, fingerprint: str, client=None) -> st
     data = payload.get("data")
     value = str(data.get("token") or "") if isinstance(data, dict) else str(data or "")
     if not value:
-        raise AccountUnavailable("JavDB 登录回执里没有登录令牌。")
+        raise AccountUnavailable(interface_text.text("server:errors.javdbAccount.noToken"))
     with _LOCK:
         _STATE.update(token=value, fingerprint=fingerprint, rejected_until=0.0, reason="")
     return value

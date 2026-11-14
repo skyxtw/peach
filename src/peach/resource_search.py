@@ -143,21 +143,21 @@ def preference_filters(args) -> tuple[int, list[str]]:
     try:
         min_resolution = int(args.get("min_resolution") or 0)
     except (TypeError, ValueError):
-        raise ValueError("最低清晰度必须是 1080p 或 2160p") from None
+        raise UserValueError("errors.resourceSearch.minResolutionInvalid") from None
     if min_resolution not in MIN_RESOLUTIONS:
-        raise ValueError("最低清晰度必须是 1080p 或 2160p")
+        raise UserValueError("errors.resourceSearch.minResolutionInvalid")
     raw = args.get("edition_keywords") or ()
     if isinstance(raw, str):
         raw = [part for part in re.split(r"[,，、]", raw)]
     if not isinstance(raw, (list, tuple)):
-        raise ValueError("版本优先关键词格式不正确")
+        raise UserValueError("errors.resourceSearch.editionKeywordsInvalid")
     keywords: list[str] = []
     for value in raw:
         word = str(value or "").strip()
         if not word:
             continue
         if len(word) > MAX_EDITION_KEYWORD_LENGTH or len(keywords) >= MAX_EDITION_KEYWORDS:
-            raise ValueError("版本优先关键词过多或过长")
+            raise UserValueError("errors.resourceSearch.editionKeywordsTooLong")
         keywords.append(word)
     return min_resolution, keywords
 

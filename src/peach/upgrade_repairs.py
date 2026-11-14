@@ -1653,7 +1653,8 @@ class UpgradeRepairs:
         states = {**self._run_states(media.values()), **self._run_states(people.values())}
         finished = {key: run_id for key, run_id in media.items() if states.get(run_id) not in ('pending', 'running')}
         for key, run_id in people.items():
-            if states.get(run_id) not in ('pending', 'running'):
+            # 任务行已被清退或还没建出来时状态未知，留着当「已派发」标记；跑完才移出。
+            if states.get(run_id) in ('succeeded', 'failed', 'cancelled', 'interrupted'):
                 del queued[key]
         if not finished:
             return None
