@@ -5,15 +5,15 @@ import { mountPlayerSeekControls, mountPlayerTouchSeek } from '../src/player/con
 import { configurePlayer } from '../src/player/host';
 import type { VjsPlayer } from '../src/player/types';
 
-const host = (seekSeconds = 10) => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+const host = (seekSeconds = 10, longPressSpeed = 2) => ({
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, longPressSpeed, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {}, toast: () => {}, loadSourceStatus: async () => ({}), offlineReason: () => '', stage: () => null,
 });
 
-function setup(seekSeconds = 10) {
+function setup(seekSeconds = 10, longPressSpeed = 2) {
   const stage = document.createElement('div');
   document.body.append(stage);
-  configurePlayer({ ...host(seekSeconds), stage: () => stage });
+  configurePlayer({ ...host(seekSeconds, longPressSpeed), stage: () => stage });
   const root = document.createElement('div');
   root.className = 'video-js';
   const bar = document.createElement('div');
@@ -27,8 +27,10 @@ function setup(seekSeconds = 10) {
   root.append(bar, video);
   stage.append(root);
   root.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON: () => ({}) });
-  const player = { el: () => root, on: vi.fn() } as unknown as VjsPlayer;
-  return { root, bar, video, player };
+  let rate = 1;
+  const player = { el: () => root, on: vi.fn(),
+    playbackRate: (value?: number) => { if (value === undefined) return rate; rate = value; return rate } } as unknown as VjsPlayer;
+  return { root, bar, video, player, rate: () => rate };
 }
 
 function pointer(type: string, x: number) {
@@ -55,6 +57,18 @@ describe('舞台快退/快进按钮', () => {
 });
 
 describe('舞台触屏双击', () => {
+  it('长按画面临时加速，松开恢复且不切播放', () => {
+    vi.useFakeTimers();
+    const { video, player, rate } = setup(10, 3);
+    mountPlayerTouchSeek(player);
+    video.dispatchEvent(pointer('pointerdown', 200));
+    vi.advanceTimersByTime(500);
+    expect(rate()).toBe(3);
+    video.dispatchEvent(pointer('pointerup', 200));
+    expect(rate()).toBe(1);
+    expect(video.currentTime).toBe(50);
+  });
+
   it('同侧两下按步长跳，左右半区方向相反', () => {
     const { video, player } = setup(10);
     mountPlayerTouchSeek(player);

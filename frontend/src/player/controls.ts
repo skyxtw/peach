@@ -250,9 +250,11 @@ export function mountPlayerQualityControl(
   };
   const button = (panel: HTMLElement, selector: string) => panel.querySelector<HTMLElement>(selector)!;
   /** 菜单此刻摆的是哪一面；轨道与尺寸变化只就地改这一面（`refreshPanel`）。 */
-  let view: 'main' | 'seek' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
+  let view: 'main' | 'seek' | 'longpress' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
   const seekStep = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
   const seekLabel = () => t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() });
+  const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
+  const longPressLabel = () => `${longPressSpeed()}×`;
   const showMain = (direction = 0) => {
     view = 'main'; syncTabs('play');
     const { active } = qualityRows(), speed = rememberRate.current();
@@ -260,6 +262,7 @@ export function mountPlayerQualityControl(
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupControl')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>${t('catalog:playerQuality.speed')}</span><b>${speed === 1 ? t('catalog:playerQuality.normalSpeed') : `${speed}×`}</b>${icon('player-menu-next')}</button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-seek-step>${icon('rotate-cw', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerQuality.seekStep')}</span><b>${seekLabel()}</b>${icon('player-menu-next')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-long-press>${icon('player-speed')}<span>${t('catalog:playerQuality.longPressSpeed')}</span><b>${longPressLabel()}</b>${icon('player-menu-next')}</button>
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupPicture')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
         ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
@@ -273,6 +276,7 @@ export function mountPlayerQualityControl(
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();
     button(panel, '[data-player-seek-step]').onclick = () => showSeek();
+    button(panel, '[data-player-long-press]').onclick = () => showLongPress();
     button(panel, '[data-player-subtitles]').onclick = () => subtitleControls?.show();
     button(panel, '[data-player-quality-view]').onclick = () => showQuality();
     button(panel, '[data-player-rotation]').onclick = () => showRotation();
@@ -325,6 +329,21 @@ export function mountPlayerQualityControl(
     button(panel, '[data-player-seek-up]').onclick = () => apply(seekStep() + 5);
     panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
       option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === seekStep())));
+  };
+  const showLongPress = (direction = 1) => {
+    view = 'longpress'; syncTabs('play');
+    const panel = renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${t('catalog:playerQuality.backMenu')}">${icon('player-menu-back')}</button><strong>${t('catalog:playerQuality.longPressSpeed')}</strong></div>
+      <div class="vjs-peach-panel-menu">${[1.5, 2, 3, 4].map(rate =>
+        `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-long-press-option="${rate}" aria-checked="${rate === longPressSpeed()}"><span class="vjs-peach-option-check">${rate === longPressSpeed() ? icon('player-option-check') : ''}</span><span class="vjs-peach-option-label">${rate}×</span></button>`).join('')}
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.longPressSpeedHint')}</p></div>`, direction);
+    button(panel, '[data-player-menu-back]').onclick = () => showMain(-1);
+    panel.querySelectorAll<HTMLElement>('[data-player-long-press-option]').forEach(option => {
+      option.onclick = () => {
+        const settings = playerHost().settings();
+        settings.longPressSpeed = Number(option.dataset.playerLongPressOption);
+        playerHost().saveSettings(); showMain(-1);
+      };
+    });
   };
   settingsTabs.forEach((tab) => {
     tab.onclick = () => { if (tab.dataset.playerSettingsTab === 'keys') showShortcuts(); else showMain() };
@@ -440,9 +459,11 @@ export function mountPlayerQualityControl(
     const angle = view === 'main' ? panel?.querySelector('[data-player-rotation] b') : null;
     const speed = view === 'main' ? panel?.querySelector('[data-player-speed] b') : null;
     const seek = view === 'main' ? panel?.querySelector('[data-player-seek-step] b') : null;
+    const longPress = view === 'main' ? panel?.querySelector('[data-player-long-press] b') : null;
     if (angle) angle.textContent = `${rotation.angle()}°`;
     if (speed) speed.textContent = rememberRate.current() === 1 ? t('catalog:playerQuality.normalSpeed') : `${rememberRate.current()}×`;
     if (seek) seek.textContent = seekLabel();
+    if (longPress) longPress.textContent = longPressLabel();
   };
   toggle.onclick = (event) => { event.stopPropagation(); const open = !isOpen(); if (open) showMain(); setOpen(open) };
   const outside = (event: Event) => { if (!root.contains(event.target as Node) && !drawer.contains(event.target as Node)) close() };
@@ -523,6 +544,7 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
 const TAP_MS = 300;
 const TAP_SLOP = 12;
 const TAP_SUPPRESS_MS = 450;
+const LONG_PRESS_MS = 500;
 
 export function mountPlayerTouchSeek(player: VjsPlayer): void {
   const root = player.el();
@@ -532,8 +554,12 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   let down: { x: number; y: number; at: number } | null = null;
   let lastTap: { side: -1 | 1; at: number } | null = null;
   let tapTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdRate = 1;
+  let holding = false;
   let suppressUntil = 0;
   const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
   const inStage = () => { const stage = playerHost().stage(); return !!stage && stage.contains(root) };
   const sideAt = (x: number): -1 | 1 => {
     const rect = root.getBoundingClientRect();
@@ -541,13 +567,36 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     return x - rect.left < rect.width / 2 ? -1 : 1;
   };
   const clearTap = () => { if (tapTimer) clearTimeout(tapTimer); tapTimer = null; lastTap = null };
+  const clearHold = () => { if (holdTimer) clearTimeout(holdTimer); holdTimer = null };
+  const restoreRate = () => {
+    clearHold();
+    if (holding) { holding = false; player.playbackRate(holdRate) }
+  };
   const onDown = (event: PointerEvent) => {
     if (event.pointerType === 'mouse' || !inStage()) return;
+    clearHold(); restoreRate();
     down = { x: event.clientX, y: event.clientY, at: Date.now() };
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      if (!down || !inStage()) return;
+      holding = true;
+      holdRate = Number(player.playbackRate()) || 1;
+      player.playbackRate(longPressSpeed());
+    }, LONG_PRESS_MS);
+  };
+  const onMove = (event: PointerEvent) => {
+    if (!down || event.pointerType === 'mouse') return;
+    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_SLOP) { clearHold(); restoreRate() }
   };
   const onUp = (event: PointerEvent) => {
     if (event.pointerType === 'mouse' || !down || !inStage()) return;
+    clearHold();
     const started = down; down = null;
+    if (holding) {
+      holding = false; player.playbackRate(holdRate);
+      suppressUntil = Date.now() + TAP_SUPPRESS_MS;
+      return;
+    }
     if (Date.now() - started.at > 600 || Math.hypot(event.clientX - started.x, event.clientY - started.y) > TAP_SLOP) return;
     const now = Date.now(), side = sideAt(event.clientX);
     suppressUntil = now + TAP_SUPPRESS_MS;
@@ -559,7 +608,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     lastTap = { side, at: now };
     tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
   };
-  const onCancel = () => { down = null };
+  const onCancel = () => { clearHold(); restoreRate(); down = null };
   const captureClick = (event: Event) => {
     if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
   };
@@ -567,15 +616,20 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
   };
   video.addEventListener('pointerdown', onDown);
+  video.addEventListener('pointermove', onMove);
   video.addEventListener('pointerup', onUp);
   video.addEventListener('pointercancel', onCancel);
+  video.addEventListener('pointerleave', onCancel);
   root.addEventListener('click', captureClick, true);
   root.addEventListener('dblclick', captureDoubleClick, true);
   player.on('dispose', () => {
     if (tapTimer) clearTimeout(tapTimer);
+    clearHold();
     video.removeEventListener('pointerdown', onDown);
+    video.removeEventListener('pointermove', onMove);
     video.removeEventListener('pointerup', onUp);
     video.removeEventListener('pointercancel', onCancel);
+    video.removeEventListener('pointerleave', onCancel);
     root.removeEventListener('click', captureClick, true);
     root.removeEventListener('dblclick', captureDoubleClick, true);
     root.removeAttribute('data-player-touch-seek');

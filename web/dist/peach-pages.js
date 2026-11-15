@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33", e._sentryDebugIdIdentifier = "sentry-dbid-4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "8206e2db-7f4b-4247-b222-6df3b32b7c66", e._sentryDebugIdIdentifier = "sentry-dbid-8206e2db-7f4b-4247-b222-6df3b32b7c66");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2167,6 +2167,8 @@ var He = {
 		originalOrientation: "{{angle}}° (original)",
 		playerSettings: "Player preferences",
 		quality: "Quality",
+		longPressSpeed: "Hold to speed up",
+		longPressSpeedHint: "Temporarily speed up while holding the picture; release to restore. Touch screens only.",
 		seekStep: "Back / forward",
 		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
 		seekStepSeconds: "{{seconds}} s",
@@ -9330,6 +9332,8 @@ var He = {
 		originalOrientation: "{{angle}}°（原始方向）",
 		playerSettings: "播放器偏好",
 		quality: "清晰度",
+		longPressSpeed: "长按倍速",
+		longPressSpeedHint: "按住画面时临时加速，松开恢复；触屏生效。",
 		seekStep: "快退 / 快进",
 		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
 		seekStepSeconds: "{{seconds}} 秒",
@@ -38747,4 +38751,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33
+//# debugId=8206e2db-7f4b-4247-b222-6df3b32b7c66

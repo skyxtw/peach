@@ -10,6 +10,8 @@ export interface PlayerSettings {
   ambientMode: boolean;
   theaterMode: boolean;
   seekSeconds: number;
+  /** 触屏长按时的临时倍速。 */
+  longPressSpeed: number;
   miniplayer: boolean;
   detailAutoplay: boolean;
   /** 番号作品开播前那层封面取官方封面还是预览图（`card-art` 的 `detailPosterUrl` 按它挑）。 */
