@@ -15,14 +15,17 @@ const TARGET_KEY = 'peach.playback-target.v1';
 type LocalPlayer = { id: string; label: string; label_code?: string };
 const NETWORK_TARGETS = [['m3u', t('catalog:externalPlayback.m3uPlaylist')], ['url', t('catalog:externalPlayback.streamUrlVr')]] as const;
 
-function savedTarget() {
-  try { return localStorage.getItem(TARGET_KEY) || `local:${localStorage.getItem('peach.local-player.v1') || 'default'}` }
-  catch { return 'local:default' }
+function savedTarget(): string | null {
+  try {
+    return localStorage.getItem(TARGET_KEY)
+      || (localStorage.getItem('peach.local-player.v1') ? `local:${localStorage.getItem('peach.local-player.v1')}` : null);
+  } catch { return null }
 }
 
 export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): void }) {
   const [players, setPlayers] = useState<LocalPlayer[] | null>(null);
-  const [player, setPlayer] = useState(savedTarget);
+  const [pinned, setPinned] = useState(() => savedTarget() !== null);
+  const [player, setPlayer] = useState(() => savedTarget() ?? 'local:default');
   const [links, setLinks] = useState<{ url: string; playlist: string } | null>(null);
   const [loadError, setLoadError] = useState('');
   const [epoch, setEpoch] = useState(0);
@@ -34,9 +37,11 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
       if (controller.signal.aborted) return;
       setPlayers(result.players);
       setPlayer(current => {
-        if (result.players.some(item => `local:${item.id}` === current) || NETWORK_TARGETS.some(([key]) => key === current)) return current;
-        if (result.players.length) return `local:${result.players[0]!.id}`;
-        return 'm3u';
+        const valid = result.players.some(item => `local:${item.id}` === current) || NETWORK_TARGETS.some(([key]) => key === current);
+        if (pinned && valid) return current;
+        /* 没存过选择时优先挑能回传进度的本机播放器；系统默认播放器仍可手动选。 */
+        const preferred = result.players.find(item => item.id !== 'default') ?? result.players[0];
+        return preferred ? `local:${preferred.id}` : 'm3u';
       });
     }).catch(cause => {
       if (controller.signal.aborted) return;
@@ -93,11 +98,12 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
       <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
         options={[...(players || []).map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const), ...NETWORK_TARGETS]}
         value={player} disabled={players === null || !!action.busy} epoch={epoch * 2 + Number(players !== null)} onPick={value => {
-          setPlayer(value);
+          setPlayer(value); setPinned(true);
           setLinks(null);
           action.setError('');
           try { localStorage.setItem(TARGET_KEY, value) } catch { /* 浏览器未允许保存偏好。 */ }
         }} />
+      {player === 'local:default' ? <Help>{t('catalog:externalPlayback.defaultPlayerNoResume')}</Help> : null}
       <Button variant="secondary" aria-label={t('catalog:externalPlayback.openInPlayer')} disabled={players === null}
         {...busyProps(action.busy === 'open')} onClick={open}>{t('catalog:shared.open')}</Button>
     </div>

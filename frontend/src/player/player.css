@@ -468,6 +468,12 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 [data-player-menu]>span{overflow:hidden;text-overflow:ellipsis}
 [data-player-menu]>[data-player-menu-check]{grid-column:3;justify-self:center;margin:0;width:18px;height:18px;visibility:hidden}
 [data-player-menu][aria-checked="true"]>[data-player-menu-check]{visibility:visible}
+/* 拖动进度条时，在进度条下沿跟着指针走的时间；移动端没有时间胶囊时靠它读目标时刻。 */
+.vjs-peach-scrub-time{position:absolute;z-index:5;top:calc(100% + 6px);transform:translateX(-50%);
+  padding:2px 8px;border-radius:var(--pill-radius);background:rgba(0,0,0,.78);color:#fff;
+  font-size:var(--fs-sm);font-weight:600;line-height:1.4;font-variant-numeric:tabular-nums;
+  white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px #0006}
+.vjs-peach-scrub-time[hidden]{display:none}
 /* 舞台控制条的快退/快进：与播放键同排同底色，图标是 Lucide 的描边旋转箭头。
    窄屏多出两枚 36px 键，时间胶囊让位；手机上音量本来由系统键负责，时间只在宽屏显示。 */
 [data-stage-media] .video-js .vjs-control-bar>.vjs-peach-seek{box-sizing:border-box;position:relative;isolation:isolate;

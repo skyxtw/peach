@@ -364,6 +364,7 @@
     "siteSamples": "{{site}} samples"
   },
   "externalPlayback": {
+    "defaultPlayerNoResume": "The system default player cannot start at the web position or report progress. Choose VLC, mpv, or IINA to resume.",
     "externalPlayer": "External player",
     "m3uPlaylist": "M3U playlist",
     "openInPlayer": "Open in external player",

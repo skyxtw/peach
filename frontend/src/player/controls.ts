@@ -9,7 +9,7 @@ import { detailPlayer, resizeSoon } from './registry';
 import { PLAYER_PANEL_EVENT } from './stats';
 import type { PlayerItem, SourceQuality, VjsPlayer } from './types';
 import { SubtitleControls, languageName, subtitleIcon } from './subtitles';
-import { createSeekPreview } from './seek-preview';
+import { createSeekPreview, previewCenter } from './seek-preview';
 import { mountPlayerRotation } from './rotation';
 import { mountPlayerPipControl } from './pip';
 import { mountPlaybackRate, playerMemory } from './memory';
@@ -678,27 +678,44 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
 
 /** 进度条上的拖动预览：时间与那一秒的画面，取图与夹边见 `seek-preview.ts`。
  *
- *  有可用图时鼠标悬停显示；触屏按住拖动时显示、松手收起。没有可用图时不显示浮层。 */
+ *  鼠标悬停显示时间（有图时连画面），触屏按住拖动同样显示；没有可用图时只显示时间。
+ *  拖动期间进度条下沿另有一枚时间跟着指针走，松手收起。 */
 export function mountPlayerSeekPreview(player: VjsPlayer, item: PlayerItem | null, options: { thumbnail?: boolean } = {}): void {
   const progress = player.el().querySelector<HTMLElement>('.vjs-control-bar .vjs-progress-control');
   if (!progress || progress.querySelector('[data-player-seek-preview]')) return;
   const preview = createSeekPreview(progress, item, options);
-  const move = (event: PointerEvent) => {
+  const scrub = document.createElement('span');
+  scrub.className = 'vjs-peach-scrub-time'; scrub.hidden = true;
+  progress.append(scrub);
+  const timeText = player.el().querySelector<HTMLElement>('.vjs-peach-time-text');
+  let scrubbing = false;
+  const move = (event: PointerEvent, dragging = false) => {
     const duration = realDuration(player.duration()) || realDuration(item?.duration);
     if (!duration) return;
     const rect = progress.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
     preview.prime();
-    preview.show((event.clientX - rect.left) / rect.width, duration);
+    preview.show(ratio, duration);
+    /* 拖动时右侧那颗时间胶囊跟着指针走；松手后再由 timeupdate 恢复实际播放位置。 */
+    if (dragging) {
+      const seconds = duration * Math.min(1, Math.max(0, ratio));
+      scrub.textContent = fmtClock(seconds); scrub.hidden = false;
+      scrub.style.left = `${previewCenter(event.clientX - rect.left, rect.width, scrub.offsetWidth || 60, 4)}px`;
+      if (timeText) timeText.textContent = `${fmtClock(seconds)} / ${fmtClock(duration)}`;
+    }
   };
-  const hide = () => preview.hide();
-  const lift = (event: PointerEvent) => { if (event.pointerType !== 'mouse') preview.hide() };
+  const restoreTime = () => { scrubbing = false; scrub.hidden = true; player.trigger('timeupdate') };
+  const hide = () => { restoreTime(); preview.hide() };
+  const lift = (event: PointerEvent) => { restoreTime(); if (event.pointerType !== 'mouse') preview.hide() };
   const listeners: [string, (event: PointerEvent) => void][] = [
-    ['pointerdown', move], ['pointermove', move], ['pointerleave', hide], ['pointerup', lift], ['pointercancel', hide],
+    ['pointerdown', (event) => { scrubbing = true; move(event, true) }],
+    ['pointermove', (event) => move(event, scrubbing)],
+    ['pointerleave', hide], ['pointerup', lift], ['pointercancel', hide],
   ];
   for (const [type, listener] of listeners) progress.addEventListener(type, listener as EventListener);
   player.on('dispose', () => {
     for (const [type, listener] of listeners) progress.removeEventListener(type, listener as EventListener);
-    preview.dispose();
+    preview.dispose(); scrub.remove();
   });
 }
 
