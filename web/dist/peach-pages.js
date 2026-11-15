@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "7d71b2e7-4337-4c8b-8753-b65b9b10991f", e._sentryDebugIdIdentifier = "sentry-dbid-7d71b2e7-4337-4c8b-8753-b65b9b10991f");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "cbc2a0cd-18b3-4b37-95e6-4dae628b6a69", e._sentryDebugIdIdentifier = "sentry-dbid-cbc2a0cd-18b3-4b37-95e6-4dae628b6a69");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -1822,6 +1822,7 @@ var He = {
 	},
 	externalPlayback: {
 		defaultPlayerNoResume: "The system default player cannot start at the web position or report progress. Choose VLC, mpv, or IINA to resume.",
+		detectingPlayers: "Detecting players…",
 		externalPlayer: "External player",
 		m3uPlaylist: "M3U playlist",
 		openInPlayer: "Open in external player",
@@ -8988,6 +8989,7 @@ var He = {
 	},
 	externalPlayback: {
 		defaultPlayerNoResume: "系统默认播放器不能接收起播位置，也不会回传进度；要续播请选 VLC、mpv 或 IINA。",
+		detectingPlayers: "正在检测播放器…",
 		externalPlayer: "外部播放器",
 		m3uPlaylist: "M3U 播放列表",
 		openInPlayer: "使用外部播放器打开",
@@ -38711,4 +38713,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=7d71b2e7-4337-4c8b-8753-b65b9b10991f
+//# debugId=cbc2a0cd-18b3-4b37-95e6-4dae628b6a69

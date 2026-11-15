@@ -280,6 +280,7 @@ class PlaybackTrackers:
         self.stopping = threading.Event()
         self.lock = threading.Lock()
         self.threads: set[threading.Thread] = set()
+        self.assets: dict[int, int] = {}
 
     def has_room(self) -> bool:
         with self.lock:
@@ -292,8 +293,13 @@ class PlaybackTrackers:
             thread = threading.Thread(target=self._run, args=(session,), daemon=True,
                                       name=f"peach-playback-{session.asset_id}")
             self.threads.add(thread)
+            self.assets[session.asset_id] = self.assets.get(session.asset_id, 0) + 1
         thread.start()
         return True
+
+    def active_assets(self) -> set[int]:
+        with self.lock:
+            return {asset_id for asset_id, count in self.assets.items() if count > 0}
 
     def stop(self, timeout: float = 5.0) -> None:
         self.stopping.set()
@@ -311,6 +317,9 @@ class PlaybackTrackers:
         finally:
             with self.lock:
                 self.threads.discard(threading.current_thread())
+                left = self.assets.get(session.asset_id, 0) - 1
+                if left > 0: self.assets[session.asset_id] = left
+                else: self.assets.pop(session.asset_id, None)
 
     def _connect(self, session: Session) -> Probe | None:
         deadline = self.clock() + self.connect_wait

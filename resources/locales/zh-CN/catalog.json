@@ -339,6 +339,7 @@
   },
   "externalPlayback": {
     "defaultPlayerNoResume": "系统默认播放器不能接收起播位置，也不会回传进度；要续播请选 VLC、mpv 或 IINA。",
+    "detectingPlayers": "正在检测播放器…",
     "externalPlayer": "外部播放器",
     "m3uPlaylist": "M3U 播放列表",
     "openInPlayer": "使用外部播放器打开",

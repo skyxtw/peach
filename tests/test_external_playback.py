@@ -241,6 +241,26 @@ class PlaybackTrackingTests(unittest.TestCase):
         near_end = self._mpv([_frame(96), _frame(96), _frame(98.5)], flush_every=3600)
         self.assertTrue(near_end[-1][0]['ended'])
 
+    def test_active_assets_tracks_running_sessions_only(self):
+        import threading
+        release = threading.Event()
+
+        def connect():
+            release.wait(5)
+            raise OSError('closed')
+
+        trackers = tracking.PlaybackTrackers(poll=0.001, connect_wait=5)
+        try:
+            self.assertTrue(trackers.start(tracking.Session(7, connect, lambda: True, lambda *_: None)))
+            self.assertEqual(trackers.active_assets(), {7})
+        finally:
+            release.set()
+            deadline = time.monotonic() + 5
+            while trackers.threads and time.monotonic() < deadline:
+                time.sleep(0.01)
+            trackers.stop()
+        self.assertEqual(trackers.active_assets(), set())
+
     def test_periodic_flush_records_play_once(self):
         frames = [_frame(0)] + [_frame(float(second)) for second in range(6)]
         reports = self._mpv(frames, flush_every=0)

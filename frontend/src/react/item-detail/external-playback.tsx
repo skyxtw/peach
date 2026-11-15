@@ -53,35 +53,37 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   }, [epoch]);
   useEffect(() => {
     if (externalLaunch === null) return;
-    let cancelled = false, timer: ReturnType<typeof setTimeout> | null = null, fired = false;
-    const sync = (attempt: number) => {
-      /* 播放器退出时最后一次落库可能晚于窗口 focus，且 /api/item 不能吃浏览器缓存。
-         多等几拍；拿到比打开外部播放器更新的位置就更新画面并收工。 */
+    let cancelled = false, timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = () => {
+      setExternalLaunch(null);
+      void queryClient.invalidateQueries({ queryKey: ['item', id] });
+    };
+    const readFinal = () => {
       void apiGet<{ leave_ratio?: number; duration?: number; last_played?: number | string }>(`/api/item?id=${id}&_=${Date.now()}`).then(item => {
         if (cancelled) return;
         const playedAt = Number(item.last_played), ratio = Number(item.leave_ratio), total = Number(item.duration);
-        const fresh = playedAt > externalLaunch && total > 0 && (ratio >= 1 || ratio > 0);
-        if (fresh) {
+        if (playedAt > externalLaunch && total > 0 && ratio > 0) {
           const video = document.querySelector<HTMLVideoElement>('#stage video');
           if (video) video.currentTime = ratio >= 1 ? 0 : Math.floor(ratio * total);
-          setExternalLaunch(null);
-          void queryClient.invalidateQueries({ queryKey: ['item', id] });
-          return;
         }
-        if (attempt < 6) { timer = setTimeout(() => sync(attempt + 1), 800); return }
-        setExternalLaunch(null);
-        void queryClient.invalidateQueries({ queryKey: ['item', id] });
-      }).catch(() => {
-        if (cancelled) return;
-        if (attempt < 3) timer = setTimeout(() => sync(attempt + 1), 800);
-        else setExternalLaunch(null);
-      });
+        finish();
+      }).catch(finish);
     };
-    const focus = () => { if (!fired) { fired = true; sync(0) } };
-    window.addEventListener('focus', focus);
+    const poll = () => {
+      if (cancelled) return;
+      void apiGet<{ active: number[] }>(`/api/local-playback/status?_=${Date.now()}`).then(status => {
+        if (cancelled) return;
+        if (status.active.includes(Number(id))) { timer = setTimeout(poll, 1000); return }
+        /* 跟踪线程结束前已经完成最后一次落库；这时再读 /api/item 拿关闭点。 */
+        readFinal();
+      }).catch(() => { timer = setTimeout(poll, 1500) });
+    };
+    poll();
+    const deadline = setTimeout(finish, 15 * 60 * 1000);
     return () => {
-      cancelled = true; window.removeEventListener('focus', focus);
+      cancelled = true;
       if (timer) clearTimeout(timer);
+      clearTimeout(deadline);
     };
   }, [externalLaunch, id]);
   const open = () => void action.run('open', async signal => {
@@ -111,14 +113,14 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   });
   return <div data-local-playback="">
     <div data-local-playback-row="">
-      <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
-        options={[...(players || []).map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const), ...NETWORK_TARGETS]}
-        value={player} disabled={players === null || !!action.busy} epoch={epoch * 2 + Number(players !== null)} onPick={value => {
+      {players === null ? <Help>{t('catalog:externalPlayback.detectingPlayers')}</Help> : <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
+        options={[...players.map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const), ...NETWORK_TARGETS]}
+        value={player} disabled={!!action.busy} epoch={epoch * 2 + 1} onPick={value => {
           setPlayer(value); setPinned(true);
           setLinks(null);
           action.setError('');
           try { localStorage.setItem(TARGET_KEY, value) } catch { /* 浏览器未允许保存偏好。 */ }
-        }} />
+        }} />}
       {player === 'local:default' ? <Help>{t('catalog:externalPlayback.defaultPlayerNoResume')}</Help> : null}
       <Button variant="secondary" aria-label={t('catalog:externalPlayback.openInPlayer')} disabled={players === null}
         {...busyProps(action.busy === 'open')} onClick={open}>{t('catalog:shared.open')}</Button>

@@ -255,6 +255,13 @@ def local_players(request: Request, args=Depends(require_auth)):
     return JSONResponse({'players': players}, headers={'Cache-Control': 'no-store'})
 
 
+@router.get('/api/local-playback/status')
+def local_playback_status(request: Request, args=Depends(require_auth)):
+    trackers = getattr(request.app.state, 'playback_trackers', None)
+    active = sorted(trackers.active_assets()) if trackers and _local_playback_client(request) else []
+    return JSONResponse({'active': active}, headers={'Cache-Control': 'no-store'})
+
+
 def _local_playback_client(request: Request) -> bool:
     from .web_local_access import local_client
     return local_client(request) and not any(
