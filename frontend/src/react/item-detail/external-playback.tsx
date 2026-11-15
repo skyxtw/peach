@@ -53,7 +53,7 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   }, [epoch]);
   useEffect(() => {
     if (externalLaunch === null) return;
-    let cancelled = false, timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false, checking = false, timer: ReturnType<typeof setTimeout> | null = null;
     const finish = () => {
       setExternalLaunch(null);
       void queryClient.invalidateQueries({ queryKey: ['item', id] });
@@ -70,18 +70,31 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
       }).catch(finish);
     };
     const poll = () => {
-      if (cancelled) return;
+      timer = null;
+      if (cancelled || checking) return;
+      checking = true;
       void apiGet<{ active: number[] }>(`/api/local-playback/status?_=${Date.now()}`).then(status => {
+        checking = false;
         if (cancelled) return;
-        if (status.active.includes(Number(id))) { timer = setTimeout(poll, 1000); return }
+        if (status.active.includes(Number(id))) { timer = setTimeout(poll, 700); return }
         /* 跟踪线程结束前已经完成最后一次落库；这时再读 /api/item 拿关闭点。 */
         readFinal();
-      }).catch(() => { timer = setTimeout(poll, 1500) });
+      }).catch(() => { checking = false; timer = setTimeout(poll, 1000) });
     };
+    const wake = () => {
+      if (cancelled || checking) return;
+      if (timer) clearTimeout(timer);
+      poll();
+    };
+    const onVisible = () => { if (!document.hidden) wake() };
+    window.addEventListener('focus', wake);
+    document.addEventListener('visibilitychange', onVisible);
     poll();
     const deadline = setTimeout(finish, 15 * 60 * 1000);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', wake);
+      document.removeEventListener('visibilitychange', onVisible);
       if (timer) clearTimeout(timer);
       clearTimeout(deadline);
     };
@@ -113,7 +126,7 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   });
   return <div data-local-playback="">
     <div data-local-playback-row="">
-      {players === null ? <Help>{t('catalog:externalPlayback.detectingPlayers')}</Help> : <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
+      {players === null ? null : <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
         options={[...players.map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const), ...NETWORK_TARGETS]}
         value={player} disabled={!!action.busy} epoch={epoch * 2 + 1} onPick={value => {
           setPlayer(value); setPinned(true);
@@ -121,10 +134,11 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
           action.setError('');
           try { localStorage.setItem(TARGET_KEY, value) } catch { /* 浏览器未允许保存偏好。 */ }
         }} />}
-      {player === 'local:default' ? <Help>{t('catalog:externalPlayback.defaultPlayerNoResume')}</Help> : null}
       <Button variant="secondary" aria-label={t('catalog:externalPlayback.openInPlayer')} disabled={players === null}
         {...busyProps(action.busy === 'open')} onClick={open}>{t('catalog:shared.open')}</Button>
     </div>
+    {players === null ? <Help>{t('catalog:externalPlayback.detectingPlayers')}</Help>
+      : player === 'local:default' ? <Help>{t('catalog:externalPlayback.defaultPlayerNoResume')}</Help> : null}
     {action.error || loadError ? <ErrorText>{action.error || loadError}</ErrorText> : null}
     {loadError ? <Button variant="secondary" disabled={!!action.busy}
       onClick={() => { setLoadError(''); setPlayers(null); setEpoch(value => value + 1) }}>{t('catalog:externalPlayback.redetect')}</Button> : null}
