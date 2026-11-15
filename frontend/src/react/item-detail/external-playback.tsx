@@ -53,20 +53,36 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   }, [epoch]);
   useEffect(() => {
     if (externalLaunch === null) return;
-    let cancelled = false;
-    const sync = () => {
-      setExternalLaunch(null);
-      void apiGet<{ leave_ratio?: number; duration?: number; last_played?: number | string }>(`/api/item?id=${id}`).then(item => {
+    let cancelled = false, timer: ReturnType<typeof setTimeout> | null = null, fired = false;
+    const sync = (attempt: number) => {
+      /* 播放器退出时最后一次落库可能晚于窗口 focus，且 /api/item 不能吃浏览器缓存。
+         多等几拍；拿到比打开外部播放器更新的位置就更新画面并收工。 */
+      void apiGet<{ leave_ratio?: number; duration?: number; last_played?: number | string }>(`/api/item?id=${id}&_=${Date.now()}`).then(item => {
         if (cancelled) return;
         const playedAt = Number(item.last_played), ratio = Number(item.leave_ratio), total = Number(item.duration);
-        if (!(playedAt > externalLaunch) || !(ratio > 0) || !(total > 0)) return;
-        const video = document.querySelector<HTMLVideoElement>('#stage video');
-        if (video) video.currentTime = ratio >= 1 ? 0 : Math.floor(ratio * total);
-      }).catch(() => {});
-      void queryClient.invalidateQueries({ queryKey: ['item', id] });
+        const fresh = playedAt > externalLaunch && total > 0 && (ratio >= 1 || ratio > 0);
+        if (fresh) {
+          const video = document.querySelector<HTMLVideoElement>('#stage video');
+          if (video) video.currentTime = ratio >= 1 ? 0 : Math.floor(ratio * total);
+          setExternalLaunch(null);
+          void queryClient.invalidateQueries({ queryKey: ['item', id] });
+          return;
+        }
+        if (attempt < 6) { timer = setTimeout(() => sync(attempt + 1), 800); return }
+        setExternalLaunch(null);
+        void queryClient.invalidateQueries({ queryKey: ['item', id] });
+      }).catch(() => {
+        if (cancelled) return;
+        if (attempt < 3) timer = setTimeout(() => sync(attempt + 1), 800);
+        else setExternalLaunch(null);
+      });
     };
-    window.addEventListener('focus', sync);
-    return () => { cancelled = true; window.removeEventListener('focus', sync) };
+    const focus = () => { if (!fired) { fired = true; sync(0) } };
+    window.addEventListener('focus', focus);
+    return () => {
+      cancelled = true; window.removeEventListener('focus', focus);
+      if (timer) clearTimeout(timer);
+    };
   }, [externalLaunch, id]);
   const open = () => void action.run('open', async signal => {
     if (player.startsWith('local:')) {
