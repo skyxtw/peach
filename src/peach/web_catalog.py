@@ -1127,7 +1127,7 @@ def q_item(contract: WebContract, aid):
         r = c.execute(
             "SELECT id,location,path,name,medium,catalog_title,original_title,creator,studio,code,"
             "release_date,size,duration,width,height,field_owners,mutation_revision,"
-            "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,disposal_reason,"
+            "ctx_length,ctx_orient,snapshot_path,play_count,last_played,leave_ratio,feedback,disposal,disposal_reason,"
             "rating,o_count,play_seconds,max_reached,seek_count,region,"
             f"{effective_region_sql('asset')} AS effective_region,"
             "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "

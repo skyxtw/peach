@@ -7,6 +7,8 @@ import { ErrorText, Help } from '../settings/section';
 import { busyProps, useAction } from '../settings/use-action';
 import { t } from '../../i18n';
 import { serverLabel } from '../../core/server-text';
+import { markExternalPlayback } from '../../player/progress';
+import { queryClient } from '../../query/client';
 
 const TARGET_KEY = 'peach.playback-target.v1';
 /** 本机播放器：`label` 是播放器名或服务端按 zh-CN 渲染的「系统默认播放器」，后者带 `label_code`。 */
@@ -24,6 +26,7 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   const [links, setLinks] = useState<{ url: string; playlist: string } | null>(null);
   const [loadError, setLoadError] = useState('');
   const [epoch, setEpoch] = useState(0);
+  const [externalLaunch, setExternalLaunch] = useState<number | null>(null);
   const action = useAction();
   useEffect(() => {
     const controller = new AbortController();
@@ -43,9 +46,29 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
     });
     return () => controller.abort();
   }, [epoch]);
+  useEffect(() => {
+    if (externalLaunch === null) return;
+    let cancelled = false;
+    const sync = () => {
+      setExternalLaunch(null);
+      void apiGet<{ leave_ratio?: number; duration?: number; last_played?: number | string }>(`/api/item?id=${id}`).then(item => {
+        if (cancelled) return;
+        const playedAt = Number(item.last_played), ratio = Number(item.leave_ratio), total = Number(item.duration);
+        if (!(playedAt > externalLaunch) || !(ratio > 0) || !(total > 0)) return;
+        const video = document.querySelector<HTMLVideoElement>('#stage video');
+        if (video) video.currentTime = ratio >= 1 ? 0 : Math.floor(ratio * total);
+      }).catch(() => {});
+      void queryClient.invalidateQueries({ queryKey: ['item', id] });
+    };
+    window.addEventListener('focus', sync);
+    return () => { cancelled = true; window.removeEventListener('focus', sync) };
+  }, [externalLaunch, id]);
   const open = () => void action.run('open', async signal => {
     if (player.startsWith('local:')) {
-      await apiSend(`/api/local-playback?id=${id}&player=${encodeURIComponent(player.slice(6))}`, {}, 'POST', signal);
+      const video = document.querySelector<HTMLVideoElement>('#stage video');
+      const position = Math.max(0, Math.floor(Number(video?.currentTime) || 0));
+      const opened = await apiSend<{ tracked?: boolean }>(`/api/local-playback?id=${id}&player=${encodeURIComponent(player.slice(6))}&position=${position}`, {}, 'POST', signal);
+      if (opened?.tracked) { markExternalPlayback(`item:${id}`); setExternalLaunch(Date.now() / 1000) }
       return null;
     }
     const result = await apiSend<{ url: string; playlist: string }>(`/api/external-playback?id=${id}`, {}, 'POST', signal);

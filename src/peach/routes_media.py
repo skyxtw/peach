@@ -262,7 +262,7 @@ def _local_playback_client(request: Request) -> bool:
 
 
 @router.post('/api/local-playback')
-def local_playback(request: Request, id: int, player: str = 'default', args=Depends(require_auth)):
+def local_playback(request: Request, id: int, player: str = 'default', position: float = 0, args=Depends(require_auth)):
     from . import local_playback as launcher
     from .routes_auth import same_origin
     from fastapi import HTTPException
@@ -273,14 +273,15 @@ def local_playback(request: Request, id: int, player: str = 'default', args=Depe
     asset = request.app.state.media_engine.asset(id)
     path = request.app.state.media_engine.filesystem.file_for(asset, thumbnail=False)
     try:
-        launcher.open_media(path, player, track=_playback_tracker(request.app.state, id))
+        tracked = launcher.open_media(path, player, track=_playback_tracker(request.app.state, id),
+                                      start_seconds=position)
     except ValueError as exc:
         raise HTTPException(400, error_detail(exc)) from None
     except (OSError, subprocess.SubprocessError) as exc:
         LOGGER.warning('Local player failed to start: player=%s type=%s errno=%s winerror=%s',
                        player, type(exc).__name__, getattr(exc, 'errno', None), getattr(exc, 'winerror', None))
         raise HTTPException(503, message_fields('api.media.playerLaunchFailed')) from None
-    return {'opened': True}
+    return {'opened': True, 'tracked': bool(tracked)}
 
 
 def _playback_tracker(state, asset_id: int):
