@@ -137,13 +137,29 @@ export function mountPlayerQualityControl(
   const root = document.createElement('div');
   root.className = 'vjs-peach-settings vjs-control'; root.dataset.playerQuality = '';
   root.innerHTML = `<button type="button" class="vjs-peach-settings-toggle" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-expanded="false">
-    ${icon('settings')}<span data-player-quality-badge hidden></span></button>
-    <div class="vjs-peach-settings-menu" role="menu" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-hidden="true"></div>`;
+    ${icon('settings')}<span data-player-quality-badge hidden></span></button>`;
   const fullscreen = controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root, fullscreen || null);
   const toggle = root.querySelector('button')!, badge = root.querySelector<HTMLElement>('[data-player-quality-badge]')!;
   playerControlTooltip(toggle, t('catalog:playerQuality.settings'));
-  const menu = root.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
+  const drawer = document.createElement('div');
+  drawer.className = 'vjs-peach-settings-drawer'; drawer.dataset.playerSettingsDrawer = ''; drawer.setAttribute('aria-hidden', 'true');
+  drawer.innerHTML = `<div class="vjs-peach-settings-head"><strong>${t('catalog:playerQuality.playerSettings')}</strong>
+      <button type="button" class="vjs-peach-settings-close" data-player-settings-close aria-label="${t('catalog:playerQuality.closeSettings')}">×</button></div>
+    <div class="vjs-peach-settings-tabs" role="tablist" aria-label="${t('catalog:playerQuality.playerSettings')}">
+      <button type="button" class="vjs-peach-settings-tab" role="tab" data-player-settings-tab="play" aria-selected="true" tabindex="0">${t('catalog:playerQuality.tabPlayback')}</button>
+      <button type="button" class="vjs-peach-settings-tab" role="tab" data-player-settings-tab="keys" aria-selected="false" tabindex="-1">${t('catalog:playerQuality.tabShortcuts')}</button>
+    </div>
+    <div class="vjs-peach-settings-menu" role="menu" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-hidden="true"></div>`;
+  player.el().append(drawer);
+  const settingsTabs = [...drawer.querySelectorAll<HTMLElement>('[data-player-settings-tab]')];
+  const syncTabs = (active: 'play' | 'keys') => {
+    settingsTabs.forEach((tab) => {
+      const selected = tab.dataset.playerSettingsTab === active;
+      tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+    });
+  };
+  const menu = drawer.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
   const rotation = mountPlayerRotation(player, video);
   const rememberRate = mountPlaybackRate(player, video);
   const memory = playerMemory(player);
@@ -186,11 +202,13 @@ export function mountPlayerQualityControl(
   };
   const isOpen = () => menu.getAttribute('aria-hidden') !== 'true';
   const setOpen = (open: boolean) => {
-    menu.setAttribute('aria-hidden', String(!open)); toggle.setAttribute('aria-expanded', String(open));
+    menu.setAttribute('aria-hidden', String(!open)); drawer.setAttribute('aria-hidden', String(!open));
+    toggle.setAttribute('aria-expanded', String(open));
     if (!open) subtitleControls?.hide();
     if (open) document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT, { detail: 'settings' }));
   };
   const close = () => setOpen(false);
+  drawer.querySelector('[data-player-settings-close]')!.addEventListener('click', () => { close(); toggle.focus() });
   const closeSettingsForOtherPanel = (event: Event) => { if ((event as CustomEvent<string>).detail !== 'settings') close() };
   document.addEventListener(PLAYER_PANEL_EVENT, closeSettingsForOtherPanel);
   /* 面板之间的切换照 YouTube 播放器 9470c977 的 www-player.css：popup 自己 .25s
@@ -230,25 +248,50 @@ export function mountPlayerQualityControl(
   };
   const button = (panel: HTMLElement, selector: string) => panel.querySelector<HTMLElement>(selector)!;
   /** 菜单此刻摆的是哪一面；轨道与尺寸变化只就地改这一面（`refreshPanel`）。 */
-  let view: 'main' | 'speed' | 'quality' | 'subtitles' | 'rotation' = 'main';
+  let view: 'main' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
   const showMain = (direction = 0) => {
-    view = 'main';
+    view = 'main'; syncTabs('play');
     const { active } = qualityRows(), speed = rememberRate.current();
-    const panel = renderPanel(`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
-      ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+    const panel = renderPanel(`<div class="vjs-peach-panel-menu">
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupControl')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>${t('catalog:playerQuality.speed')}</span><b>${speed === 1 ? t('catalog:playerQuality.normalSpeed') : `${speed}×`}</b>${icon('player-menu-next')}</button>
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupPicture')}</div>
+      <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
+        ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-subtitles><span class="vjs-peach-menu-cc" aria-hidden="true">${subtitleIcon()}</span><span>${t('catalog:playerControls.subtitles')}</span><b>${esc(subtitleControls?.label() || t('catalog:subtitles.off'))}</b>${icon('player-menu-next')}</button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-rotation>${icon('rotate-cw', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerQuality.rotation')}</span><b>${rotation.angle()}°</b>${icon('player-menu-next')}</button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>${t('catalog:playerQuality.quality')}</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button>
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupInterface')}</div>
+      <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-theater-row aria-checked="${playerHost().settings().theaterMode}">
+        ${icon('theater-enter')}<span>${t('catalog:playerControls.theaterMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${t('catalog:playerQuality.retryMemorySave')}</button></div></div>`, direction);
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();
     button(panel, '[data-player-subtitles]').onclick = () => subtitleControls?.show();
     button(panel, '[data-player-quality-view]').onclick = () => showQuality();
     button(panel, '[data-player-rotation]').onclick = () => showRotation();
+    button(panel, '[data-player-theater-row]').onclick = () => { applyTheaterMode(!playerHost().settings().theaterMode); showMain() };
     button(panel, '[data-player-memory-retry]').onclick = () => { void memory.retry() };
     syncMemoryError();
   };
+  const showShortcuts = () => {
+    view = 'shortcuts'; syncTabs('keys');
+    const rows: [string, string][] = [
+      ['Space', t('catalog:playerQuality.shortcutPlayPause')],
+      ['← / →', t('catalog:playerQuality.shortcutSeek')],
+      ['↑ / ↓', t('catalog:playerQuality.shortcutVolume')],
+      ['M', t('catalog:playerQuality.shortcutMute')],
+      ['F', t('catalog:playerQuality.shortcutFullscreen')],
+      ['T', t('catalog:playerQuality.shortcutTheater')],
+      ['I', t('catalog:playerQuality.shortcutMiniplayer')],
+      ['Esc', t('catalog:playerQuality.shortcutClose')],
+    ];
+    renderPanel(`<div class="vjs-peach-panel-menu vjs-peach-shortcuts">${rows.map(([key, label]) =>
+      `<div class="vjs-peach-shortcut"><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div>`, 1);
+  };
+  settingsTabs.forEach((tab) => {
+    tab.onclick = () => { if (tab.dataset.playerSettingsTab === 'keys') showShortcuts(); else showMain() };
+  });
   const syncMemoryError = () => {
     const message = menu.querySelector<HTMLElement>('[data-player-memory-error]');
     if (!message) return;
@@ -363,9 +406,9 @@ export function mountPlayerQualityControl(
     if (speed) speed.textContent = rememberRate.current() === 1 ? t('catalog:playerQuality.normalSpeed') : `${rememberRate.current()}×`;
   };
   toggle.onclick = (event) => { event.stopPropagation(); const open = !isOpen(); if (open) showMain(); setOpen(open) };
-  const outside = (event: Event) => { if (!root.contains(event.target as Node)) close() };
+  const outside = (event: Event) => { if (!root.contains(event.target as Node) && !drawer.contains(event.target as Node)) close() };
   document.addEventListener('pointerdown', outside);
-  root.addEventListener('keydown', (event) => {
+  const onKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && isOpen()) { event.preventDefault(); event.stopPropagation(); close(); toggle.focus() }
     if (['ArrowDown', 'ArrowUp'].includes(event.key) && isOpen() && !(event.target instanceof HTMLInputElement)) {
       event.preventDefault();
@@ -373,7 +416,9 @@ export function mountPlayerQualityControl(
       const current = buttons.indexOf(document.activeElement as HTMLElement);
       buttons[(current + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
     }
-  });
+  };
+  root.addEventListener('keydown', onKeydown);
+  drawer.addEventListener('keydown', onKeydown);
   video.addEventListener('loadedmetadata', refreshPanel);
   video.addEventListener('resize', refreshPanel);
   video.addEventListener('ratechange', refreshPanel);

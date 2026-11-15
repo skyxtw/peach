@@ -43,7 +43,7 @@ it('播放器菜单只列检测到的程序和通用网络播放方式', async (
   ] }))));
   const host = await mount(<ExternalPlayback id={3} />);
   await settle();
-  expect(host.querySelector('[data-select-trigger]')?.textContent?.trim()).toBe('系统默认播放器');
+  expect(host.querySelector('[data-select-trigger]')?.textContent?.trim()).toBe('PotPlayer');
   await click(host.querySelector('[aria-label="外部播放器"]'));
   expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent?.trim())).toEqual([
     '系统默认播放器', 'PotPlayer', 'M3U 播放列表', '网络播放地址 / VR',
@@ -57,9 +57,9 @@ it('本机可选择已安装播放器并在打开成功后回执，失败保留�
   vi.stubGlobal('fetch', fetcher);
   const host = await mount(<ExternalPlayback id={7} onOpened={opened} />);
   await settle();
-  expect(host.textContent).toContain('系统默认播放器');
+  expect(host.textContent).toContain('VLC');
   await click(host.querySelector('[aria-label="使用外部播放器打开"]'));
-  expect(fetcher).toHaveBeenLastCalledWith('/api/local-playback?id=7&player=default', expect.objectContaining({ method: 'POST' }));
+  expect(fetcher).toHaveBeenLastCalledWith('/api/local-playback?id=7&player=vlc&position=0', expect.objectContaining({ method: 'POST' }));
   expect(opened).toHaveBeenCalledOnce();
   fetcher.mockImplementation(async () => new Response(JSON.stringify({ detail: '无法打开播放器' }), { status: 503 }));
   await click(host.querySelector('[aria-label="使用外部播放器打开"]'));
@@ -95,7 +95,8 @@ it('本机检测失败时保留网络方式，重新检测后可以选择本机�
     attempts++;
     return attempts === 1
       ? new Response(JSON.stringify({ detail: '检测暂不可用' }), { status: 503 })
-      : new Response(JSON.stringify({ players: [{ id: 'potplayer', label: 'PotPlayer' }] }));
+      : new Response(JSON.stringify({ players: [{ id: 'default', label: '系统默认播放器' },
+        { id: 'potplayer', label: 'PotPlayer' }, { id: 'vlc', label: 'VLC' }] }));
   }));
   const host = await mount(<ExternalPlayback id={5} />);
   await settle();
@@ -103,7 +104,8 @@ it('本机检测失败时保留网络方式，重新检测后可以选择本机�
   expect(host.textContent).toContain('检测暂不可用');
   await click([...host.querySelectorAll('button')].find(node => node.textContent === '重新检测播放器'));
   await settle();
-  await choose(host.querySelector('[aria-label="外部播放器"]'), 'PotPlayer');
-  expect(localStorage.getItem('peach.playback-target.v1')).toBe('local:potplayer');
+  expect(host.querySelector('[data-select-trigger]')?.textContent?.trim()).toBe('PotPlayer');
+  await choose(host.querySelector('[aria-label="外部播放器"]'), 'VLC');
+  expect(localStorage.getItem('peach.playback-target.v1')).toBe('local:vlc');
   expect(host.textContent).not.toContain('检测暂不可用');
 });

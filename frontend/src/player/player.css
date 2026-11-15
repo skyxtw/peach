@@ -468,6 +468,43 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 [data-player-menu]>span{overflow:hidden;text-overflow:ellipsis}
 [data-player-menu]>[data-player-menu-check]{grid-column:3;justify-self:center;margin:0;width:18px;height:18px;visibility:hidden}
 [data-player-menu][aria-checked="true"]>[data-player-menu-check]{visibility:visible}
+
+/* 播放器偏好抽屉：参照 115-lite 的右侧面板，头部常驻、播放/快捷键两个页签，
+   菜单本体只负责滚动内容。普通详情覆盖视频右侧，窄屏改成底部抽屉。 */
+.vjs-peach-settings-drawer{box-sizing:border-box;position:absolute;z-index:2350;right:12px;top:56px;bottom:12px;
+  display:flex;flex-direction:column;width:min(340px,calc(100% - 24px));overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);border-radius:18px;background:rgba(18,18,20,.9);
+  color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.55);backdrop-filter:blur(22px) saturate(1.2);
+  opacity:0;visibility:hidden;transform:translateX(16px);pointer-events:none;
+  transition:opacity .18s cubic-bezier(.4,0,.2,1),transform .18s cubic-bezier(.4,0,.2,1),visibility .18s}
+.vjs-peach-settings-drawer[aria-hidden="false"]{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+.vjs-peach-settings-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 10px 18px}
+.vjs-peach-settings-head strong{font-size:15px;font-weight:600;letter-spacing:.01em}
+.vjs-peach-settings-close{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:#fff;font:400 22px/1 system-ui,sans-serif;cursor:pointer}
+.vjs-peach-settings-close:hover,.vjs-peach-settings-close:focus-visible{background:rgba(255,255,255,.12);outline:0}
+.vjs-peach-settings-tabs{display:flex;gap:4px;margin:0 12px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.1)}
+.vjs-peach-settings-tab{flex:1;height:34px;padding:0;border:0;border-radius:9px;background:transparent;
+  color:rgba(255,255,255,.64);font:inherit;font-size:13px;cursor:pointer}
+.vjs-peach-settings-tab:hover{background:rgba(255,255,255,.06);color:#fff}
+.vjs-peach-settings-tab[aria-selected="true"]{background:rgba(255,255,255,.12);color:#fff}
+.vjs-peach-settings-tab:focus-visible{outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}
+.vjs-peach-settings-drawer[aria-hidden="true"] .vjs-peach-settings-menu{opacity:0;visibility:hidden;pointer-events:none}
+.vjs-peach-settings-drawer .vjs-peach-settings-menu{box-sizing:border-box;position:static;z-index:auto;right:auto;bottom:auto;
+  width:auto;max-height:none;min-height:0;flex:1;overflow:auto;padding:8px 10px 14px;border-radius:0;
+  background:transparent;box-shadow:none;opacity:1;visibility:visible;pointer-events:auto}
+.vjs-peach-settings-group{margin:12px 10px 4px;color:rgba(255,255,255,.45);font-size:11px;font-weight:600;letter-spacing:.06em}
+.vjs-peach-settings-group:first-child{margin-top:4px}
+.vjs-peach-shortcuts{display:flex;flex-direction:column;gap:2px;padding:8px 6px 4px}
+.vjs-peach-shortcut{display:flex;align-items:center;justify-content:space-between;min-height:42px;padding:0 8px;border-radius:9px}
+.vjs-peach-shortcut:hover{background:rgba(255,255,255,.06)}
+.vjs-peach-shortcut kbd{min-width:54px;padding:3px 8px;border:1px solid rgba(255,255,255,.16);border-radius:6px;
+  color:rgba(255,255,255,.8);background:rgba(255,255,255,.06);font:inherit;font-size:12px;text-align:center}
+.vjs-peach-shortcut span{color:rgba(255,255,255,.8);font-size:13px}
+.video-js.vjs-peach-xsmall .vjs-peach-settings-drawer{position:fixed;z-index:2400;top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:min(72vh,520px);transform:translateY(12px)}
+.video-js.vjs-peach-xsmall .vjs-peach-settings-drawer[aria-hidden="false"]{transform:none}
+.video-js.vjs-peach-xsmall .vjs-peach-settings-drawer .vjs-peach-settings-menu{width:auto;max-height:none;border-radius:0}
+
 /* 拖动进度条时，在进度条下沿跟着指针走的时间；移动端没有时间胶囊时靠它读目标时刻。 */
 .vjs-peach-scrub-time{position:absolute;z-index:5;top:calc(100% + 6px);transform:translateX(-50%);
   padding:2px 8px;border-radius:var(--pill-radius);background:rgba(0,0,0,.78);color:#fff;

@@ -657,7 +657,8 @@ describe('手势', () => {
     expect(preview().hidden).toBe(true);
     await act(async () => { bar.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 300, pointerType: 'mouse' })) });
     const image = preview().querySelector('img')!;
-    expect(preview().hidden).toBe(true);
+    expect(preview().hidden).toBe(false);
+    expect(preview().querySelector('span')!.textContent).toBe('0:30');
     Object.defineProperties(image, { complete: { configurable: true, value: true }, naturalWidth: { configurable: true, value: 320 } });
     await act(async () => image.dispatchEvent(new Event('load')));
     expect(preview().hidden).toBe(false);

@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "cbc2a0cd-18b3-4b37-95e6-4dae628b6a69", e._sentryDebugIdIdentifier = "sentry-dbid-cbc2a0cd-18b3-4b37-95e6-4dae628b6a69");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "8c69a453-794f-4d13-9b0b-204fb313cf4f", e._sentryDebugIdIdentifier = "sentry-dbid-8c69a453-794f-4d13-9b0b-204fb313cf4f");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2155,13 +2155,17 @@ var He = {
 	},
 	playerQuality: {
 		ambientMode: "Ambient mode",
+		closeSettings: "Close player settings",
+		groupControl: "Controls",
+		groupInterface: "Interface",
+		groupPicture: "Picture",
 		auto: "Auto",
 		backMenu: "Back",
 		current: "Current quality",
 		normalSpeed: "Normal",
 		original: "Original",
 		originalOrientation: "{{angle}}° (original)",
-		playerSettings: "Player settings",
+		playerSettings: "Player preferences",
 		quality: "Quality",
 		retryMemorySave: "Retry saving playback state",
 		rotation: "Rotation",
@@ -2169,7 +2173,17 @@ var He = {
 		speed: "Playback speed",
 		speedDown: "Decrease speed by {{step}}",
 		speedUp: "Increase speed by {{step}}",
-		stream: "Stream {{number}}"
+		shortcutClose: "Close panel / exit",
+		shortcutFullscreen: "Fullscreen",
+		shortcutMiniplayer: "Mini player",
+		shortcutMute: "Mute",
+		shortcutPlayPause: "Play / pause",
+		shortcutSeek: "Back / forward",
+		shortcutTheater: "Theater mode",
+		shortcutVolume: "Volume",
+		stream: "Stream {{number}}",
+		tabPlayback: "Playback",
+		tabShortcuts: "Shortcuts"
 	},
 	playerShell: {
 		buffering: "Buffering",
@@ -9301,13 +9315,17 @@ var He = {
 	},
 	playerQuality: {
 		ambientMode: "氛围模式",
+		closeSettings: "关闭播放器设置",
+		groupControl: "控制",
+		groupInterface: "界面",
+		groupPicture: "画面",
 		auto: "自动",
 		backMenu: "返回上一个菜单",
 		current: "当前画质",
 		normalSpeed: "正常",
 		original: "原画",
 		originalOrientation: "{{angle}}°（原始方向）",
-		playerSettings: "播放器设置",
+		playerSettings: "播放器偏好",
 		quality: "清晰度",
 		retryMemorySave: "重试保存播放记忆",
 		rotation: "画面旋转",
@@ -9315,7 +9333,17 @@ var He = {
 		speed: "播放速度",
 		speedDown: "播放速度减 {{step}}",
 		speedUp: "播放速度加 {{step}}",
-		stream: "线路 {{number}}"
+		shortcutClose: "关闭面板 / 退出",
+		shortcutFullscreen: "全屏",
+		shortcutMiniplayer: "迷你播放器",
+		shortcutMute: "静音",
+		shortcutPlayPause: "播放 / 暂停",
+		shortcutSeek: "后退 / 前进",
+		shortcutTheater: "影院模式",
+		shortcutVolume: "音量",
+		stream: "线路 {{number}}",
+		tabPlayback: "播放",
+		tabShortcuts: "快捷键"
 	},
 	playerShell: {
 		buffering: "正在缓冲",
@@ -38713,4 +38741,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=cbc2a0cd-18b3-4b37-95e6-4dae628b6a69
+//# debugId=8c69a453-794f-4d13-9b0b-204fb313cf4f
