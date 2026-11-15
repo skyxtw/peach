@@ -13,6 +13,7 @@ import { createSeekPreview } from './seek-preview';
 import { mountPlayerRotation } from './rotation';
 import { mountPlayerPipControl } from './pip';
 import { mountPlaybackRate, playerMemory } from './memory';
+import { seekVideoBy, toggleVideoPlayback } from './playback';
 import { t } from '../i18n';
 
 type TooltipSync = (label?: string, aria?: string) => void;
@@ -398,6 +399,101 @@ export function mountPlayerQualityControl(
   return (next) => { sourceQualities = next?.length ? next : null; refreshPanel() };
 }
 
+/** 舞台控制条上的快退/快进按钮：步长跟设置里的 seekSeconds 走，点击只动原生 video。
+ *  按钮和播放键同一排、同一档圆底；步长在设置里改完后新开的详情就是新秒数。 */
+export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLElement): void {
+  if (controlBar.querySelector('[data-player-seek]')) return;
+  const play = controlBar.querySelector<HTMLElement>(':scope>.vjs-play-control');
+  const video = player.el().querySelector<HTMLVideoElement>('video');
+  if (!play || !video) return;
+  const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const make = (side: -1 | 1, name: string, key: string) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'vjs-peach-seek vjs-control';
+    wrap.dataset.playerSeek = key;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'vjs-button';
+    button.innerHTML = icon(name, 'vjs-peach-control-icon vjs-peach-seek-icon');
+    wrap.append(button);
+    const label = () => t(side < 0 ? 'catalog:stagePlayer.seekBack' : 'catalog:stagePlayer.seekForward', { count: step() });
+    playerControlTooltip(button, label());
+    button.onclick = (event) => { event.stopPropagation(); seekVideoBy(video, step() * side) };
+    return wrap;
+  };
+  const back = make(-1, 'rotate-ccw', 'back');
+  const ahead = make(1, 'rotate-cw', 'forward');
+  play.after(back, ahead);
+  player.on('dispose', () => { back.remove(); ahead.remove() });
+}
+
+/* 舞台上的触屏双击：左半区后退、右半区前进，步长同 seekSeconds。
+ *
+ *  单击仍走播放/暂停，但要等双击窗口过去才兑现；浏览器合成的 click 与 dblclick 都要在捕获阶段
+ *  吃掉，否则第一下会先触发播放、第二下又会被 Video.js 当成双击全屏。鼠标不接管，原来的单击与
+ *  双击全屏行为不变。沉浸模式有自己的手势，这个函数只挂在舞台播放器上。 */
+const TAP_MS = 300;
+const TAP_SLOP = 12;
+const TAP_SUPPRESS_MS = 450;
+
+export function mountPlayerTouchSeek(player: VjsPlayer): void {
+  const root = player.el();
+  const video = root.querySelector<HTMLVideoElement>('video');
+  if (!video || root.hasAttribute('data-player-touch-seek')) return;
+  root.setAttribute('data-player-touch-seek', '');
+  let down: { x: number; y: number; at: number } | null = null;
+  let lastTap: { side: -1 | 1; at: number } | null = null;
+  let tapTimer: ReturnType<typeof setTimeout> | null = null;
+  let suppressUntil = 0;
+  const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const inStage = () => { const stage = playerHost().stage(); return !!stage && stage.contains(root) };
+  const sideAt = (x: number): -1 | 1 => {
+    const rect = root.getBoundingClientRect();
+    if (rect.width <= 0) return x < window.innerWidth / 2 ? -1 : 1;
+    return x - rect.left < rect.width / 2 ? -1 : 1;
+  };
+  const clearTap = () => { if (tapTimer) clearTimeout(tapTimer); tapTimer = null; lastTap = null };
+  const onDown = (event: PointerEvent) => {
+    if (event.pointerType === 'mouse' || !inStage()) return;
+    down = { x: event.clientX, y: event.clientY, at: Date.now() };
+  };
+  const onUp = (event: PointerEvent) => {
+    if (event.pointerType === 'mouse' || !down || !inStage()) return;
+    const started = down; down = null;
+    if (Date.now() - started.at > 600 || Math.hypot(event.clientX - started.x, event.clientY - started.y) > TAP_SLOP) return;
+    const now = Date.now(), side = sideAt(event.clientX);
+    suppressUntil = now + TAP_SUPPRESS_MS;
+    if (lastTap && lastTap.side === side && now - lastTap.at <= TAP_MS) {
+      clearTap(); seekVideoBy(video, step() * side);
+      return;
+    }
+    if (tapTimer) clearTimeout(tapTimer);
+    lastTap = { side, at: now };
+    tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
+  };
+  const onCancel = () => { down = null };
+  const captureClick = (event: Event) => {
+    if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
+  };
+  const captureDoubleClick = (event: Event) => {
+    if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
+  };
+  video.addEventListener('pointerdown', onDown);
+  video.addEventListener('pointerup', onUp);
+  video.addEventListener('pointercancel', onCancel);
+  root.addEventListener('click', captureClick, true);
+  root.addEventListener('dblclick', captureDoubleClick, true);
+  player.on('dispose', () => {
+    if (tapTimer) clearTimeout(tapTimer);
+    video.removeEventListener('pointerdown', onDown);
+    video.removeEventListener('pointerup', onUp);
+    video.removeEventListener('pointercancel', onCancel);
+    root.removeEventListener('click', captureClick, true);
+    root.removeEventListener('dblclick', captureDoubleClick, true);
+    root.removeAttribute('data-player-touch-seek');
+  });
+}
+
 function mountPlayerTheaterControl(player: VjsPlayer, settingsRoot: Element): void {
   const controlBar = player.el().querySelector<HTMLElement>('.vjs-control-bar');
   if (!controlBar || controlBar.querySelector('[data-player-theater]')) return;
@@ -413,7 +509,10 @@ function mountPlayerTheaterControl(player: VjsPlayer, settingsRoot: Element): vo
 
 function mountPlayerChromeLayout(player: VjsPlayer): void {
   const controlBar = player.el().querySelector<HTMLElement>('.vjs-control-bar');
-  if (!controlBar || controlBar.querySelector('.vjs-peach-right-controls')) return;
+  if (!controlBar) return;
+  mountPlayerSeekControls(player, controlBar);
+  mountPlayerTouchSeek(player);
+  if (controlBar.querySelector('.vjs-peach-right-controls')) return;
   const play = controlBar.querySelector<HTMLElement>(':scope>.vjs-play-control');
   if (play && !play.querySelector(':scope>.vjs-peach-hover')) play.insertAdjacentHTML('beforeend', '<span class="vjs-peach-hover" aria-hidden="true"></span>');
   const explicitIcon = (button: HTMLElement | null, name: string) => {

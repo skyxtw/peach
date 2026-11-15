@@ -136,6 +136,13 @@ describe('Video.js 10 播放链', () => {
         await page.locator('#stage media-time-slider media-slider-thumb').focus();
         await page.keyboard.press('Home');
         await page.waitForFunction(() => document.querySelector<HTMLVideoElement>('#stage video.vjs-tech')!.currentTime < .1);
+        const seekBack = page.locator('#stage [data-player-seek="back"] button'), seekAhead = page.locator('#stage [data-player-seek="forward"] button');
+        assert.equal(await seekBack.count(), 1);
+        assert.match((await seekAhead.getAttribute('aria-label')) || '', /前进 \d+ 秒/);
+        await seekAhead.click();
+        await page.waitForFunction(() => document.querySelector<HTMLVideoElement>('#stage video.vjs-tech')!.currentTime > .1);
+        await seekBack.click();
+        await page.waitForFunction(() => document.querySelector<HTMLVideoElement>('#stage video.vjs-tech')!.currentTime < .1);
         await page.locator('#stage video.vjs-tech').evaluate((node: HTMLVideoElement) => {
           const track = node.addTextTrack('subtitles', '测试字幕', 'zh'); track.mode = 'disabled';
           track.addCue(new VTTCue(0, 2, '字幕回归'));
