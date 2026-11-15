@@ -423,6 +423,27 @@ describe('播放器清晰度', () => {
     } finally { view.close() }
   });
 
+  it('偏好抽屉可直接改快退快进步长并保存', () => {
+    const view = menu([]);
+    const settings = { ...host().settings() }, saveSettings = vi.fn();
+    configurePlayer({ ...host(), settings: () => settings, saveSettings });
+    try {
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-step]')!.click();
+      const input = view.root.querySelector<HTMLInputElement>('[data-player-seek-input]')!;
+      expect(input.value).toBe('10');
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-preset="30"]')!.click();
+      expect(settings.seekSeconds).toBe(30);
+      expect(saveSettings).toHaveBeenCalled();
+      expect(input.value).toBe('30');
+      view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
+      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒');
+    } finally {
+      configurePlayer(host());
+      view.close();
+    }
+  });
+
   it('播放器偏好抽屉按播放/快捷键分页并保留设置分组', () => {
     const view = menu([]);
     try {

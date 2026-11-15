@@ -248,13 +248,16 @@ export function mountPlayerQualityControl(
   };
   const button = (panel: HTMLElement, selector: string) => panel.querySelector<HTMLElement>(selector)!;
   /** 菜单此刻摆的是哪一面；轨道与尺寸变化只就地改这一面（`refreshPanel`）。 */
-  let view: 'main' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
+  let view: 'main' | 'seek' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
+  const seekStep = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const seekLabel = () => t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() });
   const showMain = (direction = 0) => {
     view = 'main'; syncTabs('play');
     const { active } = qualityRows(), speed = rememberRate.current();
     const panel = renderPanel(`<div class="vjs-peach-panel-menu">
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupControl')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>${t('catalog:playerQuality.speed')}</span><b>${speed === 1 ? t('catalog:playerQuality.normalSpeed') : `${speed}×`}</b>${icon('player-menu-next')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-seek-step>${icon('rotate-cw', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerQuality.seekStep')}</span><b>${seekLabel()}</b>${icon('player-menu-next')}</button>
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupPicture')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
         ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
@@ -267,6 +270,7 @@ export function mountPlayerQualityControl(
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${t('catalog:playerQuality.retryMemorySave')}</button></div></div>`, direction);
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();
+    button(panel, '[data-player-seek-step]').onclick = () => showSeek();
     button(panel, '[data-player-subtitles]').onclick = () => subtitleControls?.show();
     button(panel, '[data-player-quality-view]').onclick = () => showQuality();
     button(panel, '[data-player-rotation]').onclick = () => showRotation();
@@ -288,6 +292,36 @@ export function mountPlayerQualityControl(
     ];
     renderPanel(`<div class="vjs-peach-panel-menu vjs-peach-shortcuts">${rows.map(([key, label]) =>
       `<div class="vjs-peach-shortcut"><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div>`, 1);
+  };
+  const showSeek = (direction = 1) => {
+    view = 'seek'; syncTabs('play');
+    const presets = [5, 10, 15, 30, 60];
+    const panel = renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${t('catalog:playerQuality.backMenu')}">${icon('player-menu-back')}</button><strong>${t('catalog:playerQuality.seekStep')}</strong></div>
+      <div class="vjs-peach-seek-panel"><div class="vjs-peach-seek-stepper">
+        <button type="button" class="vjs-peach-speed-button" data-player-seek-down aria-label="${t('catalog:playerQuality.seekStep')} -">${icon('minus')}</button>
+        <input type="number" class="vjs-peach-seek-input" data-player-seek-input min="1" max="300" step="1" inputmode="numeric" aria-label="${t('catalog:playerQuality.seekStep')}">
+        <button type="button" class="vjs-peach-speed-button" data-player-seek-up aria-label="${t('catalog:playerQuality.seekStep')} +">${icon('plus')}</button>
+      </div><div class="vjs-peach-seek-presets">${presets.map(seconds =>
+        `<button type="button" class="vjs-peach-speed-button" data-player-seek-preset="${seconds}" aria-pressed="false">${seconds}</button>`).join('')}</div>
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekStepHint')}</p></div>`, direction);
+    const input = panel.querySelector<HTMLInputElement>('[data-player-seek-input]')!;
+    const apply = (value: number) => {
+      const settings = playerHost().settings();
+      settings.seekSeconds = Math.min(300, Math.max(1, Math.round(value) || 10));
+      playerHost().saveSettings(); input.value = String(settings.seekSeconds);
+      panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
+        option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === settings.seekSeconds)));
+    };
+    button(panel, '[data-player-menu-back]').onclick = () => showMain(-1);
+    input.value = String(seekStep());
+    input.onchange = () => apply(Number(input.value));
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option => {
+      option.onclick = () => apply(Number(option.dataset.playerSeekPreset));
+    });
+    button(panel, '[data-player-seek-down]').onclick = () => apply(seekStep() - 5);
+    button(panel, '[data-player-seek-up]').onclick = () => apply(seekStep() + 5);
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
+      option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === seekStep())));
   };
   settingsTabs.forEach((tab) => {
     tab.onclick = () => { if (tab.dataset.playerSettingsTab === 'keys') showShortcuts(); else showMain() };
@@ -402,8 +436,10 @@ export function mountPlayerQualityControl(
     if (label) label.textContent = active.label;
     const angle = view === 'main' ? panel?.querySelector('[data-player-rotation] b') : null;
     const speed = view === 'main' ? panel?.querySelector('[data-player-speed] b') : null;
+    const seek = view === 'main' ? panel?.querySelector('[data-player-seek-step] b') : null;
     if (angle) angle.textContent = `${rotation.angle()}°`;
     if (speed) speed.textContent = rememberRate.current() === 1 ? t('catalog:playerQuality.normalSpeed') : `${rememberRate.current()}×`;
+    if (seek) seek.textContent = seekLabel();
   };
   toggle.onclick = (event) => { event.stopPropagation(); const open = !isOpen(); if (open) showMain(); setOpen(open) };
   const outside = (event: Event) => { if (!root.contains(event.target as Node) && !drawer.contains(event.target as Node)) close() };
@@ -691,6 +727,8 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
     control.insertAdjacentHTML('beforeend', '<span class="vjs-peach-hover" aria-hidden="true"></span>');
     group.append(control);
   });
+  /* 参考 115-lite：时间读数放在右侧动作组前面，不再夹在音量和留白之间。 */
+  if (time.parentElement) { time.remove(); controlBar.insertBefore(time, group) }
   /* 窄屏折叠照 YouTube 的判据来：base.js 9470c977 里播放器宽度 `v.width<528` 打开
      ytp-xsmall-width-mode，右侧收成「设置 + 展开」，点开才铺开其余按钮。判据必须是播放器
      自己的宽度，不是视口——同一个视口下影院模式和普通视图的播放器宽度差一大截。 */

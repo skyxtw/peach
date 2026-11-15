@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "8c69a453-794f-4d13-9b0b-204fb313cf4f", e._sentryDebugIdIdentifier = "sentry-dbid-8c69a453-794f-4d13-9b0b-204fb313cf4f");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33", e._sentryDebugIdIdentifier = "sentry-dbid-4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2167,6 +2167,9 @@ var He = {
 		originalOrientation: "{{angle}}° (original)",
 		playerSettings: "Player preferences",
 		quality: "Quality",
+		seekStep: "Back / forward",
+		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
+		seekStepSeconds: "{{seconds}} s",
 		retryMemorySave: "Retry saving playback state",
 		rotation: "Rotation",
 		settings: "Settings",
@@ -9327,6 +9330,9 @@ var He = {
 		originalOrientation: "{{angle}}°（原始方向）",
 		playerSettings: "播放器偏好",
 		quality: "清晰度",
+		seekStep: "快退 / 快进",
+		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
+		seekStepSeconds: "{{seconds}} 秒",
 		retryMemorySave: "重试保存播放记忆",
 		rotation: "画面旋转",
 		settings: "设置",
@@ -38741,4 +38747,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=8c69a453-794f-4d13-9b0b-204fb313cf4f
+//# debugId=4b8ac0b7-8b14-468e-a2e0-7f2221cbfb33

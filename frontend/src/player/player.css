@@ -178,7 +178,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
   float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
   line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}
-.vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px auto;
+.vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px 8px;
   padding:0 4px;display:flex;align-items:center;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none;
   overflow:visible;backdrop-filter:blur(16px);}
 [data-stage-media] .video-js .vjs-peach-right-controls>.vjs-control{box-sizing:border-box;position:relative;flex:0 0 48px;width:48px!important;min-width:48px;height:40px!important;
@@ -220,7 +220,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
   background:rgba(0,0,0,.68);font-size:var(--fs-sm);font-weight:600;line-height:1;text-align:center;box-shadow:0 2px 8px #0006}
 [data-stage-media] .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}
 [data-stage-media] .video-js .vjs-time-control{display:none!important}
-[data-stage-media] .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end;flex:0 0 auto;width:auto;height:40px;margin:0 0 8px 12px;
+[data-stage-media] .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end;flex:0 0 auto;width:auto;height:40px;margin:0 8px 8px auto;
   padding:0 16px;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);color:#fff;cursor:pointer;
   position:relative;isolation:isolate;overflow:visible;font-weight:400;font-size:var(--fs-md);line-height:40px;font-family:inherit;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 1px rgba(0,0,0,.8)}
 [data-stage-media] .video-js .vjs-peach-time:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:var(--pill-radius);background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
@@ -496,6 +496,22 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 .vjs-peach-settings-group{margin:12px 10px 4px;color:rgba(255,255,255,.45);font-size:11px;font-weight:600;letter-spacing:.06em}
 .vjs-peach-settings-group:first-child{margin-top:4px}
 .vjs-peach-shortcuts{display:flex;flex-direction:column;gap:2px;padding:8px 6px 4px}
+
+.vjs-peach-seek-panel{display:flex;flex-direction:column;gap:14px;padding:10px 10px 4px}
+.vjs-peach-seek-stepper{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:8px}
+.vjs-peach-seek-stepper .vjs-peach-speed-button{display:grid;place-items:center;width:44px;height:40px;border-radius:10px;
+  background:rgba(255,255,255,.1);color:#fff;border:0;font:inherit;font-size:20px;cursor:pointer}
+.vjs-peach-seek-stepper .vjs-peach-speed-button:hover{background:rgba(255,255,255,.18)}
+.vjs-peach-seek-input{box-sizing:border-box;width:100%;height:40px;border:1px solid rgba(255,255,255,.16);border-radius:10px;
+  background:rgba(255,255,255,.06);color:#fff;text-align:center;font:inherit;font-size:16px;font-variant-numeric:tabular-nums}
+.vjs-peach-seek-input:focus{outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}
+.vjs-peach-seek-presets{display:flex;flex-wrap:wrap;gap:6px}
+.vjs-peach-seek-presets .vjs-peach-speed-button{min-width:44px;height:32px;padding:0 10px;border:0;border-radius:999px;
+  background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font:inherit;font-size:12px;cursor:pointer}
+.vjs-peach-seek-presets .vjs-peach-speed-button[aria-pressed="true"]{background:rgba(255,255,255,.22);color:#fff}
+.vjs-peach-seek-hint{margin:0;color:rgba(255,255,255,.5);font-size:12px;line-height:1.5}
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls{margin-left:auto}
+
 .vjs-peach-shortcut{display:flex;align-items:center;justify-content:space-between;min-height:42px;padding:0 8px;border-radius:9px}
 .vjs-peach-shortcut:hover{background:rgba(255,255,255,.06)}
 .vjs-peach-shortcut kbd{min-width:54px;padding:3px 8px;border:1px solid rgba(255,255,255,.16);border-radius:6px;
