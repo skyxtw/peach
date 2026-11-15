@@ -4,10 +4,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import random
 import re
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from .coded_text import Said, parallel
 from .catalog_vocabulary import RESOURCE_CHINESE_SUBTITLES, RESOURCE_HD
 from .http import HttpRequest, HttpxTransport, response_text
 from .scripting import HostLimiter
+from .source_page_words import JAVDB_SUSPENSION_MARKERS
 from .user_agent import JAVDB_APP_USER_AGENT
 from .jav_cache import DAY, PublicSnapshots, cache_lifetime
 from .javdb_identity import RULE, cache_key as identity_cache_key, current_evidence
@@ -47,6 +49,15 @@ MAX_REVIEW_PAGES = 8
 API_INTERVAL = 0.5
 #: 接口要求登录后，搜索与作品资料这么久内不再问接口，直接读网页；过后再试一次接口。
 LOGIN_SECONDS = 6 * 3600
+#: 带账号令牌时的人类节奏。0.5 秒是匿名时代按配额试出来的速率；2026-11-15 站点判定
+#: 该账号「瀏覽速度遠超正常用戶」并临时停用，登录态必须换成更慢的节奏。
+ACCOUNT_INTERVAL_MS = 2500
+#: 每次请求在最短间隔之外再随机等 0～0.8 秒，抹掉固定节拍。
+ACCOUNT_JITTER = 0.8
+#: 带账号时每小时最多几个请求；超了就停到下一个整点。
+ACCOUNT_HOURLY_REQUESTS = 300
+#: 停用说明的恢复时间格式；特征词与 `javdb_account` 共用 `source_page_words` 的那一份。
+_RECOVERY_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})")
 _UNAVAILABLE = "errors.javdbPublic.unavailable"
 #: 未登录时接口回的业务动作。2026-11-10 起签名照旧被接受，缺的是登录令牌；这三家与
 #: javdb.com 的匿名搜索都回 `success=0`、`action=JWTVerificationError`。
@@ -66,6 +77,23 @@ def signature_header(parts: tuple[str, str] | None = None,
     second = str(int(time.time() if stamp is None else stamp))
     digest = hashlib.md5((second + suffix).encode(), usedforsecurity=False).hexdigest()
     return {"jdsignature": f"{second}.{middle}.{digest}"}
+
+
+def _suspended(message: str) -> bool:
+    """这句回执是不是站点把账号判成「异常采集」后停用的说明。"""
+    text = str(message or "").casefold()
+    return any(marker.casefold() in text for marker in JAVDB_SUSPENSION_MARKERS)
+
+
+def _recovery_at(message: str):
+    """停用说明里的恢复时间；读不到返回 None。"""
+    found = _RECOVERY_TIME.search(str(message or ""))
+    if not found:
+        return None
+    try:
+        return datetime(*[int(part) for part in found.groups()])
+    except ValueError:
+        return None
 
 
 def public_signature_parts(script: str) -> tuple[str, str] | None:
@@ -197,6 +225,10 @@ class PublicSourceAuthRequired(PublicSourceUnavailable):
     """来源要求登录，而这台机器上没有可用的 JavDB 账号或令牌被拒。"""
 
 
+class PublicSourceAccountRestricted(PublicSourcePaused):
+    """账号被站点临时停用（异常采集判定）：整源停到恢复时间，不再打接口。"""
+
+
 class PublicBudgetExceeded(PublicSourceUnavailable):
     """本轮匿名资料请求预算已用完。"""
 
@@ -259,6 +291,13 @@ class PublicAPI:
         self.request_context = ContextVar("jav_public_request_budget", default=None)
         self.login_until = 0.0
         self.page_context = ContextVar("jav_public_pages", default=None)
+        #: 带令牌的请求另排一条更慢的队：最短间隔、随机抖动与每小时上限见 `_account_wait`。
+        self.sleeper = sleeper
+        self.account_limiter = None
+        self.account_interval = ACCOUNT_INTERVAL_MS / 1000.0
+        self.account_jitter = ACCOUNT_JITTER
+        self.account_hourly = ACCOUNT_HOURLY_REQUESTS
+        self.account_requests: deque[float] = deque()
         #: 资料请求的 `authorization` 由账号模块现取现换；测试注入替身即可。
         self.token_provider = token_provider or _account_token
         self.token_refresh = token_refresh or _account_refresh
@@ -324,7 +363,10 @@ class PublicAPI:
             raise PublicSourcePaused("errors.javdbPublic.imageSourcePaused" if image
                                      else "errors.javdbPublic.sourcePaused")
         if not image:
-            self.limiter.wait(url)
+            if authorization:
+                self._account_wait()
+            else:
+                self.limiter.wait(url)
         budget = self.request_context.get()
         if budget:
             budget.check()
@@ -351,6 +393,25 @@ class PublicAPI:
             self._pause(900 if response.status in (403, 429) else 60, image=image, host=host)
             raise failed("errors.javdbPublic.sourcePaused")
         return response
+
+    def _account_wait(self):
+        """带登录令牌的请求按人类节奏排队，并守住每小时上限。"""
+        if self.account_limiter is None:
+            interval, jitter, hourly = _account_rate()
+            self.account_interval, self.account_jitter = interval, jitter
+            self.account_hourly = hourly
+            self.account_limiter = HostLimiter({}, default_interval=interval,
+                                               clock=self.clock, sleeper=self.sleeper)
+        now = self.clock()
+        while self.account_requests and self.account_requests[0] <= now - 3600:
+            self.account_requests.popleft()
+        if len(self.account_requests) >= self.account_hourly:
+            self.paused_until = max(self.paused_until, self.account_requests[0] + 3600)
+            raise PublicSourcePaused("errors.javdbPublic.accountHourlyLimit")
+        self.account_limiter.wait("javdb-account")
+        if self.account_jitter:
+            self.sleeper(random.uniform(0.0, self.account_jitter))
+        self.account_requests.append(self.clock())
 
     def _signature(self) -> tuple[str, str]:
         if self.signature_parts and self.clock() < self.signature_until:
@@ -396,6 +457,21 @@ class PublicAPI:
             except PublicSourceAuthRequired:
                 raise PublicSourceAuthRequired("errors.javdbPublic.tokenRejected") from None
 
+    def _restricted(self, message: str):
+        """站点把账号临时停用：记下恢复时间，整源停到那时，别继续打接口。"""
+        from . import javdb_account
+        try:
+            javdb_account.restrict(message)
+        except Exception:  # 账号模块记不下来也不改变停用判据
+            pass
+        recovery = _recovery_at(message)
+        if recovery is not None:
+            delay = max(600.0, (recovery - datetime.now()).total_seconds() + 300)
+        else:
+            delay = 24 * 3600.0
+        self.paused_until = max(self.paused_until, self.clock() + delay)
+        return PublicSourceAccountRestricted("errors.javdbPublic.accountSuspended")
+
     def _authorization(self) -> str:
         """本次请求带的登录令牌；没配账号返回空串，账号被拒转成来源层异常。"""
         try:
@@ -403,7 +479,13 @@ class PublicAPI:
         except PublicSourceAuthRequired:
             raise
         except Exception as error:
-            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE) from error
+            self._authorization_error(error)
+
+    def _authorization_error(self, error):
+        """账号模块报错：停用期报停用，其余按「需要登录」交给上层。"""
+        if _suspended(str(error)):
+            raise PublicSourceAccountRestricted("errors.javdbPublic.accountSuspended") from error
+        raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE) from error
 
     def _renewed_token(self) -> str:
         try:
@@ -411,7 +493,7 @@ class PublicAPI:
         except PublicSourceAuthRequired:
             raise
         except Exception as error:
-            raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE) from error
+            self._authorization_error(error)
         if not renewed:
             raise PublicSourceAuthRequired(AUTH_REQUIRED_MESSAGE)
         return renewed
@@ -437,6 +519,10 @@ class PublicAPI:
             if attempted:
                 raise PublicSourceUnavailable("errors.javdbPublic.sourcePaused")
             raise PublicSourcePaused("errors.javdbPublic.sourcePaused")
+        if isinstance(payload, dict) and payload.get("success") != 1:
+            message = str(payload.get("message") or "")
+            if _suspended(message):
+                raise self._restricted(message)
         if isinstance(payload, dict) and payload.get("action") == "JWTVerificationError":
             if not authorization:
                 # 没有账号令牌：搜索与作品资料先停一会儿，等调用方回退网页或用户填账号。
@@ -850,6 +936,19 @@ def decode_image(body: bytes, *, original=False) -> bytes:
         except (OSError, ValueError, Image.DecompressionBombError):
             continue
     raise PublicSourceUnavailable("errors.javdbPublic.imageUnavailable")
+
+
+def _account_rate():
+    """带账号资料的请求节奏：配置文件 `[scraping]` 可调，读不到就用内建默认。"""
+    interval, hourly = ACCOUNT_INTERVAL_MS / 1000.0, ACCOUNT_HOURLY_REQUESTS
+    try:
+        from .settings_file import active
+        rate = active().javdb_account_rate
+        interval = max(0.5, int(rate.interval_ms) / 1000.0)
+        hourly = max(1, int(rate.hourly_requests))
+    except Exception:
+        pass
+    return interval, ACCOUNT_JITTER, hourly
 
 
 def _account_token() -> str | None:

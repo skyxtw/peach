@@ -6,6 +6,13 @@
 """
 from __future__ import annotations
 
+#── JavDB 账号停用说明 ──
+
+#: JavDB 将账号判成异常采集并临时停用时，回执里的特征词。2026-11-15 实测原话：
+#: 「帳號已被臨時停用：系統檢測到該帳號的瀏覽速度遠超正常用戶，判定為異常採集行為」。
+JAVDB_SUSPENSION_MARKERS = ("停用", "異常採集", "异常采集", "瀏覽速度", "浏览速度",
+                             "suspended", "temporarily disabled", "banned")
+
 # ---- minnano-av 女优资料表 ----
 
 #: 资料表 `act-profile` 里的栏名（`minnano_av.profile` 逐格读）。

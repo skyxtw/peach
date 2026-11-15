@@ -1127,9 +1127,13 @@
       "noResponse": "The JavDB login got no response. Check the network and proxy and retry.",
       "rejected": "JavDB login was rejected: {{reason}}. Update the JavDB account under Configuration → Sources → Source credentials.",
       "rejectedUnknown": "login rejected",
-      "noToken": "The JavDB login response carried no token."
+      "noToken": "The JavDB login response carried no token.",
+      "suspended": "The JavDB account is temporarily suspended: {{reason}}. Expected back at {{until}}; Peach will not request JavDB metadata until then.",
+      "suspendedNoTime": "The JavDB account is temporarily suspended: {{reason}}. The site gave no recovery time, so Peach stops requesting JavDB metadata for now."
     },
     "javdbPublic": {
+      "accountHourlyLimit": "The JavDB account hourly request limit is reached; resuming next hour.",
+      "accountSuspended": "The JavDB account is temporarily suspended; metadata requests are paused until it recovers.",
       "authRequired": "JavDB work details now require a login: fill in the JavDB account under Configuration → Sources → Source credentials and retry",
       "tokenRejected": "JavDB rejected the login token: save the JavDB account again under Configuration → Sources → Source credentials",
       "budgetExceeded": "The metadata request budget for this run is used up",

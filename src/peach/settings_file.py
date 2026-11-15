@@ -214,6 +214,19 @@ class SourceBudgetSettings:
 
 
 @dataclass(frozen=True)
+class JavdbAccountRateSettings:
+    """带登录态访问 JavDB 资料接口的节奏（配置文件 `[scraping]` 的 `javdb_*` 两项）。
+
+    `interval_ms` 是同一账号两次资料请求之间的最短间隔，`hourly_requests` 是每小时的
+    请求上限。2026-11-15 账号被站点判成「瀏覽速度遠超正常用戶」临时停用，默认值按人类
+    浏览的节奏取；两项都必须为正整数，0 会让账号重新贴到站点的封禁线上。
+    """
+
+    interval_ms: int = 2500
+    hourly_requests: int = 300
+
+
+@dataclass(frozen=True)
 class PeachConfig:
     """一次合并的结果。`config.py` 把它投影成模块常量。"""
 
@@ -239,6 +252,7 @@ class PeachConfig:
     replication: ReplicationSettings = ReplicationSettings()
     tunnel: TunnelSettings = TunnelSettings()
     source_budget: SourceBudgetSettings = SourceBudgetSettings()
+    javdb_account_rate: JavdbAccountRateSettings = JavdbAccountRateSettings()
 
     @property
     def configured(self) -> bool:
@@ -451,6 +465,16 @@ def _merge(
             path, "scraping."),
     )
 
+    rate_defaults = JavdbAccountRateSettings()
+    javdb_account_rate = JavdbAccountRateSettings(
+        interval_ms=_positive_integer(
+            scraping_table, "javdb_interval_ms", rate_defaults.interval_ms,
+            path, "scraping."),
+        hourly_requests=_positive_integer(
+            scraping_table, "javdb_hourly_requests", rate_defaults.hourly_requests,
+            path, "scraping."),
+    )
+
     media_costs = _string_map(_table(media, "costs", path), path, "media.costs.")
     if any(cost not in {"free", "metered"} for cost in media_costs.values()):
         raise _fail(path, "errors.settingsFile.costInvalid")
@@ -462,6 +486,7 @@ def _merge(
         media_costs=media_costs,
         server=server, replication=replication, tunnel=tunnel,
         source_budget=source_budget,
+        javdb_account_rate=javdb_account_rate,
     )
     from . import media_identity
     if "storage_roots" in media or "library_catalog" in media:
@@ -654,6 +679,8 @@ def render(config: PeachConfig, *, language: str | None = None) -> str:
         "max_requests": config.source_budget.max_requests,
         "max_bytes": config.source_budget.max_bytes,
         "max_seconds": config.source_budget.max_seconds,
+        "javdb_interval_ms": config.javdb_account_rate.interval_ms,
+        "javdb_hourly_requests": config.javdb_account_rate.hourly_requests,
     })
     lines += ["", "[replication]", *comment("replication")]
     lines += _render_pairs({

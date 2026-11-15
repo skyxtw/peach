@@ -1127,9 +1127,13 @@
       "noResponse": "JavDB 登录没有取得响应，请检查网络与代理后重试。",
       "rejected": "JavDB 账号登录未通过：{{reason}}。请在「配置 → 来源 → 来源凭据」里更新 JavDB 账号。",
       "rejectedUnknown": "登录被拒",
-      "noToken": "JavDB 登录回执里没有登录令牌。"
+      "noToken": "JavDB 登录回执里没有登录令牌。",
+      "suspended": "JavDB 账号被临时停用：{{reason}}；预计 {{until}} 恢复，这之前不再请求 JavDB 资料。",
+      "suspendedNoTime": "JavDB 账号被临时停用：{{reason}}；站点未给出恢复时间，Peach 先停止资料请求。"
     },
     "javdbPublic": {
+      "accountHourlyLimit": "JavDB 账号每小时请求上限已到，下一小时继续。",
+      "accountSuspended": "JavDB 账号被临时停用，资料请求先暂停；恢复后再试。",
       "authRequired": "JavDB 作品资料现在需要登录：请在「配置 → 来源 → 来源凭据」里填写 JavDB 账号后重试",
       "tokenRejected": "JavDB 登录令牌被拒绝：请在「配置 → 来源 → 来源凭据」里重新保存 JavDB 账号",
       "budgetExceeded": "本轮作品资料预算已用完",

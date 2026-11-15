@@ -5,10 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from peach import javdb_account
+from peach import javdb_account, javdb_public
 from peach.follow_secrets import CREDENTIAL_GUIDE
 from peach.http import HttpResponse
-from peach.javdb_public import (APP_SIGNATURE, PublicAPI, PublicSourceAuthRequired,
+from peach.javdb_public import (APP_SIGNATURE, PublicAPI, PublicSourceAccountRestricted,
+                                PublicSourceAuthRequired, PublicSourcePaused,
                                 PublicSourceUnavailable)
 from peach.javdb_account import AccountUnavailable
 
@@ -99,6 +100,21 @@ class AccountCredentialTests(unittest.TestCase):
         self.assertEqual(client.post.call_count, 1)
 
 
+    def test_suspended_login_reports_recovery_time_and_stops_retrying(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            secrets = Path(tmp) / "secrets"
+            write_credential(secrets)
+            client = Mock()
+            client.post.return_value = FakeResponse({"success": 0, "action": "AccountSuspended",
+                "message": "帳號已被臨時停用：系統檢測到該帳號的瀏覽速度遠超正常用戶，判定為異常採集行為。將於 2026-11-16 22:34（UTC+08:00）自動恢復。"})
+            with patch.object(javdb_account, "_secrets_root", return_value=secrets):
+                with self.assertRaises(AccountUnavailable) as raised:
+                    javdb_account.token(client=client)
+                self.assertIn("2026-11-16 22:34", str(raised.exception))
+                with self.assertRaises(AccountUnavailable):
+                    javdb_account.token(client=client)
+        self.assertEqual(client.post.call_count, 1)
+
 class AuthorizedRequestTests(unittest.TestCase):
     def test_request_carries_the_token_and_is_retried_once_after_refresh(self):
         transport, requests = json_transport([
@@ -135,6 +151,43 @@ class AuthorizedRequestTests(unittest.TestCase):
         self.assertEqual(str(raised.exception), "作品资料未取得，请稍后重试")
         self.assertEqual(len(requests), 1)
 
+
+class AuthorizedRateTests(unittest.TestCase):
+    def setUp(self):
+        javdb_account.reset()
+
+    def tearDown(self):
+        javdb_account.reset()
+
+    def test_suspended_api_response_pauses_the_source(self):
+        transport, _requests = json_transport([{"success": 0, "action": "AccountSuspended",
+                                                     "message": "帳號已被臨時停用：系統檢測到該帳號的瀏覽速度遠超正常用戶，判定為異常採集行為。將於 2026-11-16 22:34（UTC+08:00）自動恢復。"}])
+        api = PublicAPI(transport, sleeper=lambda _: None, token_provider=lambda: "TOKEN")
+        with patch.object(api, "_signature", return_value=APP_SIGNATURE):
+            with self.assertRaises(PublicSourceAccountRestricted):
+                api._json("/v2/search", {"q": "ABF-288"})
+        self.assertGreater(api.paused_until, api.clock())
+
+    def test_account_requests_are_capped_per_hour(self):
+        transport, requests = json_transport([{"success": 1, "data": {"movies": []}}])
+        api = PublicAPI(transport, sleeper=lambda _: None, token_provider=lambda: "TOKEN")
+        with patch.object(javdb_public, "_account_rate", return_value=(0.0, 0.0, 2)), \
+                patch.object(api, "_signature", return_value=APP_SIGNATURE):
+            api._json("/v2/search", {"q": "A"})
+            api._json("/v2/search", {"q": "B"})
+            with self.assertRaises(PublicSourcePaused):
+                api._json("/v2/search", {"q": "C"})
+        self.assertEqual(len(requests), 2)
+
+    def test_account_requests_keep_the_human_interval(self):
+        transport, _requests = json_transport([{"success": 1, "data": {"movies": []}}])
+        delays = []
+        api = PublicAPI(transport, sleeper=delays.append, token_provider=lambda: "TOKEN")
+        with patch.object(javdb_public, "_account_rate", return_value=(2.5, 0.0, 100)), \
+                patch.object(api, "_signature", return_value=APP_SIGNATURE):
+            api._json("/v2/search", {"q": "A"})
+            api._json("/v2/search", {"q": "B"})
+        self.assertTrue(any(delay >= 2.4 for delay in delays), delays)
 
 if __name__ == "__main__":
     unittest.main()
