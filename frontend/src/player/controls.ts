@@ -18,6 +18,8 @@ import { t } from '../i18n';
 
 type TooltipSync = (label?: string, aria?: string) => void;
 
+const SEEK_STEP_EVENT = 'peachseekstepchange';
+
 /** 控制条上每个按钮的悬停提示都从这里出：文案 + 快捷键徽标，样式取自 YouTube delhi-modern。
  *  原生 title 与状态提示共用同一个同步入口。 */
 export function playerControlTooltip(button: Element | null | undefined, label: string, shortcut = ''): TooltipSync {
@@ -309,6 +311,7 @@ export function mountPlayerQualityControl(
       const settings = playerHost().settings();
       settings.seekSeconds = Math.min(300, Math.max(1, Math.round(value) || 10));
       playerHost().saveSettings(); input.value = String(settings.seekSeconds);
+      document.dispatchEvent(new CustomEvent(SEEK_STEP_EVENT, { detail: settings.seekSeconds }));
       panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
         option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === settings.seekSeconds)));
     };
@@ -488,6 +491,7 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
   const video = player.el().querySelector<HTMLVideoElement>('video');
   if (!play || !video) return;
   const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const refreshers: (() => void)[] = [];
   const make = (side: -1 | 1, name: string, key: string) => {
     const wrap = document.createElement('div');
     wrap.className = 'vjs-peach-seek vjs-control';
@@ -498,14 +502,17 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
     button.innerHTML = icon(name, 'vjs-peach-control-icon vjs-peach-seek-icon');
     wrap.append(button);
     const label = () => t(side < 0 ? 'catalog:stagePlayer.seekBack' : 'catalog:stagePlayer.seekForward', { count: step() });
-    playerControlTooltip(button, label());
-    button.onclick = (event) => { event.stopPropagation(); seekVideoBy(video, step() * side) };
+    const sync = playerControlTooltip(button, label());
+    refreshers.push(() => sync(label()));
+    button.onclick = (event) => { event.stopPropagation(); sync(label()); seekVideoBy(video, step() * side) };
     return wrap;
   };
+  const refresh = () => refreshers.forEach(sync => sync());
+  document.addEventListener(SEEK_STEP_EVENT, refresh);
   const back = make(-1, 'rotate-ccw', 'back');
   const ahead = make(1, 'rotate-cw', 'forward');
   play.after(back, ahead);
-  player.on('dispose', () => { back.remove(); ahead.remove() });
+  player.on('dispose', () => { document.removeEventListener(SEEK_STEP_EVENT, refresh); back.remove(); ahead.remove() });
 }
 
 /* 舞台上的触屏双击：左半区后退、右半区前进，步长同 seekSeconds。
