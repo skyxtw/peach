@@ -433,8 +433,8 @@ def seeded_order(seed) -> str:
 
     同一粒种子顺序固定，翻页不重不漏；换一粒就是「换一批」。拼进 SQL 的是算出来的
     整数，不是请求里的原文。"""
-    sd = int(seed or 1) % 99991 or 7
-    return f"((a.id * {sd}) % 99991), a.id"
+    sd = int(seed or 1) % 2147483647 or 7
+    return f"((a.id * 2654435761 + {sd * 40503}) % 2147483647), a.id"
 
 
 CATALOG_TOTAL_TABLES = GROUP_TABLES + (

@@ -28,3 +28,15 @@ class DailyOrderTests(unittest.TestCase):
 
     def test_next_day_changes_the_daily_seed(self):
         self.assertNotEqual(self._order("20261116"), self._order("20261117"))
+
+
+class SeededOrderTests(unittest.TestCase):
+    def test_seeded_order_does_not_pin_the_old_modulus_zero(self):
+        sql = web_catalog.seeded_order("20261117")
+        with closing(sqlite3.connect(":memory:")) as connection:
+            connection.execute("CREATE TABLE asset(id INTEGER)")
+            connection.executemany("INSERT INTO asset VALUES (?)", [(value,) for value in (99991, 7, 100, 200, 99990, 42)])
+            rows = [row[0] for row in connection.execute(f"SELECT id FROM asset a ORDER BY {sql}")]
+            again = [row[0] for row in connection.execute(f"SELECT id FROM asset a ORDER BY {sql}")]
+        self.assertNotEqual(rows[0], 99991)
+        self.assertEqual(rows, again)
