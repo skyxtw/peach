@@ -967,6 +967,8 @@
       "scheduleDisabled": "订阅源拉取没有启用",
       "noSourceIds": "这位在 JavDB 与 DMM 上都没有编号",
       "noStudioIds": "这家片商还没有绑定 DMM 片商或厂牌编号",
+      "studioOnly": "只能把 DMM 编号绑定到片商或厂牌实体",
+      "dmmIdTaken": "这个 DMM 编号已经绑到另一家片商",
       "performerMissing": "找不到这位女优",
       "entityMissing": "账本里没有这个实体",
       "entityNotSubscribable": "这一类实体不能订阅新作",

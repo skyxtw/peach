@@ -481,7 +481,7 @@ class DmmCatalogueFeedTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.database = _database(Path(self._tmp.name))
         with self.database.write_transaction() as connection:
-            self.studio = self._studio(connection, "エスワン ナンバーワンスタイル")
+            self.studio = self._studio(connection, "無名のスタジオ")
 
     @staticmethod
     def _studio(connection, name, *, label_of=None) -> int:
@@ -622,6 +622,124 @@ class DmmCatalogueFeedTest(unittest.TestCase):
         self.assertEqual([tuple(row) for row in shells],
                          [("MIKR-133", "2026-11-13", "森日向子", "エスワン ナンバーワンスタイル"),
                           ("MXDLP-343", "2026-10-20", "森日向子", "ムーディーズ")])
+
+
+class DmmStudioSeedTest(unittest.TestCase):
+    """片商订阅的内置种子：名称唯一命中才兜底，订阅时才写绑定，退订不删。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.database = _database(Path(self._tmp.name))
+
+    @staticmethod
+    def _studio(connection, name, aliases=(), kind="studio") -> int:
+        entity_id = int(connection.execute(
+            "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,peach_normalize(?),?,?)",
+            (kind, name, name, feeds.stamp(), feeds.stamp())).lastrowid)
+        for alias in aliases:
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(?,?,peach_normalize(?),'test')", (entity_id, alias, alias))
+        return entity_id
+
+    def test_seed_matches_canonical_alias_and_full_width_spelling(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "Ｓ１", aliases=("エスワン", "s1"))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "3152")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "3152")])
+
+    def test_seed_matches_an_alias_on_a_differently_named_studio(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "テスト株式会社", aliases=("MOODYZ",))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "1509")
+
+    def test_reading_a_seed_match_does_not_write_a_binding(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "3152")])
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio, resolve_seed=False), [])
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_source").fetchone()[0], 0)
+
+    def test_seed_does_not_guess_when_two_studios_match_the_same_seed(self):
+        with self.database.write_transaction() as connection:
+            first = self._studio(connection, "スタジオ甲", aliases=("S1",))
+            second = self._studio(connection, "スタジオ乙", aliases=("S1",))
+            self.assertEqual((feeds.known_dmm_studio(connection, first),
+                              feeds.known_dmm_studio(connection, second)), ("", ""))
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, first), [])
+
+    def test_seed_does_not_guess_when_one_entity_matches_two_seeds(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "合体スタジオ", aliases=("S1", "MOODYZ"))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "")
+
+    def test_no_seed_and_no_binding_is_refused_without_writing(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "別の会社")
+            with self.assertRaises(ValueError) as caught:
+                feeds.subscribe_studio(connection, studio)
+            self.assertEqual(caught.exception.code, "api.feeds.noStudioIds")
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_source").fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
+
+    def test_an_explicit_binding_beats_the_seed(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            feeds.bind_dmm_studio(connection, studio, "maker", "999")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "999")])
+
+    def test_subscribing_a_seeded_studio_writes_the_binding_and_unfollow_keeps_it(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            first = feeds.subscribe_studio(connection, studio)
+            second = feeds.subscribe_studio(connection, studio)
+            rows = connection.execute(
+                "SELECT kind,url,entity_id,enabled FROM feed_source ORDER BY id").fetchall()
+            refs = connection.execute(
+                "SELECT provider,external_kind,external_id FROM entity_external_ref").fetchall()
+        self.assertEqual(first, second)
+        self.assertEqual([tuple(row) for row in rows],
+                         [(feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), studio, 1)])
+        self.assertEqual([tuple(row) for row in refs], [("dmm", "maker", "3152")])
+        with self.database.write_transaction() as connection:
+            feeds.unfollow_entity(connection, studio)
+            self.assertEqual(connection.execute(
+                "SELECT enabled FROM feed_source").fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 1)
+
+    def test_sync_does_not_create_a_source_from_a_seed(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            feeds.add_source(connection, url="https://example.test/marker", entity_id=studio)
+            self.assertEqual(feeds.sync_dmm_sources(connection), [])
+            feeds.bind_dmm_studio(connection, studio, "maker", "3152")
+            created = feeds.sync_dmm_sources(connection)
+            row = connection.execute("SELECT kind,url FROM feed_source WHERE id=?", (created[0],)).fetchone()
+        self.assertEqual(tuple(row), (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152")))
+
+    def test_bind_dmm_studio_is_idempotent_and_rejects_bad_input(self):
+        with self.database.write_transaction() as connection:
+            first = self._studio(connection, "スタジオ甲")
+            second = self._studio(connection, "スタジオ乙")
+            feeds.bind_dmm_studio(connection, first, "maker", "3152")
+            feeds.bind_dmm_studio(connection, first, "maker", "3152")
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 1)
+            with self.assertRaises(ValueError) as taken:
+                feeds.bind_dmm_studio(connection, second, "maker", "3152")
+            self.assertEqual(taken.exception.code, "api.feeds.dmmIdTaken")
+            with self.assertRaises(ValueError):
+                feeds.bind_dmm_studio(connection, first, "maker", "S1")
+            performer = self._studio(connection, "女優", kind="performer")
+            with self.assertRaises(ValueError) as refused:
+                feeds.bind_dmm_studio(connection, performer, "maker", "3152")
+            self.assertEqual(refused.exception.code, "api.feeds.studioOnly")
 
 
 class ShellBoundaryTest(unittest.TestCase):

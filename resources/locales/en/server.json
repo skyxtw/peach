@@ -967,6 +967,8 @@
       "scheduleDisabled": "Subscription fetching isn't enabled.",
       "noSourceIds": "This person has no ID on JavDB or DMM.",
       "noStudioIds": "This studio has no DMM maker or label ID bound yet.",
+      "studioOnly": "DMM IDs can only be bound to studio entities.",
+      "dmmIdTaken": "This DMM ID is already bound to another studio.",
       "performerMissing": "This actress can't be found.",
       "entityMissing": "This entity isn't in the ledger.",
       "entityNotSubscribable": "This kind of entity can't subscribe to new releases.",

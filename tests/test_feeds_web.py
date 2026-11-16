@@ -1708,7 +1708,7 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
 
     def setUp(self):
         super().setUp()
-        self.studio = self._studio("エスワン ナンバーワンスタイル")
+        self.studio = self._studio("無名のスタジオ")
 
     def _studio(self, name, *, label_of=None):
         with self.contract.database.write_transaction() as connection:
@@ -1753,7 +1753,7 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
         self.assertEqual(
             (source["kind"], source["url"], source["kind_label"], source["name"], source["page_name"]),
             (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), "JAV 订阅 · DMM 片商",
-             "エスワン ナンバーワンスタイル", "エスワン ナンバーワンスタイル"))
+             "無名のスタジオ", "エスワン ナンバーワンスタイル"))
         report = state["results"][0]
         self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"]),
                          (True, 2, 0, 2))
@@ -1837,13 +1837,56 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
         self.assertEqual(self._sources(), [])
 
     def test_the_profile_carries_the_switch_only_when_a_dmm_id_is_bound(self):
-        self.assertNotIn("feed", self._profile("エスワン ナンバーワンスタイル"))
+        self.assertNotIn("feed", self._profile("無名のスタジオ"))
         self._bind(self.studio, "maker", "3152")
-        self.assertEqual(self._profile("エスワン ナンバーワンスタイル")["feed"], {"following": False})
+        self.assertEqual(self._profile("無名のスタジオ")["feed"], {"following": False})
         self.transport.responses[DMM_ENDPOINT] = dmm_catalogue([], {})
         self._switch(True, self.studio)
         self._settled()
-        self.assertEqual(self._profile("エスワン ナンバーワンスタイル")["feed"], {"following": True})
+        self.assertEqual(self._profile("無名のスタジオ")["feed"], {"following": True})
+
+    def test_a_seeded_studio_shows_the_switch_and_subscribing_writes_the_binding(self):
+        seeded = self._studio("S1 NO.1 STYLE")
+        self.assertEqual(self._profile("S1 NO.1 STYLE")["feed"], {"following": False})
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1)], {"mikr00133": "MIKR-133"}, maker_id="3152")
+        self._switch(True, seeded)
+        self._settled()
+        [source] = self._sources()
+        self.assertEqual((source["kind"], source["url"], source["entity_id"]),
+                         (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), seeded))
+        with self.contract.database.read_connection() as connection:
+            refs = connection.execute(
+                "SELECT provider,external_kind,external_id FROM entity_external_ref"
+                " WHERE entity_id=?", (seeded,)).fetchall()
+        self.assertEqual([tuple(row) for row in refs], [("dmm", "maker", "3152")])
+        self.assertEqual(self._profile("S1 NO.1 STYLE")["feed"], {"following": True})
+        self._switch(False, seeded)
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref WHERE entity_id=?", (seeded,)).fetchone()[0], 1)
+
+    def test_bind_studio_endpoint_is_idempotent_and_validates_input(self):
+        result = dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+            "entity_id": self.studio, "kind": "maker", "id": "3152"})
+        self.assertEqual(result, {"ok": True, "entity_id": self.studio, "kind": "maker", "id": "3152"})
+        dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+            "entity_id": self.studio, "kind": "maker", "id": 3152})
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref WHERE provider='dmm'").fetchone()[0], 1)
+        with self.assertRaises(ValueError):
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": self.studio, "kind": "maker", "id": "S1"})
+        with self.assertRaises(ValueError) as refused:
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": self.performer, "kind": "maker", "id": "3152"})
+        self.assertEqual(refused.exception.code, "api.feeds.studioOnly")
+        other = self._studio("別のスタジオ")
+        with self.assertRaises(ValueError) as taken:
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": other, "kind": "maker", "id": "3152"})
+        self.assertEqual(taken.exception.code, "api.feeds.dmmIdTaken")
 
 
 class JavDiscoveryTest(FeedWebFixture):

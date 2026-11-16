@@ -522,6 +522,25 @@ def w_feed_source(contract, body) -> dict:
     raise ValueError(f"unknown feed source action: {action}")
 
 
+def w_bind_studio(contract, body) -> dict:
+    """手工把 DMM maker/label 编号绑到片商实体；幂等，供片商页 UI 调用。
+
+    `id` 只收 ASCII 数字，实体必须是 studio；只写 `entity_external_ref`，不建订阅源，也不联网。
+    """
+    entity_id = body.get("entity_id")
+    kind = str(body.get("kind") or "")
+    value = body.get("id")
+    if not isinstance(entity_id, int) or isinstance(entity_id, bool):
+        raise ValueError("entity_id must be an integer")
+    if kind not in feeds.DMM_CATALOGUE_PAGES:
+        raise ValueError("kind must be maker or label")
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("id must be an ASCII numeric DMM id")
+    with contract.database.write_transaction() as connection:
+        feeds.bind_dmm_studio(connection, entity_id, kind, str(value))
+    return {"ok": True, "entity_id": entity_id, "kind": kind, "id": str(value)}
+
+
 def subscribe_performer(connection, entity_id: int, canonical_name: str) -> list[int]:
     """这位的每个 JavDB 演员页与 DMM 片单各订一条，返回源 id。地址按账本里她的编号现拼。"""
     refs = [dict(ref) for ref in connection.execute(
