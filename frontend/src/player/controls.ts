@@ -561,6 +561,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   let holdGuard: ReturnType<typeof setInterval> | null = null;
   let holdRate = 1;
   let holding = false;
+  let suppressClick = false;
   let suppressUntil = 0;
   const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
   const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
@@ -578,14 +579,19 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     if (!holding) return;
     holding = false; player.playbackRate(holdRate); badge.hidden = true;
   };
+  const eventInsideVideo = (event: PointerEvent) => {
+    const rect = video.getBoundingClientRect();
+    return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  };
   const onDown = (event: PointerEvent) => {
     if (!inStage() || event.button > 0) return;
+    suppressClick = false;
     clearHold(); restoreRate();
     down = { x: event.clientX, y: event.clientY, at: Date.now() };
     holdTimer = setTimeout(() => {
       holdTimer = null;
       if (!down || !inStage()) return;
-      holding = true;
+      holding = true; suppressClick = true;
       holdRate = Number(player.playbackRate()) || 1;
       player.playbackRate(longPressSpeed());
       badge.textContent = t('catalog:playerQuality.speedBoost', { rate: longPressSpeed() });
@@ -598,14 +604,19 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   };
   const onMove = (event: PointerEvent) => {
     if (!down) return;
-    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_SLOP) { clearHold(); restoreRate() }
+    if (holding) {
+      /* 按住期间在视频内移动仍保持加速；只有移出视频才取消。 */
+      if (!eventInsideVideo(event)) restoreRate();
+      return;
+    }
+    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_SLOP) clearHold();
   };
   const onUp = (event: PointerEvent) => {
     if (!down || !inStage()) return;
     clearHold();
     const started = down; down = null;
-    if (holding) {
-      restoreRate(); suppressUntil = Date.now() + TAP_SUPPRESS_MS;
+    if (holding || suppressClick) {
+      restoreRate(); suppressClick = false; suppressUntil = Date.now() + TAP_SUPPRESS_MS;
       return;
     }
     if (event.pointerType === 'mouse') return;
@@ -620,9 +631,13 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     lastTap = { side, at: now };
     tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
   };
-  const onCancel = () => { restoreRate(); down = null };
-  /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复，不依赖 pointerleave。 */
-  const releaseOutside = () => { if (!holding) return; restoreRate(); suppressUntil = Date.now() + TAP_SUPPRESS_MS; down = null };
+  const onCancel = () => { restoreRate(); suppressClick = false; down = null };
+  /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复。 */
+  const releaseOutside = () => {
+    if (!holding && !suppressClick) return;
+    restoreRate(); suppressClick = false; suppressUntil = Date.now() + TAP_SUPPRESS_MS; down = null;
+  };
+  const onLeave = (event: PointerEvent) => { if (holding && !eventInsideVideo(event)) restoreRate() };
   const captureClick = (event: Event) => {
     if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
   };
@@ -633,6 +648,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   video.addEventListener('pointermove', onMove);
   video.addEventListener('pointerup', onUp);
   video.addEventListener('pointercancel', onCancel);
+  video.addEventListener('pointerleave', onLeave);
   window.addEventListener('pointerup', releaseOutside, true);
   window.addEventListener('pointercancel', releaseOutside, true);
   root.addEventListener('click', captureClick, true);
@@ -644,6 +660,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     video.removeEventListener('pointermove', onMove);
     video.removeEventListener('pointerup', onUp);
     video.removeEventListener('pointercancel', onCancel);
+    video.removeEventListener('pointerleave', onLeave);
     window.removeEventListener('pointerup', releaseOutside, true);
     window.removeEventListener('pointercancel', releaseOutside, true);
     badge.remove();

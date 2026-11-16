@@ -204,7 +204,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 [data-stage-media] .video-js .vjs-progress-control:hover .vjs-progress-thumb,[data-stage-media] .video-js .vjs-progress-control:focus-within .vjs-progress-thumb{transform:translateX(-50%) scale(1.67)}
 [data-stage-media] .video-js .vjs-mouse-display .vjs-time-tooltip,
 [data-stage-media] .video-js .vjs-play-progress .vjs-time-tooltip{display:none!important}
-.vjs-peach-speed-badge{position:absolute;z-index:2200;top:14px;left:50%;transform:translateX(-50%);
+.vjs-peach-speed-badge{position:absolute;z-index:2200;top:auto;bottom:84px;left:50%;transform:translateX(-50%);
   padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.72);color:#fff;backdrop-filter:blur(12px);
   font-size:13px;font-weight:600;line-height:1.4;white-space:nowrap;pointer-events:none;box-shadow:0 2px 12px #0006}
 .vjs-peach-speed-badge[hidden]{display:none}
