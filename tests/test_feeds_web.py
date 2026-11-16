@@ -415,7 +415,9 @@ class FeedWebTest(FeedWebFixture):
         [source] = dispatch_api_get(self.contract, "/api/feeds", {})["sources"]
         self.assertEqual((source["name"], source["entity_id"], source["entity_name"]),
                          ("凉森玲梦", entity_id, "凉森玲梦"))
+        self.assertEqual(source["entity_kind"], "performer")
         self.assertFalse(source["has_image"])
+        self.assertNotIn("has_logo", source)
 
     def test_the_source_endpoint_takes_no_address_from_the_page(self):
         # 订阅只从人物页进，地址由服务端现拼（ADR-0047）；页面送来的地址一律不收。
@@ -1730,6 +1732,28 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
 
     def _profile(self, name):
         return dispatch_api_get(self.contract, "/api/entity", {"kind": "studio", "name": name})
+
+    def _add_studio_source(self):
+        with self.contract.database.write_transaction() as connection:
+            return feeds.add_source(connection, url=feeds.dmm_maker_url("3152"),
+                                    entity_id=self.studio)
+
+    def test_studio_source_rows_carry_logo_fields_instead_of_performer_image(self):
+        """片商/厂牌行走自己的 logo，不再向 /entity-image 要人物图；无标识时字段仍完整。"""
+        self._bind(self.studio, "maker", "3152")
+        self._add_studio_source()
+        with patch.object(self.contract, "has_logo", return_value=True), \
+                patch.object(self.contract, "logo_version", return_value="logo7"):
+            [source] = self._sources()
+        self.assertEqual((source["entity_kind"], source["has_logo"], source["logo_version"]),
+                         ("studio", True, "logo7"))
+        for key in ("has_image", "image_version", "avatar_focus"):
+            self.assertNotIn(key, source)
+        with patch.object(self.contract, "has_logo", return_value=False), \
+                patch.object(self.contract, "logo_version", return_value=""):
+            [source] = self._sources()
+        self.assertEqual((source["has_logo"], source["logo_version"]), (False, ""))
+        self.assertNotIn("has_image", source)
 
     def _asked_cids(self):
         """这一套件发出的官方番号别名查询里问过的 cid，按请求顺序。"""

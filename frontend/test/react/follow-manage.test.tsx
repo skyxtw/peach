@@ -16,7 +16,7 @@ import {
   FOLLOW_CREDENTIAL_URL, FOLLOW_CREDENTIALS_URL, FOLLOW_RESOLVE_URL, FOLLOW_SOURCE_URL,
   FOLLOW_STATUS_URL, FOLLOW_SUGGEST_URL, FOLLOW_URL, MARK_BATCH, markAllPending, pageWindow, prefetchFollowManage,
   sortLabel, SUGGEST_DEBOUNCE_MS, tableRows,
-  type CheckJob, type CredentialData, type CredentialRow, type FeedLookup, type FeedsData, type FollowData,
+  type CheckJob, type CredentialData, type CredentialRow, type FeedLookup, type FeedSource, type FeedsData, type FollowData,
   type FollowSource, type ResolveJob, type SuggestData,
 } from '../../src/react/follow-manage/follow-manage';
 import { FollowManagePage } from '../../src/react/follow-manage/follow-manage-page';
@@ -768,6 +768,36 @@ function stubConfirm(accept: boolean) {
   }) as typeof legacyUi.confirmModal);
   return { asked, outcomes };
 }
+
+it('厂牌订阅源用 /logo；无标识或取图失败才退首字母', async () => {
+  const studio = (over: Partial<FeedSource> & { id: number; name: string }): FeedSource => ({
+    kind: 'dmm-maker', kind_label: 'JAV 订阅 · DMM 片商', url: 'https://video.dmm.co.jp/av/list/?maker=3152',
+    entity_id: 51, entity_name: 'S1 片商', entity_kind: 'studio', has_logo: true, logo_version: 'logo 7',
+    enabled: true, interval_minutes: 360, last_fetched_at: null, last_error: null, last_new_count: 0, seen: 0,
+    ...over,
+  });
+  const feeds: FeedsData = { unread: 0, sources: [
+    studio({ id: 6, name: 'S1 片商' }),
+    studio({ id: 7, name: '無名片商', has_logo: false, logo_version: '' }),
+    { id: 8, kind: 'performer', kind_label: 'JAV 订阅', name: '甲 的新作', url: 'https://feeds.test/a',
+      entity_id: 41, entity_name: '甲', entity_kind: 'performer', has_image: true, enabled: true,
+      interval_minutes: 720, last_fetched_at: null, last_error: null, last_new_count: 0, seen: 0 },
+  ] };
+  const { host } = await open({ feeds }, { tab: 'list' });
+  const row = (name: string) => [...host.querySelectorAll('[role="rowheader"]')]
+    .find((cell) => cell.textContent?.includes(name))!;
+  const logo = row('S1 片商').querySelector('img')!;
+  expect(logo.getAttribute('src')).toBe(`/logo?studio=${encodeURIComponent('S1 片商')}&v=${encodeURIComponent('logo 7')}`);
+  expect(row('無名片商').querySelector('img')).toBeNull();
+  expect(row('無名片商').querySelector('[aria-hidden]')?.textContent).toBe('無');
+  expect(row('甲 的新作').querySelector('img')?.getAttribute('src'))
+    .toBe('/entity-image?kind=performer&id=41&thumb=1');
+  // 图片取不到时换成首字母，不留碎图。
+  await act(async () => logo.dispatchEvent(new Event('error')));
+  await settle();
+  expect(row('S1 片商').querySelector('img')).toBeNull();
+  expect(row('S1 片商').querySelector('[aria-hidden]')?.textContent).toBe('S');
+});
 
 it('关注列表首屏带着订阅源清单，开关、移除与立即拉取都落到订阅源的接口上', async () => {
   stubConfirm(true);

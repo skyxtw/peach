@@ -482,9 +482,20 @@ def q_feeds(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         register_listed(contract, connection)
         rows = feeds.sources(connection)
-        # 表里名字前面那个圆框：有图走 `/entity-image`，判据与取景都取自身份引用那一份。
+        # 表里名字前面那个圆框：厂牌/片商取自己的标识，其余仍取人物身份引用。
+        # 实体种类来自上面那条 join，逐行补图不再额外查库。
         for row in rows:
-            ref = web_catalog.entity_ref(contract, "performer", row["entity_id"], row["name"])
+            entity_kind = row.get("entity_kind") or "performer"
+            if row["entity_id"] is None:
+                entity_kind = None
+            row["entity_kind"] = entity_kind
+            if entity_kind == "studio":
+                row["has_logo"] = contract.has_logo(row["name"])
+                row["logo_version"] = contract.logo_version(row["name"])
+                continue
+            ref = web_catalog.entity_ref(
+                contract, entity_kind if entity_kind in ("performer", "creator") else "performer",
+                row["entity_id"], row["name"])
             row["has_image"] = ref["has_image"]
             row["image_version"] = ref.get("image_version", "")
             row["avatar_focus"] = ref.get("avatar_focus")

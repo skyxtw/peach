@@ -1,5 +1,5 @@
 /* 关注列表里的 JAV 订阅表：
- * 一行一条源，名字前是她的资料图，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关、
+ * 一行一条源，名字前是她的资料图或厂牌/片商标识，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关、
  * 拉取键与移除键（ADR-0042）。行尾这三样和关注列表那一行一一对应，两张表看起来是一回事。
  *
  * 订阅从人物页的「订阅新作」或「添加关注」按名字进，两条路都不收地址（ADR-0047、ADR-0083）。拉回来的
@@ -109,10 +109,23 @@ function StatusChip({ source }: { source: FeedSource }) {
   return <Chip variant="caption" color="lime">{t('follow:shared.ok')}</Chip>;
 }
 
-/** 名字前的圆框：和关注列表的创作者圆标同一个尺寸与底色。里面那段由 `card-art` 的 `avatarInner` 拼：
- *  有资料图按人脸取景出图，判据是服务端的 `has_image`；没有就是首字母。整格不进读屏，名字就在旁边。 */
+/** 名字前的圆框：和关注列表的创作者圆标同一个尺寸与底色。厂牌/片商走自己的 `/logo`，
+ *  有标识才出图，无标识或取图失败退首字母；其余仍由 `card-art` 的 `avatarInner` 拼资料图。整格不进读屏，名字就在旁边。 */
 function FeedAvatar({ source }: { source: FeedSource }) {
-  const entity = source.entity_id
+  const studio = source.entity_kind === 'studio';
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false) }, [source.entity_id, source.logo_version]);
+  if (studio && source.has_logo && source.logo_version && !failed) {
+    return (
+      <span aria-hidden
+        className={`relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default ${LEGACY_AVATAR_IMG}`}>
+        <img src={`/logo?studio=${encodeURIComponent(feedName(source))}&v=${encodeURIComponent(source.logo_version)}`}
+          alt="" className="size-full object-contain" loading="lazy" decoding="async"
+          onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+  const entity = !studio && source.entity_id
     ? {
         id: source.entity_id, has_image: !!source.has_image, image_version: source.image_version,
         avatar_focus: source.avatar_focus,
@@ -121,7 +134,7 @@ function FeedAvatar({ source }: { source: FeedSource }) {
   return (
     <span aria-hidden
       className={`relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default text-caption-1-semibold text-text-secondary ${LEGACY_AVATAR_IMG}`}
-      dangerouslySetInnerHTML={{ __html: avatarInner(feedName(source), entity, null, 'performer') }} />
+      dangerouslySetInnerHTML={{ __html: avatarInner(feedName(source), entity, null, studio ? 'studio' : 'performer') }} />
   );
 }
 

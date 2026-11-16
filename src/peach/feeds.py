@@ -641,7 +641,7 @@ def sources(connection: sqlite3.Connection) -> list[dict]:
     同一个人的两页在表里名字一样，只有它说得出哪一行是旧艺名那页。排序按人物走，
     同一个人的几页挨在一起，不被页名或类型拆开；同一个人里 JavDB 演员页在前、DMM 片单在后。"""
     rows = connection.execute(
-        "SELECT s.*, e.canonical_name AS entity_name,"
+        "SELECT s.*, e.canonical_name AS entity_name, e.kind AS entity_kind,"
         " (SELECT count(*) FROM feed_item i WHERE i.source_id=s.id) AS seen"
         " FROM feed_source s LEFT JOIN entity e ON e.id=s.entity_id"
         " ORDER BY coalesce(e.canonical_name, s.name), s.kind<>?, s.id",
@@ -655,6 +655,7 @@ def sources(connection: sqlite3.Connection) -> list[dict]:
         "url": row["url"],
         "entity_id": row["entity_id"],
         "entity_name": row["entity_name"],
+        "entity_kind": row["entity_kind"],
         "enabled": bool(row["enabled"]),
         "interval_minutes": int(row["interval_minutes"]),
         "last_fetched_at": row["last_fetched_at"],

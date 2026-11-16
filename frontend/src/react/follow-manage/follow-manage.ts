@@ -557,11 +557,17 @@ export interface FeedSource {
   url: string;
   entity_id: number | null;
   entity_name: string | null;
+  /** 挂着的实体种类；厂牌/片商行走 `/logo`，其他行仍走人物/创作者身份图。 */
+  entity_kind?: string | null;
   /** 这位有没有资料图：有就在名字前画 `/entity-image` 的圆框，没有退首字母。 */
   has_image?: boolean;
   image_version?: string;
   /** 资料图的人脸取景，和 `has_image` 出自同一份身份引用。 */
   avatar_focus?: unknown;
+  /** 厂牌/片商有没有 `/logo` 文件；只有 studio 行下发。 */
+  has_logo?: boolean;
+  /** `/logo` 的缓存版本；只有 studio 行下发。 */
+  logo_version?: string;
   enabled: boolean;
   interval_minutes: number;
   last_fetched_at: string | null;
