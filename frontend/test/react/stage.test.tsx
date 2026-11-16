@@ -56,7 +56,7 @@ function serve() {
 
 function makeHost(): StageHost {
   const settings = {
-    ambientMode: false, theaterMode: false, seekSeconds: 10, seekLargeSeconds: 60, miniplayer: true, detailAutoplay: false, javImage: 'cover',
+    ambientMode: false, theaterMode: false, seekSeconds: 10, seekLargeSeconds: 60, longPressSpeed: 2, fullscreenFit: 'contain' as const, miniplayer: true, detailAutoplay: false, javImage: 'cover',
   };
   return {
     player: {
