@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "f5ea3444-1592-4abb-96b9-21dd8d7281b5", e._sentryDebugIdIdentifier = "sentry-dbid-f5ea3444-1592-4abb-96b9-21dd8d7281b5");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "f3fde387-0d69-49bb-870f-4dcf1288edbc", e._sentryDebugIdIdentifier = "sentry-dbid-f3fde387-0d69-49bb-870f-4dcf1288edbc");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2170,6 +2170,10 @@ var He = {
 		gestureBrightness: "Brightness {{percent}}%",
 		gestureSeek: "{{delta}} s · {{time}}",
 		gestureVolume: "Volume {{percent}}%",
+		fullscreenFit: "Fullscreen size",
+		fullscreenFitContain: "Fit",
+		fullscreenFitCover: "Fill",
+		fullscreenFitOriginal: "Original",
 		longPressSpeed: "Hold to speed up",
 		longPressSpeedHint: "Temporarily speed up while holding the picture; release to restore. Touch screens only.",
 		seekStep: "Back / forward",
@@ -9339,6 +9343,10 @@ var He = {
 		gestureBrightness: "亮度 {{percent}}%",
 		gestureSeek: "{{delta}} 秒 · {{time}}",
 		gestureVolume: "音量 {{percent}}%",
+		fullscreenFit: "全屏画面",
+		fullscreenFitContain: "适应",
+		fullscreenFitCover: "铺满",
+		fullscreenFitOriginal: "原始尺寸",
 		longPressSpeed: "长按倍速",
 		longPressSpeedHint: "按住画面时临时加速，松开恢复；触屏生效。",
 		seekStep: "快退 / 快进",
@@ -38759,4 +38767,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=f5ea3444-1592-4abb-96b9-21dd8d7281b5
+//# debugId=f3fde387-0d69-49bb-870f-4dcf1288edbc

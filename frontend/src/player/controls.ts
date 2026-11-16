@@ -70,6 +70,15 @@ export function applyTheaterMode(enabled: boolean, save = true): void {
   resizeSoon(detailPlayer());
 }
 
+/** 全屏画面三档：把偏好写到播放器根节点，CSS 按 `--peach-fullscreen-fit` 挑 object-fit。 */
+export function applyFullscreenFit(player?: VjsPlayer | null): void {
+  const root = (player ?? detailPlayer())?.el();
+  if (!root) return;
+  const fit = playerHost().settings().fullscreenFit;
+  if (fit === 'contain') root.removeAttribute('data-peach-fullscreen-fit');
+  else root.setAttribute('data-peach-fullscreen-fit', fit);
+}
+
 /** 氛围光：按画面平均色给舞台写 `--video-glow`。
  *
  *  取样有两条入口：播放中跟着帧回调走，`start` 则立刻取一帧。暂停的画面同样是一帧可画的图，
@@ -263,6 +272,15 @@ export function mountPlayerQualityControl(
   const seekLabel = () => t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() });
   const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
   const longPressLabel = () => `${longPressSpeed()}×`;
+  const fullscreenFit = () => {
+    const value = playerHost().settings().fullscreenFit;
+    return value === 'cover' || value === 'original' ? value : 'contain';
+  };
+  const fullscreenFitLabel = () => fullscreenFit() === 'cover'
+    ? t('catalog:playerQuality.fullscreenFitCover')
+    : fullscreenFit() === 'original'
+      ? t('catalog:playerQuality.fullscreenFitOriginal')
+      : t('catalog:playerQuality.fullscreenFitContain');
   const showMain = (direction = 0) => {
     view = 'main'; syncTabs('play');
     const { active } = qualityRows(), speed = rememberRate.current();
@@ -280,6 +298,7 @@ export function mountPlayerQualityControl(
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupInterface')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-theater-row aria-checked="${playerHost().settings().theaterMode}">
         ${icon('theater-enter', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerControls.theaterMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-fullscreen-fit>${icon('player-fullscreen-enter')}<span>${t('catalog:playerQuality.fullscreenFit')}</span><b>${fullscreenFitLabel()}</b>${icon('player-menu-next')}</button>
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${t('catalog:playerQuality.retryMemorySave')}</button></div></div>`, direction);
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();
@@ -289,6 +308,14 @@ export function mountPlayerQualityControl(
     button(panel, '[data-player-quality-view]').onclick = () => showQuality();
     button(panel, '[data-player-rotation]').onclick = () => showRotation();
     button(panel, '[data-player-theater-row]').onclick = () => { applyTheaterMode(!playerHost().settings().theaterMode); showMain() };
+    button(panel, '[data-player-fullscreen-fit]').onclick = () => {
+      const order = ['contain', 'cover', 'original'] as const;
+      const next = order[(order.indexOf(fullscreenFit()) + 1) % order.length]!;
+      playerHost().settings().fullscreenFit = next;
+      playerHost().saveSettings();
+      applyFullscreenFit(player);
+      showMain();
+    };
     button(panel, '[data-player-memory-retry]').onclick = () => { void memory.retry() };
     syncMemoryError();
   };
@@ -803,6 +830,7 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
   if (!controlBar) return;
   mountPlayerSeekControls(player, controlBar);
   mountPlayerTouchSeek(player);
+  applyFullscreenFit(player);
   if (controlBar.querySelector('.vjs-peach-right-controls')) return;
   const play = controlBar.querySelector<HTMLElement>(':scope>.vjs-play-control');
   if (play && !play.querySelector(':scope>.vjs-peach-hover')) play.insertAdjacentHTML('beforeend', '<span class="vjs-peach-hover" aria-hidden="true"></span>');

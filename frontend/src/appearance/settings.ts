@@ -37,6 +37,8 @@ export interface AppSettings {
   hoverDelaySeconds: number;
   seekSeconds: number;
   longPressSpeed: number;
+  /** 全屏时画面的缩放方式：适应、铺满或原始尺寸。 */
+  fullscreenFit: 'contain' | 'cover' | 'original';
   searchHistoryLimit: number;
   relatedLimit: number;
   feedLimit: number;
@@ -73,7 +75,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS = {
-  batchSize: 60, defaultSort: 'seed', sortDefaultsVersion: 3, hoverDelaySeconds: 5, seekSeconds: 10, longPressSpeed: 2,
+  batchSize: 60, defaultSort: 'seed', sortDefaultsVersion: 3, hoverDelaySeconds: 5, seekSeconds: 10, longPressSpeed: 2, fullscreenFit: 'contain',
   searchHistoryLimit: 10, relatedLimit: 20, feedLimit: 12, javLayout: 'big', homeLayout: 'small', javImage: 'cover',
   followLayout: 'default', peopleLayout: 'big', photoSize: 'small', ambientMode: true, miniplayer: true,
   theaterMode: false, theme: 'system', groupCollapse: true, sidebarOrder: [...DEFAULT_SIDEBAR_ORDER], manageOrder: [...MANAGE_MENU_SECTIONS],
@@ -106,6 +108,7 @@ export function normalizeAppSettings(raw: unknown): { settings: AppSettings; mig
   settings.hoverDelaySeconds = boundedPreference(+(settings.hoverDelaySeconds as number), 0, 60, 5);
   settings.seekSeconds = boundedPreference(+(settings.seekSeconds as number), 1, 300, 10);
   settings.longPressSpeed = boundedPreference(+(settings.longPressSpeed as number), 1, 4, 2);
+  settings.fullscreenFit = allowedSetting(settings.fullscreenFit, ['contain', 'cover', 'original'] as const, 'contain');
   delete settings.loginDays;
   delete settings.metadataRefreshDays;
   settings.ambientMode = settings.ambientMode !== false;

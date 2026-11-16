@@ -421,7 +421,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 [data-stage-media] :is([data-stage-media]>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,[data-stage-media]:fullscreen>.video-js,[data-stage-media]:-webkit-full-screen>.video-js,[data-stage-media]:-moz-full-screen>.video-js){position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important;
   max-width:none!important;max-height:none!important;aspect-ratio:auto!important;z-index:10000!important}
 [data-stage-media] :is([data-stage-media]>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,[data-stage-media]:fullscreen>.video-js,[data-stage-media]:-webkit-full-screen>.video-js,[data-stage-media]:-moz-full-screen>.video-js) .vjs-tech{
-  position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:contain!important}
+  position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:var(--peach-fullscreen-fit, contain)!important}
 [data-player-stats-button]{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px;padding:0;
   display:grid;place-items:center;border:0;border-radius:50%;
   background:rgba(0,0,0,.6);color:#fff;cursor:pointer;box-shadow:none;isolation:isolate;overflow:hidden}
@@ -577,3 +577,8 @@ html.peach-web-fullscreen,html.peach-web-fullscreen body{overflow:hidden!importa
 .video-js.vjs-peach-xsmall .vjs-control-bar>.vjs-peach-seek{flex-basis:36px;width:36px;height:36px;margin-left:4px}
 .video-js.vjs-peach-xsmall .vjs-peach-seek .vjs-peach-control-icon{width:20px;height:20px}
 .video-js.vjs-peach-xsmall .vjs-peach-time{display:none}
+/* 全屏画面三档（#712）：只改全屏，内嵌播放器仍按 contain 显示。 */
+.video-js[data-peach-fullscreen-fit="cover"]{--peach-fullscreen-fit:cover}
+.video-js[data-peach-fullscreen-fit="original"]{--peach-fullscreen-fit:none}
+.video-js[data-peach-fullscreen-fit="original"] .vjs-tech{object-position:center}
+#stage[data-peach-web-fullscreen] .video-js .vjs-tech{object-fit:var(--peach-fullscreen-fit, contain)!important}

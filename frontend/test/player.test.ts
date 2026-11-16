@@ -29,7 +29,7 @@ function stubFetch(reply: (url: string) => unknown): FetchCall[] {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const host = (seekSeconds = 10): PlayerHost => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, longPressSpeed: 2, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, longPressSpeed: 2, fullscreenFit: 'contain', miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {},
   toast: () => {},
   loadSourceStatus: async () => ({}),
@@ -438,6 +438,31 @@ describe('播放器清晰度', () => {
       expect(input.value).toBe('30');
       view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
       expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒');
+    } finally {
+      configurePlayer(host());
+      view.close();
+    }
+  });
+
+  it('偏好抽屉循环切换全屏画面三档并保存', () => {
+    const view = menu([]);
+    const settings = { ...host().settings() }, saveSettings = vi.fn();
+    configurePlayer({ ...host(), settings: () => settings, saveSettings });
+    try {
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      const row = () => view.root.querySelector<HTMLButtonElement>('[data-player-fullscreen-fit]')!;
+      expect(row().querySelector('b')?.textContent).toBe('适应');
+      row().click();
+      expect(settings.fullscreenFit).toBe('cover');
+      expect(view.root.getAttribute('data-peach-fullscreen-fit')).toBe('cover');
+      expect(row().querySelector('b')?.textContent).toBe('铺满');
+      row().click();
+      expect(settings.fullscreenFit).toBe('original');
+      expect(row().querySelector('b')?.textContent).toBe('原始尺寸');
+      row().click();
+      expect(settings.fullscreenFit).toBe('contain');
+      expect(view.root.hasAttribute('data-peach-fullscreen-fit')).toBe(false);
+      expect(saveSettings).toHaveBeenCalledTimes(3);
     } finally {
       configurePlayer(host());
       view.close();

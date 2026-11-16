@@ -12,6 +12,8 @@ export interface PlayerSettings {
   seekSeconds: number;
   /** 触屏长按时的临时倍速。 */
   longPressSpeed: number;
+  /** 全屏时画面的缩放方式。 */
+  fullscreenFit: 'contain' | 'cover' | 'original';
   miniplayer: boolean;
   detailAutoplay: boolean;
   /** 番号作品开播前那层封面取官方封面还是预览图（`card-art` 的 `detailPosterUrl` 按它挑）。 */
