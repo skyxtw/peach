@@ -32,7 +32,7 @@ class MigrationTests(unittest.TestCase):
                                    [(index, index) for index in range(1, 1501)])
             connection.commit()
             asset = connection.execute('SELECT * FROM asset').fetchall()
-        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0052', '0053', '0054', '0055', '0056', '0057'])
+        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0052', '0053', '0054', '0055', '0056', '0057', '0058', '0059'])
         with closing(sqlite3.connect(self.db)) as connection:
             self.assertEqual(connection.execute('SELECT * FROM asset').fetchall(), asset)
             self.assertEqual(connection.execute('SELECT count(*) FROM task_run').fetchone()[0], 1500)
@@ -57,7 +57,7 @@ class MigrationTests(unittest.TestCase):
                                "VALUES(1,'local','a.mp4','a.mp4','video',2)")
             connection.commit()
             asset = connection.execute('SELECT * FROM asset').fetchall()
-        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0054', '0055', '0056', '0057'])
+        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0054', '0055', '0056', '0057', '0058', '0059'])
 
         def revision(connection):
             return connection.execute("SELECT n FROM ledger_revision WHERE tbl='asset'").fetchone()[0]
@@ -71,6 +71,41 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(revision(connection), before + 1)
             connection.execute("UPDATE asset SET rating=80 WHERE id=1")
             self.assertEqual(revision(connection), before + 2)
+
+    def test_follow_playback_progress_upgrade_keeps_rows_and_stops_bumping_the_revision(self):
+        previous = self.root / 'previous-follow-playback'
+        previous.mkdir()
+        for path in MIGRATIONS.glob('*.sql'):
+            if path.name < '0058_':
+                shutil.copyfile(path, previous / path.name)
+        upgrade(self.db, previous)
+        with closing(sqlite3.connect(self.db)) as connection:
+            connection.executescript(
+                "INSERT INTO follow_source(provider,ref,label,url,created_at,updated_at) "
+                "VALUES('rule34video','alice','Alice','https://example.test/alice','t','t');"
+                "INSERT INTO follow_item(source_id,external_id,title,release_key,first_seen_at,last_seen_at) "
+                "VALUES(1,'1','One','one','t','t');"
+                "INSERT INTO follow_playback(follow_item_id,play_count,play_seconds,max_reached,last_played) "
+                "VALUES(1,2,30,0.5,1);")
+            connection.commit()
+            playback = connection.execute('SELECT * FROM follow_playback').fetchall()
+        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0058', '0059'])
+
+        def revision(connection):
+            return connection.execute(
+                "SELECT n FROM ledger_revision WHERE tbl='follow_playback'").fetchone()[0]
+
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            self.assertEqual(connection.execute('SELECT * FROM follow_playback').fetchall(), playback)
+            before = revision(connection)
+            connection.execute("UPDATE follow_playback SET play_seconds=42,max_reached=0.8,last_played=2 "
+                               "WHERE follow_item_id=1")
+            self.assertEqual(revision(connection), before)
+            connection.execute("UPDATE follow_playback SET play_count=3 WHERE follow_item_id=1")
+            self.assertEqual(revision(connection), before + 1)
+            self.assertEqual(connection.execute('PRAGMA foreign_key_check').fetchall(), [])
+            self.assertEqual(connection.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+        self.assertEqual(upgrade(self.db, MIGRATIONS), [])
 
     def test_stored_text_code_columns_keep_old_rows_as_plain_text(self):
         previous = self.root / 'previous-text'
@@ -90,7 +125,7 @@ class MigrationTests(unittest.TestCase):
             connection.execute("INSERT INTO follow_source(provider,ref,label,url,last_error,created_at,updated_at) "
                                "VALUES('kemono','a','A','https://b.test','旧检查原因','t','t')")
             before = {table: connection.execute(f'SELECT * FROM {table}').fetchall() for table in tables}
-        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0056', '0057'])
+        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0056', '0057', '0058', '0059'])
         with closing(sqlite3.connect(self.db)) as connection:
             for table, fields in tables.items():
                 names = [row[1] for row in connection.execute(f'PRAGMA table_info({table})')]
@@ -134,7 +169,7 @@ class MigrationTests(unittest.TestCase):
                 [('creator_tags', state, state, '本人', '旧记录', 'old') for state in ('approved', 'rejected', 'skipped')])
             connection.commit()
             before = connection.execute('SELECT * FROM review_decision ORDER BY item_key').fetchall()
-            self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057'])
+            self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)], ['0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057', '0058', '0059'])
             self.assertEqual(connection.execute('SELECT * FROM review_decision ORDER BY item_key').fetchall(), before)
             self.assertEqual(connection.execute('SELECT COUNT(*) FROM review_decision_history').fetchone()[0], 0)
             def revision():
@@ -177,7 +212,7 @@ class MigrationTests(unittest.TestCase):
             assets = connection.execute('SELECT * FROM asset').fetchall()
             tags = connection.execute('SELECT * FROM asset_tag').fetchall()
             self.assertEqual(len(connection.execute('PRAGMA foreign_key_check').fetchall()), 4)
-            self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0049', '0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057'])
+            self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0049', '0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057', '0058', '0059'])
             self.assertEqual(connection.execute('PRAGMA foreign_key_check').fetchall(), [])
             self.assertEqual(connection.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
             self.assertEqual(connection.execute('SELECT id,parent_run_id,root_run_id FROM task_run ORDER BY id').fetchall(),
@@ -203,7 +238,7 @@ class MigrationTests(unittest.TestCase):
             connection.execute("INSERT INTO asset(id,location,path,medium,disposal) VALUES(1,'local','sample.mp4','video','trash')")
             connection.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'示例','user')")
             connection.commit()
-            self.assertEqual([migration.version for migration in upgrade(self.db, MIGRATIONS)], ['0046', '0047', '0048', '0049', '0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057'])
+            self.assertEqual([migration.version for migration in upgrade(self.db, MIGRATIONS)], ['0046', '0047', '0048', '0049', '0050', '0051', '0052', '0053', '0054', '0055', '0056', '0057', '0058', '0059'])
             self.assertEqual(connection.execute("SELECT disposal,disposal_reason FROM asset WHERE id=1").fetchone(), ('trash', None))
             self.assertEqual(connection.execute("SELECT tag,source FROM asset_tag WHERE asset_id=1").fetchall(), [('示例', 'user')])
             self.assertEqual(connection.execute("SELECT count(*) FROM asset").fetchone()[0], 1)
@@ -222,7 +257,7 @@ class MigrationTests(unittest.TestCase):
         sqlite3.connect(self.db).close()
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
-        self.assertEqual([m.version for m in done], [f'{number:04d}' for number in range(58)])
+        self.assertEqual([m.version for m in done], [f'{number:04d}' for number in range(60)])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -240,7 +275,7 @@ class MigrationTests(unittest.TestCase):
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "genre_decision", "asset_subtitle", "task_run", "performer_profile", "code_sample_image",
                          "entity_classification", "entity_identity_link", "seed_pack_history", "schema_migration"} <= tables)
-        self.assertEqual(versions, [f'{number:04d}' for number in range(58)])
+        self.assertEqual(versions, [f'{number:04d}' for number in range(60)])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -907,6 +942,52 @@ class ForeignKeyDeleteRuleTests(unittest.TestCase):
         connection.close()
 
 
+class AssetMediumIndexTests(unittest.TestCase):
+    """0059：asset(medium) 索引给列表、统计与修复的 medium 过滤用。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        self.connection = sqlite3.connect(self.db)
+        self.addCleanup(self.connection.close)
+        self.connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size) VALUES(?,?,?,?,?,?)",
+            [(index, "local", rf"R:\media\{index}.part", f"{index}.part",
+              "video" if index % 25 == 0 else "image", 100) for index in range(1, 1001)])
+        self.connection.commit()
+        # 小表上 SQLite 估算全表扫描更便宜；统计信息让它按真实分布比较索引代价。
+        self.connection.execute("ANALYZE")
+
+    @staticmethod
+    def plan(connection, sql):
+        return " | ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
+
+    def test_the_index_is_registered_and_the_upgrade_is_idempotent(self):
+        indexes = {row[1] for row in self.connection.execute("PRAGMA index_list(asset)")}
+        self.assertIn("idx_asset_medium", indexes)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM asset WHERE medium='video'").fetchone()[0], 40)
+        self.assertEqual(upgrade(self.db, MIGRATIONS), [])
+
+    def test_medium_filters_use_the_index(self):
+        count = self.plan(self.connection, "SELECT count(*) FROM asset WHERE medium='video'")
+        self.assertIn("USING COVERING INDEX idx_asset_medium", count)
+        grouped = self.plan(self.connection, "SELECT medium,count(*) FROM asset GROUP BY medium")
+        self.assertIn("USING COVERING INDEX idx_asset_medium", grouped)
+        stats = self.plan(
+            self.connection,
+            "SELECT count(*),COALESCE(sum(a.size),0) FROM asset a "
+            "WHERE a.medium='video' AND COALESCE(a.disposal,'')<>'vanished'")
+        self.assertIn("USING INDEX idx_asset_medium", stats)
+
+    def test_medium_filter_returns_only_videos(self):
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM asset WHERE medium='video' AND size=100").fetchone()[0], 40)
+
+
 class AssetSubtitleTableTests(unittest.TestCase):
     """0027：字幕 sidecar 表的形状由 schema 自己守住。"""
 
@@ -1170,7 +1251,7 @@ class StoredValueIdsTests(unittest.TestCase):
             return connection.execute(sql).fetchall()
 
     def test_old_values_become_ids_and_everything_else_stays(self):
-        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0057'])
+        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0057', '0058', '0059'])
         self.assertEqual(self.rows("SELECT id,ctx_orient,ctx_length,ctx_quality FROM asset ORDER BY id"), [
             (1, 'portrait', 'quick', 'low'), (2, 'landscape', 'long', '1080P'), (3, 'landscape', 'short', '4K'),
             (4, None, 'medium', None), (5, None, None, None)])

@@ -122,7 +122,8 @@ class CapacityHistoryTests(unittest.TestCase):
         with database.write_transaction() as connection:
             connection.execute("INSERT INTO asset(location,path,name) VALUES('local','sample','sample')")
         contract = SimpleNamespace(upgrade_config=self.config, database=database,
-            write_transaction=database.write_transaction, cache_bust=mock.Mock())
+            write_transaction=database.write_transaction, cache_bust=mock.Mock(),
+            playback_committed=lambda: None)
         with mock.patch('peach.remote_reporting._new_client') as network:
             web_activity.w_play(contract, {'id': 1})
             network.assert_not_called()

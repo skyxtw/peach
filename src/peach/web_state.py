@@ -370,8 +370,9 @@ class WebContract:
         """账本版本号：`ledger_revision` 各行之和（migration 0038）。
 
         每张账本表的增删改都由触发器给自己那一行加一，不论写的是服务、CLI 脚本还是
-        账本同步，所以这个数变了就是账本变了。任务中心的心跳不挂触发器；播放心跳只改的
-        观看进度列不推 asset 的版本（migration 0054）。库还没迁移到
+        账本同步，所以这个数变了就是账本变了。任务中心的心跳不挂触发器；本地播放心跳只改的
+        观看进度列不推 asset 的版本（migration 0054），关注页在线播放心跳同理不推
+        follow_playback 的版本（migration 0058）。库还没迁移到
         0038（或根本没有库）时返回 None。
         `tables` 非空时只累计这些表的版本。
         """
@@ -541,6 +542,19 @@ class WebContract:
                 self.background_generation = self.cache_generation
             else:
                 self.foreground_generation = self.cache_generation
+
+    def playback_committed(self):
+        """起播写账本后调用：不清时间型缓存，只按「后台提交」推进版本（ADR-0146）。
+
+        起播只把一部片计入播放次数与最近播放，统计、目录、垃圾复核这类全库聚合重算一次要
+        几秒；每播一次就当场重算，页面会回到冷态（#718）。播放不是编目内容，晚几秒看到新值
+        无妨：按表核验的聚合先回上一份、后台合并重算一次，时间型缓存由 `CACHE_TTL` 收敛。
+        `play_count` 仍在 `rev_asset_update` 的列名单里（migration 0054），所以账本版本照常
+        前进，只是这次提交按后台算。播放的人自己看的详情页直读账本，不受影响。
+        """
+        with self.cache_lock:
+            self.cache_generation += 1
+            self.background_generation = self.cache_generation
 
     def read_connection(self):
         return self.database.read_connection()
