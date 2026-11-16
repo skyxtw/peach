@@ -122,6 +122,12 @@ export function EntityHeroPage({ kind, name, entity, feedNew, feedHost, feedErro
               <div ref={linkRow} data-entity-links="">{links.map((link, at) => <HeroLinkView key={at} link={link} />)}</div>
             ) : null}
             {marks.length || entity.feed ? <EntryMarks entity={entity} actions={actions} helpers={helpers} /> : null}
+            {kind === 'performer' && entity.id && !entity.feed ? (
+              <p data-entity-feed-empty="" className="text-caption-1-regular text-text-secondary">
+                {t('catalog:entityHero.subscribeUnavailableHint', { name: displayName })}{' '}
+                <a href="/subscriptions?tab=add" className="text-text-primary underline">{t('catalog:entityHero.addSubscribeSource')}</a>
+              </p>
+            ) : null}
             {entity.follow?.held.length ? <HeldAuthors follow={entity.follow} displayName={displayName} actions={actions} /> : null}
           </div>
           {facts.length ? (

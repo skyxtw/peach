@@ -440,6 +440,14 @@ def dmm_actress_pages(connection: sqlite3.Connection, entity_id: int) -> list[st
     return [dmm_actress_url(value) for value in dmm_actress_ids(connection, entity_id)]
 
 
+def dmm_actress_ids_from_refs(refs) -> list[str]:
+    """已取出的引用行里的 DMM 女优编号；索引页一次取整批引用时复用，不按人再查一遍。"""
+    values = {str(ref.get("external_id") or "") for ref in refs or ()
+              if str(ref.get("external_kind") or "") == "performer"
+              and str(ref.get("provider") or "") in DMM_ACTRESS_PROVIDERS}
+    return sorted(value for value in values if _DMM_ID.match(value))
+
+
 def dmm_catalogue_refs(connection: sqlite3.Connection, entity_id: int) -> list[tuple[str, str]]:
     """这家片商显式绑过的 DMM maker/label 编号（`entity_external_ref`）。
 
