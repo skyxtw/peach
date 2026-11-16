@@ -51,6 +51,50 @@ export function preferredDirection(sort: string, preferredSort: string, directio
   return sort === 'seed' ? '' : sort === preferredSort && direction === 'asc' ? 'asc' : 'desc';
 }
 
+/* 目录的排序按页记：首页与 JAV 馆藏共用一张网格，但各自有一份选择；其余目录页（筛选态、回收站、
+   视频墙）跟首页那一份。键名沿用版式偏好的 home/jav。 */
+export type SortPage = 'home' | 'jav';
+export const SORT_PAGES: readonly SortPage[] = ['home', 'jav'];
+export interface PageSort { sort: string; dir: string }
+/** 归一化与读取要用的那几项；AppSettings 与目录的偏好对象都满足这个形状。 */
+export interface SortPreferences {
+  defaultSort: string;
+  defaultSortDirection?: string;
+  pageSorts?: Readonly<Record<string, PageSort | undefined>>;
+}
+
+/** 一页存下的排序：认不出的列整条丢，方向按列归一（随机没有方向）。 */
+export function normalizePageSort(raw: unknown): PageSort | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { sort, dir } = raw as Record<string, unknown>;
+  if (typeof sort !== 'string' || !SORT_KEYS.includes(sort)) return null;
+  return { sort, dir: SORT_DIR_WORDS[sort] ? dir === 'asc' ? 'asc' : 'desc' : '' };
+}
+
+/** 存量里的 pageSorts：只留已知页面、每一页只留合法的那份。 */
+export function normalizePageSorts(raw: unknown): Record<string, PageSort> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const pages = raw as Record<string, unknown>, normalized: Record<string, PageSort> = {};
+  for (const page of SORT_PAGES) {
+    const sort = normalizePageSort(pages[page]);
+    if (sort) normalized[page] = sort;
+  }
+  return normalized;
+}
+
+/** 目录地址属于哪一页的排序：只有首页的 JAV 馆藏（?jav=1）另算一页。 */
+export function catalogSortPage(pathname: string, search: string): SortPage {
+  return pathname === '/' && new URLSearchParams(search).get('jav') === '1' ? 'jav' : 'home';
+}
+
+/** 这一页该用的排序：存过就用存下的，没存过回全局默认（随机没有方向）。 */
+export function pageSortPreference(preferences: SortPreferences, page: SortPage): PageSort {
+  const saved = normalizePageSort(preferences.pageSorts?.[page]);
+  if (saved) return saved;
+  const sort = preferences.defaultSort;
+  return { sort, dir: preferredDirection(sort, sort, preferences.defaultSortDirection) };
+}
+
 /** 地址上的 `sort` 与 `dir` 一次解成列和方向。旧键自带方向；`dir` 显式写了就听它的；写了列、没写方向是那一列的
  *  默认方向（目录地址省掉的正是它）；两样都没写按浏览偏好。随机没有方向。认不出的列换成 `fallback`。 */
 export function sortFromAddress(

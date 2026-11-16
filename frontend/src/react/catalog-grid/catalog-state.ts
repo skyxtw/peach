@@ -2,11 +2,14 @@ import { cleanTagFilter, isCatalogPath, ROUTE_STATES, STATE_ROUTES } from '@peac
 import type { BarsContext, CatalogFilters } from '@peach/shell';
 
 import { lengthParam, orientParam } from '../../core/stored-values';
-import { defaultSortDir, preferredDirection, sortFromAddress } from '../../sort-preferences';
+import {
+  catalogSortPage, defaultSortDir, pageSortPreference, sortFromAddress, type PageSort, type SortPage,
+} from '../../sort-preferences';
 
 export interface CatalogPreferences {
   defaultSort: string;
   defaultSortDirection?: string;
+  pageSorts?: Readonly<Record<string, PageSort | undefined>>;
 }
 
 export interface CatalogAddress { pathname: string; search: string }
@@ -26,9 +29,15 @@ const HOME_QUERY_KEYS = [
   'browse', 'folder', 'folder_recursive',
 ] as const;
 
+/** 目录地址这一页该用的排序：首页与 JAV 各存一份，其余目录页跟首页。 */
+export function catalogSort(address: CatalogAddress, preferences: CatalogPreferences): PageSort {
+  return pageSortPreference(preferences, catalogSortPage(address.pathname, address.search));
+}
+
 export function resolveSort(rawSort: string | null, rawDir: string | null,
-  preferences: CatalogPreferences, fallback = preferences.defaultSort): { sort: string; dir: string } {
-  return sortFromAddress(rawSort, rawDir, preferences.defaultSort, preferences.defaultSortDirection, fallback);
+  preferences: CatalogPreferences, fallback?: string, page: SortPage = 'home'): { sort: string; dir: string } {
+  const preferred = pageSortPreference(preferences, page);
+  return sortFromAddress(rawSort, rawDir, preferred.sort, preferred.dir, fallback ?? preferred.sort);
 }
 
 /** 启动时只在目录地址读目录参数；来源范围同时适用于其它页面。 */
@@ -38,13 +47,14 @@ export function initialCatalogFilters(address: CatalogAddress, preferences: Cata
   const params = new URLSearchParams(address.search);
   const catalog = isCatalogPath(pathname) || pathname === '/trash';
   const read = (key: string) => catalog ? params.get(key) : null;
+  const preferred = catalogSort(address, preferences);
   return {
     loc: params.get('loc') ?? 'local,115', creator: read('creator') || '', studio: read('studio') || '',
     owner: read('owner') === 'none' ? 'none' : '', tag: cleanTagFilter(read('tag')),
     tag_match: read('tag_match') === 'any' ? 'any' : 'all', len: lengthParam(read('len')),
     dur_min: read('dur_min') || '', dur_max: read('dur_max') || '', orient: orientParam(read('orient')),
     region: read('region') || '', year: read('year') || '', state: ROUTE_STATES[pathname] || read('state') || '',
-    ...resolveSort(read('sort'), read('dir'), preferences), seed: read('seed') || seed(),
+    ...sortFromAddress(read('sort'), read('dir'), preferred.sort, preferred.dir), seed: read('seed') || seed(),
     q: read('q') || '', jav: read('jav') || '', thumb: read('thumb') || '0',
     browse: read('browse') === 'folders' || read('folder') ? 'folders' : '',
     folder: read('folder') || '', folder_recursive: read('folder_recursive') === '0' ? '0' : '',
@@ -77,11 +87,12 @@ export function homePath(filters: Readonly<CatalogFilters>): string {
 /** 回首页保留来源范围，其余口径使用浏览偏好与新种子。 */
 export function resetCatalogFilters(previous: Readonly<CatalogFilters>, preferences: CatalogPreferences,
   seed: () => string): CatalogState {
+  const preferred = pageSortPreference(preferences, 'home');
   return {
     loc: previous.loc ?? '', creator: '', studio: '', owner: '', tag: '', tag_match: 'all',
     len: '', dur_min: '', dur_max: '', orient: '', region: '', year: '', state: '',
-    sort: preferences.defaultSort,
-    dir: preferredDirection(preferences.defaultSort, preferences.defaultSort, preferences.defaultSortDirection),
+    sort: preferred.sort,
+    dir: preferred.dir,
     seed: seed(), q: '', jav: '', thumb: '0',
     browse: '', folder: '', folder_recursive: '',
   };

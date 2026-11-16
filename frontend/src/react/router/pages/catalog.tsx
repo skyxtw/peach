@@ -28,6 +28,7 @@ import { pageOpens, state, subscribeShell, writeShell, type CatalogFilters } fro
 
 import { junkPath, junkRoute } from '../../../junk-queue';
 import { sortFromAddress } from '../../../sort-preferences';
+import { catalogSort } from '../../catalog-grid/catalog-state';
 import { lengthParam, orientParam } from '../../../core/stored-values';
 import {
   pageNavigationReady, rememberPageState, restoredPageState, restoringPage, settlePageNavigation,
@@ -85,7 +86,7 @@ function filtersAt(pathname: string, search: string, entering: boolean, shell: C
   if (restored) return { ...restored };
   if (pathname === '/trash') return { ...previous, creator: '', studio: '', tag: '', orient: '', state: 'trash', q: '' };
   const params = new URLSearchParams(search);
-  const { defaultSort, defaultSortDirection } = appSettingsStore().value;
+  const preferred = catalogSort({ pathname, search }, appSettingsStore().value);
   return {
     ...previous,
     loc: params.get('loc') ?? shell.defaultLoc(),
@@ -95,7 +96,7 @@ function filtersAt(pathname: string, search: string, entering: boolean, shell: C
     len: lengthParam(params.get('len')), dur_min: params.get('dur_min') || '', dur_max: params.get('dur_max') || '',
     orient: orientParam(params.get('orient')),
     state: ROUTE_STATES[pathname] || params.get('state') || '',
-    ...sortFromAddress(params.get('sort'), params.get('dir'), defaultSort, defaultSortDirection),
+    ...sortFromAddress(params.get('sort'), params.get('dir'), preferred.sort, preferred.dir),
     seed: params.get('seed') || (entering ? newSeed() : previous.seed || newSeed()),
     q: params.get('q') || '', jav: params.get('jav') || '',
     performer: params.get('performer') || '', series: params.get('series') || '',
