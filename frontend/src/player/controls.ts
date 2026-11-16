@@ -271,7 +271,7 @@ export function mountPlayerQualityControl(
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>${t('catalog:playerQuality.quality')}</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button>
       <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupInterface')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-theater-row aria-checked="${playerHost().settings().theaterMode}">
-        ${icon('theater-enter')}<span>${t('catalog:playerControls.theaterMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+        ${icon('theater-enter', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerControls.theaterMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${t('catalog:playerQuality.retryMemorySave')}</button></div></div>`, direction);
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();

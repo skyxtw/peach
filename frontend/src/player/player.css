@@ -506,6 +506,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 .vjs-peach-seek-stepper .vjs-peach-speed-button{display:grid;place-items:center;width:44px;height:40px;border-radius:10px;
   background:rgba(255,255,255,.1);color:#fff;border:0;font:inherit;font-size:20px;cursor:pointer}
 .vjs-peach-seek-stepper .vjs-peach-speed-button:hover{background:rgba(255,255,255,.18)}
+.vjs-peach-seek-stepper .vjs-peach-speed-button>svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .vjs-peach-seek-input{box-sizing:border-box;width:100%;height:40px;border:1px solid rgba(255,255,255,.16);border-radius:10px;
   background:rgba(255,255,255,.06);color:#fff;text-align:center;font:inherit;font-size:16px;font-variant-numeric:tabular-nums}
 .vjs-peach-seek-input:focus{outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}
