@@ -571,7 +571,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   gesture.innerHTML = '<span class="vjs-peach-gesture-icon"></span><span class="vjs-peach-gesture-text"></span>';
   const gestureIcon = gesture.querySelector<HTMLElement>('.vjs-peach-gesture-icon')!;
   const gestureText = gesture.querySelector<HTMLElement>('.vjs-peach-gesture-text')!;
-  let down: { x: number; y: number; at: number } | null = null;
+  let down: { x: number; y: number; at: number; inactive: boolean } | null = null;
   let lastTap: { side: -1 | 1; at: number } | null = null;
   let tapTimer: ReturnType<typeof setTimeout> | null = null;
   let holdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -659,7 +659,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     if (!inStage() || event.button > 0) return;
     suppressClick = false; hideGesture();
     clearHold(); restoreRate();
-    down = { x: event.clientX, y: event.clientY, at: Date.now() };
+    down = { x: event.clientX, y: event.clientY, at: Date.now(), inactive: root.classList.contains('vjs-user-inactive') };
     try { video.setPointerCapture(event.pointerId) } catch { /* 不支持捕获的浏览器 */ }
     holdTimer = setTimeout(() => {
       holdTimer = null;
@@ -703,7 +703,14 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     }
     if (event.pointerType === 'mouse') return;
     if (Date.now() - started.at > 600 || Math.hypot(event.clientX - started.x, event.clientY - started.y) > TAP_SLOP) return;
-    const now = Date.now(), side = sideAt(event.clientX);
+    const now = Date.now();
+    /* 控制条自己藏起来时，第一下只把它唤出来，不切换播放。 */
+    if (started.inactive) {
+      suppressUntil = now + TAP_SUPPRESS_MS;
+      root.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: event.clientX, clientY: event.clientY }));
+      return;
+    }
+    const side = sideAt(event.clientX);
     suppressUntil = now + TAP_SUPPRESS_MS;
     if (lastTap && lastTap.side === side && now - lastTap.at <= TAP_MS) {
       clearTap(); seekVideoBy(video, step() * side);
@@ -716,6 +723,26 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   const onCancel = () => { restoreRate(); hideGesture(); suppressClick = false; down = null };
   const keepSelection = (event: Event) => { if (event.target === video) event.preventDefault() };
   root.addEventListener('contextmenu', keepSelection);
+  /* 桌面滚轮在画面上调音量；设置抽屉里的滚动留给抽屉自己。 */
+  const wheel = document.createElement('div');
+  wheel.className = 'vjs-peach-gesture vjs-peach-wheel-volume'; wheel.hidden = true;
+  wheel.innerHTML = '<span class="vjs-peach-gesture-icon"></span><span class="vjs-peach-gesture-text"></span>';
+  root.append(wheel);
+  const wheelIcon = wheel.querySelector<HTMLElement>('.vjs-peach-gesture-icon')!;
+  const wheelText = wheel.querySelector<HTMLElement>('.vjs-peach-gesture-text')!;
+  let wheelTimer: ReturnType<typeof setTimeout> | null = null;
+  const onWheel = (event: WheelEvent) => {
+    if (event.ctrlKey || (event.target as Element).closest('.vjs-peach-settings-drawer')) return;
+    event.preventDefault();
+    const next = Math.min(1, Math.max(0, (video.muted ? 0 : video.volume) + (event.deltaY > 0 ? -.05 : .05)));
+    video.muted = next === 0; video.volume = next;
+    wheelIcon.innerHTML = icon('player-volume', 'vjs-peach-gesture-fill');
+    wheelText.textContent = t('catalog:playerQuality.gestureVolume', { percent: Math.round(next * 100) });
+    wheel.hidden = false;
+    if (wheelTimer) clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheel.hidden = true }, 800);
+  };
+  root.addEventListener('wheel', onWheel, { passive: false });
   /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复。 */
   const releaseOutside = () => {
     if (mode) { finishGesture(); return }
@@ -746,10 +773,12 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     video.removeEventListener('pointerup', onUp);
     video.removeEventListener('pointercancel', onCancel);
     video.removeEventListener('pointerleave', onLeave);
+    root.removeEventListener('wheel', onWheel);
+    if (wheelTimer) clearTimeout(wheelTimer);
     root.removeEventListener('contextmenu', keepSelection);
     window.removeEventListener('pointerup', releaseOutside, true);
     window.removeEventListener('pointercancel', releaseOutside, true);
-    badge.remove(); gesture.remove();
+    badge.remove(); gesture.remove(); wheel.remove();
     root.removeEventListener('click', captureClick, true);
     root.removeEventListener('dblclick', captureDoubleClick, true);
     root.removeAttribute('data-player-touch-seek');
