@@ -779,6 +779,7 @@ it('厂牌订阅源用 /logo；无标识或取图失败才退首字母', async (
   const feeds: FeedsData = { unread: 0, sources: [
     studio({ id: 6, name: 'S1 片商' }),
     studio({ id: 7, name: '無名片商', has_logo: false, logo_version: '' }),
+    studio({ id: 9, name: '内置片商', logo_version: '' }),
     { id: 8, kind: 'performer', kind_label: 'JAV 订阅', name: '甲 的新作', url: 'https://feeds.test/a',
       entity_id: 41, entity_name: '甲', entity_kind: 'performer', has_image: true, enabled: true,
       interval_minutes: 720, last_fetched_at: null, last_error: null, last_new_count: 0, seen: 0 },
@@ -788,6 +789,8 @@ it('厂牌订阅源用 /logo；无标识或取图失败才退首字母', async (
     .find((cell) => cell.textContent?.includes(name))!;
   const logo = row('S1 片商').querySelector('img')!;
   expect(logo.getAttribute('src')).toBe(`/logo?studio=${encodeURIComponent('S1 片商')}&v=${encodeURIComponent('logo 7')}`);
+  expect(row('内置片商').querySelector('img')?.getAttribute('src'))
+    .toBe(`/logo?studio=${encodeURIComponent('内置片商')}`);
   expect(row('無名片商').querySelector('img')).toBeNull();
   expect(row('無名片商').querySelector('[aria-hidden]')?.textContent).toBe('無');
   expect(row('甲 的新作').querySelector('img')?.getAttribute('src'))
