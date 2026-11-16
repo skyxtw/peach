@@ -95,7 +95,7 @@ def _describe_groups(connection, groups: list[list[int]]) -> list[dict]:
     return result
 
 
-def merge_duplicates(contract) -> dict:
+def merge_duplicates(contract, _body=None) -> dict:
     merged = []
     with contract.database.write_transaction() as connection:
         groups = _describe_groups(connection, duplicate_groups(connection))
