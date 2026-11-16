@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""VR 标签补救的 dry-run 审计。默认只读，不提供 apply；写入要下一轮按 ADR-0052 接。"""
+"""Read-only VR tag dry-run. No apply path; writes require ADR-0052."""
 from __future__ import annotations
 
 import argparse
@@ -20,13 +20,13 @@ from peach.vr_tags import format_summary, plan
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='VR 标签补救 dry-run（默认零写入）')
+    parser = argparse.ArgumentParser(description='VR tag dry-run (no writes)')
     parser.add_argument('--db', type=Path, default=DATABASE_PATH)
-    parser.add_argument('--batch', default=None, help='预期的批次号；默认 auto:vr-tags@dry-run')
+    parser.add_argument('--batch', default=None, help='Expected batch id; default auto:vr-tags@dry-run')
     parser.add_argument('--chunk-size', type=int, default=200)
-    parser.add_argument('--active', action='store_true', help='排除 vanished（回收站/消失）')
+    parser.add_argument('--active', action='store_true', help='Exclude vanished records')
     parser.add_argument('--sample', type=int, default=8)
-    parser.add_argument('--json', action='store_true', help='输出完整计划')
+    parser.add_argument('--json', action='store_true', help='Print the full plan')
     return parser
 
 
@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     path = args.db.resolve()
     if not path.is_file():
-        raise SystemExit(f'账本不存在：{path}')
+        raise SystemExit(f'ledger not found: {path}')
     # 只读 URI：这条命令没有写分支，也不会顺手创建 -wal/-shm。
     connection = sqlite3.connect(f'file:{path.as_posix()}?mode=ro', uri=True)
     connection.row_factory = sqlite3.Row

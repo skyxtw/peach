@@ -116,7 +116,7 @@ function FeedAvatar({ source }: { source: FeedSource }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false) }, [source.entity_id, source.logo_version]);
   if (studio && source.has_logo && !failed) {
-    const logo = `/logo?studio=${encodeURIComponent(feedName(source))}${source.logo_version ? `&v=${encodeURIComponent(source.logo_version)}` : ''}`;
+    const logo = `/logo?studio=${encodeURIComponent(feedName(source))}&variant=icon${source.logo_version ? `&v=${encodeURIComponent(source.logo_version)}` : ''}`;
     return (
       <span aria-hidden
         className={`relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default ${LEGACY_AVATAR_IMG}`}>

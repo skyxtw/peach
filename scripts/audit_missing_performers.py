@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""缺演员只读诊断。默认输出两个口径统计；--code [番号] 输出单条现状。"""
+"""Read-only missing-performer diagnostics. Default: both scopes; --code [code]: one asset."""
 from __future__ import annotations
 
 import argparse
@@ -21,14 +21,14 @@ from peach.missing_performers import (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='缺演员只读诊断（零写入）')
+    parser = argparse.ArgumentParser(description='Read-only missing-performer diagnostics (no writes)')
     parser.add_argument('--db', type=Path, default=DATABASE_PATH)
     parser.add_argument('--studio', default='')
     parser.add_argument('--prefix', default='')
     parser.add_argument('--limit', type=int, default=20)
-    parser.add_argument('--active', action='store_true', help='排除 vanished（回收站/消失）')
+    parser.add_argument('--active', action='store_true', help='Exclude vanished records')
     parser.add_argument('--code', nargs='?', const=DEFAULT_CODE, default=None,
-                        help=f'单条番号；省略值用 {DEFAULT_CODE}')
+                        help=f'One code; omit the value for {DEFAULT_CODE}')
     parser.add_argument('--json', action='store_true')
     return parser
 
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     path = args.db.resolve()
     if not path.is_file():
-        raise SystemExit(f'账本不存在：{path}')
+        raise SystemExit(f'ledger not found: {path}')
     connection = sqlite3.connect(f'file:{path.as_posix()}?mode=ro', uri=True)
     connection.row_factory = sqlite3.Row
     try:
