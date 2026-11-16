@@ -302,17 +302,40 @@ class Fetcher:
         return rank_candidates(found)
 
 
+def _preferred_words(values) -> tuple[str, ...]:
+    """版本优先词的查询口径：去空白、casefold，按用户给的顺序保留。"""
+    return tuple(str(word).strip().casefold() for word in values if str(word).strip())
+
+
+def _ordered_sources(fetcher, keywords):
+    """有版本偏好时先问 sukebei，再问 JavDB；没有偏好时保持原来的来源顺序。"""
+    if keywords:
+        return ((CHAIN[0], fetcher.manko), (CHAIN[2], fetcher.sukebei), (CHAIN[1], fetcher.javdb))
+    return ((CHAIN[0], fetcher.manko), (CHAIN[1], fetcher.javdb), (CHAIN[2], fetcher.sukebei))
+
+
+def _has_preferred(items, keywords) -> bool:
+    """这一批候选标题里是否已经出现用户要的版本。"""
+    return bool(keywords) and any(
+        keyword in str(item.get("name") or "").casefold()
+        for item in items for keyword in keywords)
+
+
 def search(root: Path, code: str, *, transport=None, min_size: int = 0,
-           max_size: int = 1024 ** 4, goal: str = "quality", stop_on_preferred: bool = True) -> dict:
+           max_size: int = 1024 ** 4, goal: str = "quality", stop_on_preferred: bool = True,
+           preferred_keywords: tuple[str, ...] = ()) -> dict:
     """有界查询三个可直连来源；直接添加允许在 manko 高清命中时结束。
 
+    `preferred_keywords` 非空时把 sukebei 提前到 JavDB 之前：用户明确要的版本
+    常见于 sukebei，任一来源出现标题命中词就停止，不再为没有必要的来源付请求时间。
     `unfetched_sources` 列出这一轮没给出答复的来源：站上没有这个番号、身份对不上属于答复，不算在内。
     来源在冷却时，`retry_after` 至少等到冷却结束。"""
     fetcher = Fetcher(root, transport=transport)
     trace, warnings, found, retry_delays, unfetched = [], [], [], [], []
+    keywords = _preferred_words(preferred_keywords)
+    sources = _ordered_sources(fetcher, keywords)
     try:
-        for source, collect in ((CHAIN[0], fetcher.manko), (CHAIN[1], fetcher.javdb),
-                                (CHAIN[2], fetcher.sukebei)):
+        for source, collect in sources:
             try:
                 items = collect(code)
             except SourceFailure as error:
@@ -335,6 +358,9 @@ def search(root: Path, code: str, *, transport=None, min_size: int = 0,
             found.extend(items)
             if stop_on_preferred and source.key == "manko" and any(item["resolution"] >= HIGH_QUALITY for item in items):
                 trace.append(f"{source.label}: 1080p/2160p found, stopped early")
+                break
+            if _has_preferred(items, keywords):
+                trace.append(f"{source.label}: preferred edition found, stopped early")
                 break
             trace.append(f"{source.label}: {len(items)} found" if items else f"{source.label}: no results")
     finally:

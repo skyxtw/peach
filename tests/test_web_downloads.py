@@ -571,6 +571,26 @@ class ResourceIndexerRoutes(_App):
         self.assertEqual([row["info_hash"] for row in fallback["items"]], ["a" * 40])
         self.assertTrue(any("不限清晰度" in warning for warning in fallback["warnings"]))
 
+    def test_edition_preferences_query_past_manko_hd_shortcut(self):
+        """有版本关键词时不能拿 manko 的第一条高清短路，否则 sukebei 的薄码版永远轮不到。"""
+        from peach.web_resource_search import q_resource_search
+
+        manko = {"source": "manko.fun", "resolution": 1080, "info_hash": "a" * 40,
+                 "name": "ABC-123 FHD", "size": 4 * 1024 ** 3, "seeders": 0, "promo_files": 0,
+                 "file_list": [], "file_count": 0, "origins": ["manko.fun"]}
+        mosaic = {"source": "sukebei", "resolution": 720, "info_hash": "b" * 40,
+                  "name": "ABC-123 [Reducing Mosaic]", "size": 1200 * 1024 ** 2, "seeders": 1,
+                  "promo_files": 0, "file_list": [], "file_count": 0, "origins": ["sukebei"]}
+        with mock.patch("peach.web_resource_search.direct_search", return_value={
+                "items": [manko], "warnings": [], "trace": [], "next_sources": [], "reference_only": []}) as direct, \
+             mock.patch("peach.web_resource_search._SEARCH.run", return_value={
+                "ok": True, "state": "ready", "items": [mosaic], "warnings": [], "error": ""}):
+            result = q_resource_search(self.app.state.web_contract, {
+                "code": "ABC-123", "min_resolution": 0,
+                "edition_keywords": ["Reducing Mosaic"]})
+        self.assertFalse(direct.call_args.kwargs["stop_on_preferred"])
+        self.assertEqual([row["info_hash"] for row in result["items"]], ["b" * 40, "a" * 40])
+
     def test_switching_magnets_searches_every_source_and_drops_skipped_hashes(self):
         from peach.web_resource_search import q_resource_search
         failed, other = "a" * 40, "b" * 40

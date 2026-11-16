@@ -15,7 +15,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 
 from .catalog_rules import (
-    is_jav_code, normalise_code_key, release_code_from_product, same_release_code, without_store_prefix,
+    is_jav_code, normalise_code_key, release_code_from_filename, release_code_from_product,
+    same_release_code, without_store_prefix,
 )
 from . import interface_text
 from .config import PROJECT_ROOT
@@ -255,6 +256,7 @@ def _download_candidate(items, code, skip=frozenset(), edition=""):
         name = str(item.get("name") or "")
         matches = (same_release_code(scan_code(name), code)
                    or same_release_code(scan_code(name, product=True), code)
+                   or same_release_code(release_code_from_filename(name), code)
                    or bool(bonus and bonus.search(name)))
         if not matches or re.search(TRAILER_NAME, name):
             continue
@@ -496,9 +498,15 @@ class JavBrowser:
 
     def _existing(self, code: str) -> dict | None:
         with self.contract.database.read_connection() as connection:
+            # 新登记的 code 都是规范写法，直接走 idx_asset_code；只有升级前留下的
+            # 非规范值才退回表达式扫描。
             row = connection.execute(
-                "SELECT id FROM asset WHERE normalise_code_key(code)=? AND medium='video' "
+                "SELECT id FROM asset WHERE code=? AND medium='video' "
                 "AND disposal IS NULL ORDER BY id LIMIT 1", (code,)).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT id FROM asset WHERE normalise_code_key(code)=? AND medium='video' "
+                    "AND disposal IS NULL ORDER BY id LIMIT 1", (code,)).fetchone()
             tasks = connection.execute(
                 "SELECT id,state,postprocess_state FROM download_task WHERE normalise_code_key(code)=? "
                 "ORDER BY id DESC", (code,)).fetchall()
@@ -516,7 +524,11 @@ class JavBrowser:
         code = code_key(value)
         with self._lock:
             row = dict(self.rows.get(code, {}))
-            if not row.get("task_id") and code not in self._submitting:
+            # 已知队列行由本地状态回答，不必每次状态查询都回资产表做一次
+            # `normalise_code_key(code)` 全表扫描；账本 10 万级资产时，共享进度轮询
+            # 会把这项扫描放大成整批请求超时。只有还没有本地行的番号才查资产表。
+            if (not row.get("task_id") and code not in self._submitting
+                    and not row.get("state")):
                 row.update(self._existing(code) or {})
             task = self.downloads.store.get(row["task_id"]) if row.get("task_id") else None
             detail = {}

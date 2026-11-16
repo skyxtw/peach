@@ -29,6 +29,24 @@ def _rank_with_preferences(combined, warnings, filters, min_resolution, edition_
     return rank_candidates(combined, filters.goal, edition_keywords=tuple(edition_keywords)), warnings
 
 
+def _manko_hd_shortcut(direct: dict, skip, edition_keywords) -> bool:
+    """第一来源给出高清结果时能否直接结束；有版本偏好或换磁力时都必须把后备来源查完。"""
+    return bool(
+        not edition_keywords
+        and not skip
+        and direct["items"]
+        and direct["items"][0]["source"] == "manko.fun"
+        and direct["items"][0]["resolution"] >= HIGH_QUALITY
+    )
+
+
+def _preferred_in_items(items, keywords) -> bool:
+    """候选里是否已有标题命中用户版本优先词的条目，命中就不必再问后备索引器。"""
+    return bool(keywords) and any(
+        keyword in str(row.get("name") or "").casefold()
+        for row in items for keyword in keywords)
+
+
 def q_resource_search(contract, args) -> dict:
     service = getattr(contract, "downloads", None)
     if service is None:
@@ -51,13 +69,19 @@ def q_resource_search(contract, args) -> dict:
     with public_cache_scope(contract.cover_root.parent / 'jav-public'):
         direct = direct_search(
             contract.follow_secrets_root, code, min_size=filters.min_size,
-            max_size=filters.max_size, goal=filters.goal, stop_on_preferred=not skip)
+            max_size=filters.max_size, goal=filters.goal,
+            stop_on_preferred=not skip and not edition_keywords,
+            preferred_keywords=tuple(edition_keywords))
     direct["items"] = [row for row in direct["items"] if row["info_hash"] not in excluded]
-    # manko.fun 给出高清候选时按用户指定的优先级短路，不再消耗后备索引器请求。
-    if not skip and direct["items"] and direct["items"][0]["source"] == "manko.fun" \
-            and direct["items"][0]["resolution"] >= HIGH_QUALITY:
+    # 有版本优先关键词时必须把后备来源也查完，不能因为 manko.fun 的一条高清结果
+    # 就短路：用户明确想要的 Reducing Mosaic 等版本往往正在 sukebei 上，而不是第一来源。
+    if _manko_hd_shortcut(direct, skip, edition_keywords):
         return {"ok": True, "state": "ready", **direct}
-    indexed = _SEARCH.run(Indexers(service.credentials).load(), code, filters, sorted(excluded))
+    keywords = tuple(str(word).strip().casefold() for word in edition_keywords if str(word).strip())
+    if _preferred_in_items(direct["items"], keywords):
+        indexed = {"ok": True, "state": "ready", "items": [], "warnings": [], "error": ""}
+    else:
+        indexed = _SEARCH.run(Indexers(service.credentials).load(), code, filters, sorted(excluded))
     combined = list(direct["items"])
     for row in indexed.get("items", ()):
         combined.append({

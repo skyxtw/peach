@@ -3100,8 +3100,42 @@ def _file_fingerprint(path):
     return [int(getattr(stat, 'st_size', 0)), int(stamp)]
 
 
+class _SkippedLocalEvidence:
+    """外部采集专用：不读目录/NFO/海报，直接用账本里的番号构造后续采集需要的行。"""
+
+    def read(self, row, update, issue, poster_jobs):
+        return _provider_code(row.get('code') or ''), False, None, []
+
+
+#: 本地证据缓存文件名：`<asset_id>-<内容摘要>.json`，摘要是 64 位小写十六进制。
+_LOCAL_EVIDENCE_NAME = re.compile(r"(?P<asset>.+)-(?P<digest>[0-9a-f]{64})")
+
+
+def _local_evidence_record(path):
+    """读出一条本地证据缓存；读不出或不是写入时的结构就当没有。"""
+    try:
+        record = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, TypeError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    local, posters = record.get('local'), record.get('posters')
+    if not isinstance(local, (list, tuple)) or len(local) != 4:
+        return None
+    entries = local[3]
+    if not isinstance(entries, (list, tuple)) or not isinstance(posters, (list, tuple)):
+        return None
+    if any(not isinstance(item, (list, tuple)) or len(item) != 3 for item in (*entries, *posters)):
+        return None
+    return record
+
+
 class _LocalEvidenceCache:
-    """保存已经读出的本地证据与待处理图片，供同一影片的后续阶段复用。"""
+    """保存已经读出的本地证据与待处理图片，供同一影片的后续阶段复用。
+
+    新任务的状态里可能还没有 `local_metadata`，这时按 asset_id 查上一趟留在
+    `*-items` 目录里的证据；只有视频文件指纹对得上才复用。
+    """
 
     def __init__(self, config, db_path, cover_root, listing, state, path):
         self.config, self.db_path, self.cover_root = config, db_path, cover_root
@@ -3113,20 +3147,65 @@ class _LocalEvidenceCache:
         except ValueError:
             # 保存时已经校验过；被手改坏的规则当没设置过，不让整轮处理失败。
             self.code_patterns = ()
+        self._disk_index = None
+
+    def _disk_files(self):
+        """asset_id → 磁盘上旧证据文件的索引；第一次需要时才扫目录。"""
+        if self._disk_index is None:
+            folder = self.path.parent / (self.path.stem + '-items')
+            try:
+                items = sorted(folder.glob('*.json'))
+            except OSError:
+                items = []
+            index = {}
+            for item in items:
+                parsed = _LOCAL_EVIDENCE_NAME.fullmatch(item.stem)
+                if parsed is not None:
+                    index.setdefault(parsed['asset'], []).append(item)
+            self._disk_index = index
+        return self._disk_index
+
+    @staticmethod
+    def _reuse(record, row, poster_jobs):
+        code, verify, payload, entries = record['local']
+        posters = [(row, translate_ledger_path(source), name, Path(target))
+                   for source, name, target in record['posters']]
+        documents = [(source, document, translate_ledger_path(path)) for source, document, path in entries]
+        poster_jobs.extend(posters)
+        return code, verify, payload, documents
+
+    def _reuse_from_disk(self, row, key, poster_jobs):
+        """状态里没有这部影片时，从磁盘旧证据里挑指纹匹配的一份。"""
+        candidates = self._disk_files().get(str(row['id']))
+        if not candidates:
+            return None
+        fingerprint = _file_fingerprint(translate_ledger_path(row['path']))
+        if fingerprint is None:
+            return None
+        for item_path in candidates:
+            record = _local_evidence_record(item_path)
+            if record is None or record.get('fingerprint') != fingerprint:
+                continue
+            try:
+                reused = self._reuse(record, row, poster_jobs)
+            except (TypeError, ValueError):
+                continue
+            self.state['local_metadata'][key] = str(item_path)
+            return reused
+        return None
 
     def read(self, row, update, issue, poster_jobs):
         key = _checkpoint_key(row)
         cached_path = self.state['local_metadata'].get(key)
-        try:
-            cached = json.loads(Path(cached_path).read_text(encoding='utf-8')) if cached_path else None
-        except (OSError, ValueError):
-            cached = None
-        if (cached is not None and cached.get('fingerprint') is not None
-                and cached['fingerprint'] == _file_fingerprint(translate_ledger_path(row['path']))):
-            code, verify, payload, entries = cached['local']
-            poster_jobs.extend((row, translate_ledger_path(source), name, Path(target))
-                               for source, name, target in cached['posters'])
-            return code, verify, payload, [(source, document, translate_ledger_path(path)) for source, document, path in entries]
+        if cached_path is None:
+            reused = self._reuse_from_disk(row, key, poster_jobs)
+            if reused is not None:
+                return reused
+        else:
+            cached = _local_evidence_record(cached_path)
+            if (cached is not None and cached.get('fingerprint') is not None
+                    and cached['fingerprint'] == _file_fingerprint(translate_ledger_path(row['path']))):
+                return self._reuse(cached, row, poster_jobs)
         offset, issues_before = len(poster_jobs), self.state['issue_count']
         local = _read_local_metadata(self.config, self.db_path, row, self.cover_root, self.listing,
                                      self.state, update, issue, poster_jobs, self.code_patterns)
@@ -3265,7 +3344,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
                     database=None, route_overrides=None, state_file=None, asset_ids=None,
                     resume_state=None, speed_mode=None, protected_ids=(), recheck_existing=False,
-                    incremental=False, network=None, library_id=None, allow_metered=False):
+                    incremental=False, network=None, library_id=None, allow_metered=False,
+                    skip_local=False):
     """登记文件与确定的番号，外部资料保留为可复核候选。
 
     `retry_ids` 为 `None` 时处理整个馆藏；给定时只处理这些项目（上一任务记录的
@@ -3443,7 +3523,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             groups = {row['item_key']: row for row in read_rows_shared(output, missing_ok=True)}
             scoped_groups = lambda: _candidate_scope(groups, scope_ids)
             listing = _DirectoryIndex()
-            local_evidence = _LocalEvidenceCache(config, db_path, cover_root, listing, state, path)
+            local_evidence = _SkippedLocalEvidence() if skip_local else _LocalEvidenceCache(
+                config, db_path, cover_root, listing, state, path)
             csv_dirty = False
             csv_written_at = time.monotonic()
             csv_write_cost = 0.0
@@ -3485,8 +3566,15 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
 
             prepared = []
             poster_jobs = []
-            local_rows = list(checkpoints.remaining_metadata(rows))
-            completed_count = len(rows) - len(local_rows)
+            if skip_local:
+                for row in rows:
+                    code = _provider_code(row.get('code') or '')
+                    if code:
+                        prepared.append((row, code, False, {}, [], True))
+                local_rows = []
+            else:
+                local_rows = list(checkpoints.remaining_metadata(rows))
+            completed_count = 0 if skip_local else len(rows) - len(local_rows)
             for index, (_, row) in enumerate(local_rows):
                 guard.check()
                 issues_before = state['issue_count']
