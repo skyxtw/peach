@@ -125,7 +125,7 @@ export function controlDiscoveryMetadata(action: 'start' | 'refresh' | 'cancel',
 /** 新作分区的筛选与排序：都写在地址栏里，刷新与返回原样恢复。`seed` 只在换一批时有值。 */
 export interface ReleaseFilters {
   page: number; size: number; performer: string; studio: string; tag: string; q: string;
-  sort: ReleaseSort; dir: DiscoveryDirection; seed: string;
+  sort: ReleaseSort; dir: DiscoveryDirection; seed: string; subscription: '' | 'performer' | 'studio';
 }
 export interface ReleaseFacetPerformer extends FaceRef { name: string; count: number; source_actor_id?: string; source_avatar?: boolean }
 export interface ReleaseFacetStudio { name: string; count: number; has_logo: boolean; logo_version?: string }
@@ -144,14 +144,17 @@ export function releaseFilters(search: string): ReleaseFilters {
   const seed = params.get('seed') || '';
   const page = Number(params.get('page'));
   const size = RELEASE_PAGE_SIZES.find(value => value === Number(params.get('size'))) || RELEASE_PAGE_SIZE;
+  const subscription = params.get('subscription');
   return { page: Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1, size, performer: params.get('performer') || '',
     studio: params.get('studio') || '', tag: params.get('tag') || '', q: (params.get('q') || '').trim(),
+    subscription: subscription === 'performer' || subscription === 'studio' ? subscription : '',
+
     sort: sort === 'random' && seed ? 'random' : RELEASE_SORTS.find(([key]) => key === sort)?.[0] || 'release_date',
     dir: params.get('dir') === 'asc' ? 'asc' : 'desc', seed };
 }
 export const releaseKey = (filters: ReleaseFilters) =>
-  ['jav-releases', filters.page, filters.size, filters.performer, filters.studio, filters.tag, filters.q, filters.sort, filters.dir, filters.seed] as const;
-const RELEASE_FILTER_KEYS = ['performer', 'studio', 'tag', 'q', 'seed'] as const;
+  ['jav-releases', filters.page, filters.size, filters.performer, filters.studio, filters.tag, filters.q, filters.sort, filters.dir, filters.seed, filters.subscription] as const;
+const RELEASE_FILTER_KEYS = ['performer', 'studio', 'tag', 'q', 'seed', 'subscription'] as const;
 export function fetchReleases(filters: ReleaseFilters, signal: AbortSignal) {
   const params = new URLSearchParams({ page: String(filters.page), size: String(filters.size),
     sort: filters.sort, direction: filters.dir });

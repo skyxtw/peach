@@ -68,12 +68,16 @@ const fetchReleaseCover = (code: string) => fetchCoverNow(code).then(result => {
   return result.has_cover;
 });
 
-export function Releases({ readOnly, receipt, resource, query, navigate, clearText }: {
+export function Releases({ readOnly, receipt, resource, query, navigate, clearText, subscription }: {
   readOnly: boolean; receipt(message: string): void; resource(work: DownloadPrefill): void; query: string;
-  navigate(path: string): void; clearText(): void;
+  navigate(path: string): void; clearText(): void; subscription?: 'performer' | 'studio';
 }) {
   useEntityNames();
-  const [filters, setFilters] = useState<ReleaseFilters>(() => releaseFilters(location.search));
+  const [filters, setFilters] = useState<ReleaseFilters>(() => {
+    const next = releaseFilters(location.search);
+    if (subscription) next.subscription = subscription;
+    return next;
+  });
   /* 页头的 `IndexSearch` 停手 300 毫秒才交出文字，这里换了就回第 1 页重问服务端。 */
   useEffect(() => {
     if (query === filters.q) return;

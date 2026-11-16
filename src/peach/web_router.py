@@ -468,6 +468,7 @@ POST_HANDLERS = {
     "/api/feeds/source": w_feed_source,
     "/api/feeds/bind-studio": w_bind_studio,
     "/api/feeds/merge-studio": studio_merge.merge,
+    "/api/feeds/merge-duplicate-studios": studio_merge.merge_duplicates,
     "/api/feeds/discovery": w_feed_discovery,
     "/api/feeds/schedule/run": w_feed_schedule_run,
     "/api/follow/check": w_follow_check,

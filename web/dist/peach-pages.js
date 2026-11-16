@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "c76cf8fc-e106-47d0-8b7b-61c1c7d4971d", e._sentryDebugIdIdentifier = "sentry-dbid-c76cf8fc-e106-47d0-8b7b-61c1c7d4971d");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "dc29e6fb-61a4-41ca-835a-eb79931eb3d9", e._sentryDebugIdIdentifier = "sentry-dbid-dc29e6fb-61a4-41ca-835a-eb79931eb3d9");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2081,7 +2081,10 @@ var He = {
 		mergeSubmit: "Merge",
 		mergeBusy: "Merging…",
 		mergeClose: "Close",
-		mergeDone: "Merged {{source}} into {{target}}; moved {{count, number}} assets."
+		mergeDone: "Merged {{source}} into {{target}}; moved {{count, number}} assets.",
+		mergeAuto: "Auto-detect and merge",
+		mergeAutoBusy: "Detecting…",
+		mergeAutoDone: "Merged {{count, number}} duplicate studio groups."
 	},
 	javWant: {
 		added: "Added to Wants",
@@ -9354,7 +9357,10 @@ var He = {
 		mergeSubmit: "合并",
 		mergeBusy: "合并中…",
 		mergeClose: "收起",
-		mergeDone: "已把 {{source}} 并入 {{target}}，迁移 {{count, number}} 条作品。"
+		mergeDone: "已把 {{source}} 并入 {{target}}，迁移 {{count, number}} 条作品。",
+		mergeAuto: "自动检测并合并",
+		mergeAutoBusy: "检测中…",
+		mergeAutoDone: "已自动合并 {{count, number}} 组重复厂牌。"
 	},
 	javWant: {
 		added: "已加入想要",
@@ -38955,4 +38961,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=c76cf8fc-e106-47d0-8b7b-61c1c7d4971d
+//# debugId=dc29e6fb-61a4-41ca-835a-eb79931eb3d9

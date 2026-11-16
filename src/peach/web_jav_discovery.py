@@ -382,7 +382,24 @@ def _release_listing(contract, connection, args):
                                str(args.get("q") or "").strip().casefold())
     rows = _release_order(_release_rows(contract, connection, taste=sort == "taste"), sort, descending,
                           str(args.get("seed") or ""))
+    scope = str(args.get("subscription") or "")
+    if scope in ("performer", "studio"):
+        rows = _subscribed_rows(connection, rows, scope)
     return rows, [row for row in rows if matches(row)], matches, sort, descending
+
+
+def _subscribed_rows(connection, rows, scope):
+    """只留下已订阅演员/厂牌的新作；没有订阅时返回空表。"""
+    if scope == "studio":
+        names = {str(row[0] or "").casefold() for row in connection.execute(
+            "SELECT e.canonical_name FROM feed_source s JOIN entity e ON e.id=s.entity_id"
+            " WHERE s.enabled=1 AND e.kind='studio'")}
+        return [row for row in rows if str(row.get("studio") or "").casefold() in names]
+    ids = {int(row[0]) for row in connection.execute(
+        "SELECT e.id FROM feed_source s JOIN entity e ON e.id=s.entity_id"
+        " WHERE s.enabled=1 AND e.kind='performer'")}
+    return [row for row in rows
+            if any(int(ref.get("id") or 0) in ids for ref in row.get("performer_refs") or [])]
 
 
 def _release_unread(shown):

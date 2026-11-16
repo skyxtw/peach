@@ -624,7 +624,10 @@
     "mergeSubmit": "Merge",
     "mergeBusy": "Merging…",
     "mergeClose": "Close",
-    "mergeDone": "Merged {{source}} into {{target}}; moved {{count, number}} assets."
+    "mergeDone": "Merged {{source}} into {{target}}; moved {{count, number}} assets.",
+    "mergeAuto": "Auto-detect and merge",
+    "mergeAutoBusy": "Detecting…",
+    "mergeAutoDone": "Merged {{count, number}} duplicate studio groups."
   },
   "javWant": {
     "added": "Added to Wants",
