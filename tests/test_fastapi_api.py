@@ -713,6 +713,29 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 with Image.open(io.BytesIO(response.content)) as logo:
                     self.assertEqual(logo.size, (size, size))
 
+    async def test_pwa_manifest_and_icons_are_served_without_a_session(self):
+        """主屏幕 Web App 的声明与图标和 favicon 同档：没有会话也要取得到。"""
+        import json
+
+        from PIL import Image
+
+        manifest = await self.client.get("/manifest.webmanifest")
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(manifest.headers["content-type"], "application/manifest+json")
+        data = json.loads(manifest.content)
+        self.assertEqual(data["display"], "standalone")
+        self.assertEqual(data["start_url"], "/")
+        self.assertEqual({icon["sizes"] for icon in data["icons"]}, {"192x192", "512x512"})
+        for path, size in (("/apple-touch-icon.png", (180, 180)),
+                           ("/peach-pwa-192.png", (192, 192)),
+                           ("/peach-pwa-512.png", (512, 512))):
+            with self.subTest(path=path):
+                response = await self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["content-type"], "image/png")
+                with Image.open(io.BytesIO(response.content)) as image:
+                    self.assertEqual(image.size, size)
+
     async def test_the_favicon_is_served_without_a_session_and_revalidates(self):
         """浏览器取图标时手里没有会话，这条路径因此不设防，也不跳登录页。
 
@@ -2330,6 +2353,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         page = await self.client.get("/login?next=/")
         self.assertEqual(page.status_code, 200)
         self.assertIn('<link rel="icon" href="/favicon.ico" type="image/x-icon">', page.text)
+        self.assertIn('<link rel="manifest" href="/manifest.webmanifest">', page.text)
+        self.assertIn('<meta name="apple-mobile-web-app-capable" content="yes">', page.text)
+        self.assertIn('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', page.text)
 
     async def test_the_login_page_follows_the_chosen_theme(self):
         """登录页在拿到 cookie 之前出图，深浅色跟着同一个选择走，在第一次绘制前定下来。
@@ -4382,6 +4408,10 @@ PUBLIC_ROUTES = {
     ("GET,HEAD", "/peach-logo.png"),
     ("GET,HEAD", "/peach-logo-64.png"),
     ("GET,HEAD", "/peach-logo-128.png"),
+    ("GET,HEAD", "/manifest.webmanifest"),
+    ("GET,HEAD", "/apple-touch-icon.png"),
+    ("GET,HEAD", "/peach-pwa-192.png"),
+    ("GET,HEAD", "/peach-pwa-512.png"),
     # 入口页的页面包（ADR-0094）。登录页在拿到会话之前就要画出来，首启、登录与错误三页都由它画。
     # 只放这两个文件：它们提交进 Git、随仓库分发，不读账本、不含配置与凭据，内容不随登录与否
     # 变化，也不 import 别的产物；其余 `/dist/*` 仍走要会话的 `/dist/{name}`。
@@ -4506,7 +4536,8 @@ class LoginPageWithoutSessionTests(unittest.IsolatedAsyncioTestCase):
     """设了访问密码的实例上，没有会话也画得出登录页：它要的资源都能取，别的产物照旧要会话。"""
 
     PAGE_ASSETS = ("/dist/peach-pages.css", "/dist/peach-pages.js", "/vendor/inter/5.3.0/index.css",
-                   "/peach-logo.png", "/peach-logo-64.png", "/peach-logo-128.png", "/favicon.ico")
+                   "/peach-logo.png", "/peach-logo-64.png", "/peach-logo-128.png", "/favicon.ico",
+                   "/manifest.webmanifest", "/apple-touch-icon.png", "/peach-pwa-192.png", "/peach-pwa-512.png")
     SESSION_ASSETS = ("/dist/peach-app.js", "/dist/peach-app.css", "/app.css", "/board.css")
 
     async def asyncSetUp(self):

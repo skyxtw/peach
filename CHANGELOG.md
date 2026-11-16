@@ -25,6 +25,10 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+### 新增
+
+- **界面**：支持「添加到主屏幕」的最小 Web App 声明（manifest、apple-touch-icon 与 standalone 元信息），iPhone 主屏幕启动可少一条 Safari 工具栏；Android 局域网 HTTP 暂不能正式安装。
+
 ### 修复
 
 - **采集**：JavDB 资料接口要求登录后，可在「来源凭据」填 JavDB 账号恢复库外资料；不填时详情页说明需要登录。
