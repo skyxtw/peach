@@ -14,6 +14,7 @@ import random
 import re
 import sqlite3
 import time
+from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
 
@@ -810,11 +811,19 @@ def _read_group_rows(contract: WebContract) -> list[dict]:
     for row in rows:
         row['raw_code'] = row['code']
         row['code'] = row['code'] or _filename_fc2_code(row['name'])
-        if not row['code']:
-            continue
-        row["edition"] = _edition_label(row, tuple(tags.get(int(row["id"]), ())),
-                                        sources.get(int(row["id"]), ()))
-        coded.append(row)
+        if row['code']:
+            coded.append(row)
+    # 版次只在同一规范番号至少两份时才可能被版本判据读到：单份不进任何版本组。
+    # 冷启动一次判四万多份文件，这里只给会进版本组的那批算版次，省掉大部分逐文件
+    # 证据扫描；单份仍留默认值，行的形状不变。
+    code_keys = {int(row['id']): normalise_code_key(row['code']) for row in coded}
+    counts = Counter(code_keys.values())
+    for row in coded:
+        if counts[code_keys[int(row['id'])]] > 1:
+            row["edition"] = _edition_label(row, tuple(tags.get(int(row["id"]), ())),
+                                            sources.get(int(row["id"]), ()))
+        else:
+            row["edition"] = CENSORED
     return coded
 
 

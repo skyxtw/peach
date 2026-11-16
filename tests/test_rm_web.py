@@ -2023,6 +2023,15 @@ class WebDataTests(unittest.TestCase):
             )
         con.commit(); con.close()
 
+    def test_a_single_file_still_gets_its_badge_without_an_edition_group(self):
+        """单份文件不进版本组；版次徽章仍由同一份判据给出，内部快照也保留字段。"""
+        self._seed_editions([(9101, "CJOD-175-C.mp4", "CJOD-175")])
+        rows = {row['id']: row for row in web_catalog._catalog_group_rows(self.contract)}
+        self.assertIn('edition', rows[9101])
+        self.assertEqual(rm_web._edition_groups(self.contract, ["CJOD-175"]), {})
+        self.assertEqual(rm_web.jav_display_metadata("CJOD-175-C.mp4", "CJOD-175")["edition_badges"],
+                         ['chinese-subtitles'])
+
     def test_a_censored_and_an_uncensored_release_share_one_card(self):
         """同一番号的有码与无码是两个版次，不该占两个格子。
 

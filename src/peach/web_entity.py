@@ -936,14 +936,19 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category,
                 profile = (",pp.debut_date,pp.debut_year,pp.birth_date,pp.height_cm,"
                            "pp.bust_cm,pp.cup,pp.kana")
                 profile_join = " LEFT JOIN performer_profile pp ON pp.entity_id=e.id"
+            # 主查询固定先扫 asset_entity 再取 asset：0059 的 asset(medium) 索引一旦被选中，
+            # 分类子查询会按每条关系行重算，人物索引会从亚秒级掉到几十秒。CROSS JOIN 不允许重排。
+            # 代表作同理固定先按 entity_id 查关系，再按主键取 asset；不带 INDEXED BY 时，
+            # asset(medium) 索引会让它反过来扫全部视频再按实体过滤。
             sql = ("SELECT e.id entity_id,e.kind entity_kind,e.canonical_name k,count(DISTINCT " + video_work_key(contract, c) + ") n,"
-                   "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+                   "(SELECT a2.id FROM asset_entity ae2 INDEXED BY idx_asset_entity_entity_role "
+                   "JOIN asset a2 ON a2.id=ae2.asset_id "
                    " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
                    (" AND (e.kind='creator' OR (" + solo_performer_clause("a2.id", "e.id") + '))' if entity_kind == "performer" else "") +
                    " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
                    " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep" + profile +
-                   " FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                   "JOIN asset a ON a.id=ae.asset_id" + profile_join +
+                   " FROM asset_entity ae CROSS JOIN entity e ON e.id=ae.entity_id "
+                   "CROSS JOIN asset a ON a.id=ae.asset_id" + profile_join +
                    " WHERE " + COUNTED_VIDEO + " AND " + entity_classification.index_scope(c,entity_kind) + ' ')
             par = []
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
