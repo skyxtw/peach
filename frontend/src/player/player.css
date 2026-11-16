@@ -273,7 +273,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 .vjs-peach-settings-menu button:active:before{background:rgba(255,255,255,.2)}
 .vjs-peach-settings-menu button:focus-visible{outline:0}
 .vjs-peach-settings-menu button>*{position:relative;z-index:1}
-.video-js .vjs-peach-menu-row{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,max-content) 32px;gap:0;align-items:center;padding:0!important;text-align:left}
+.video-js .vjs-peach-menu-row,.vjs-peach-settings-drawer .vjs-peach-menu-row{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,max-content) 32px;gap:0;align-items:center;padding:0!important;text-align:left}
 .vjs-peach-menu-row>svg{justify-self:start;margin-left:8px;width:24px;height:24px;fill:currentColor;stroke:none}.vjs-peach-menu-row>span{font-size:var(--fs-md);line-height:18.2px}.vjs-peach-menu-row>b{padding-left:8px;font-size:var(--fs-md);line-height:18.2px;font-weight:400;color:rgba(255,255,255,.7);white-space:nowrap}
 .vjs-peach-menu-row>svg:last-child{justify-self:center;margin:0;width:18px;height:18px;color:rgba(255,255,255,.7);fill:currentColor;stroke:none}
 .vjs-peach-menu-row>svg.vjs-peach-menu-line-icon{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -286,7 +286,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 .vjs-peach-panel-header .vjs-peach-menu-back svg{width:32px;height:32px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-panel-header strong{font-size:var(--fs-md);line-height:18.2px;font-weight:500;color:#eee}
 .vjs-peach-panel-menu{padding:8px}
-.video-js .vjs-peach-menu-option{display:grid;grid-template-columns:40px minmax(0,1fr);align-items:center;padding:0 20px 0 8px!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
+.video-js .vjs-peach-menu-option,.vjs-peach-settings-drawer .vjs-peach-menu-option{display:grid;grid-template-columns:40px minmax(0,1fr);align-items:center;padding:0 20px 0 8px!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
 .vjs-peach-option-check{width:40px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .vjs-peach-option-label{min-width:0}
 /* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：
@@ -400,8 +400,8 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 /* 面板底边离播放器底边 66px（离设置键 52px 加控制条那 14px），顶上再留 8px，所以收顶取
    播放器高度减 74px：320px 高的播放器给出 246px。八档播放速度单列要 57+16+8×48=457px，
    排两列、行高 44px 是 57+8+4×44=241px，最挤的那个面板也不用滚。 */
-.video-js.vjs-peach-xsmall .vjs-peach-panel-menu{padding:4px 8px}
-.video-js.vjs-peach-xsmall .vjs-peach-menu-option{min-height:44px}
+.video-js.vjs-peach-xsmall .vjs-peach-panel-menu,.vjs-peach-settings-drawer[data-mobile] .vjs-peach-panel-menu{padding:4px 8px}
+.video-js.vjs-peach-xsmall .vjs-peach-menu-option,.vjs-peach-settings-drawer[data-mobile] .vjs-peach-menu-option{min-height:44px}
 .video-js.vjs-peach-xsmall .vjs-peach-panel-menu:has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}
@@ -541,13 +541,14 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 .video-js.vjs-peach-xsmall .vjs-peach-settings-drawer .vjs-peach-settings-menu{width:auto;max-height:none;border-radius:0}
 /* iPhone 网页全屏：不调用原生 video 全屏，舞台铺满视口，控制条仍归 Peach。 */
 html.peach-web-fullscreen,html.peach-web-fullscreen body{overflow:hidden!important;background:#000!important}
-#stage[data-peach-web-fullscreen]{inset:0!important;width:100vw!important;max-width:none!important;max-height:none!important;border-radius:0!important;background:#000!important}
+#stage[data-peach-web-fullscreen]{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;margin:0!important;padding:0!important;border:0!important;outline:0!important;box-shadow:none!important;max-width:none!important;max-height:100dvh!important;border-radius:0!important;background:#000!important}
 #stage[data-peach-web-fullscreen] [data-stage-scroll]{height:100dvh!important;max-height:100dvh!important;overflow:hidden!important}
 #stage[data-peach-web-fullscreen] [data-stage-scroll]>.peach-react,
 #stage[data-peach-web-fullscreen] [data-stage-grid]{display:block!important;height:100dvh!important;min-height:0!important}
 #stage[data-peach-web-fullscreen] [data-stage-media]{height:100dvh!important;width:100%!important;max-height:none!important;border-radius:0!important;position:relative!important;top:auto!important}
 #stage[data-peach-web-fullscreen] [data-stage-media]>.video-js{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important}
 #stage[data-peach-web-fullscreen] [data-stage-side]{display:none!important}
+#stage[data-peach-web-fullscreen] [data-stage-close]{display:none!important}
 #stage[data-peach-web-fullscreen] [data-stage-media] :is([data-media-carousel],[data-item-gallery]){display:none!important}
 
 
