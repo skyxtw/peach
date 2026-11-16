@@ -556,3 +556,90 @@ describe('人物收藏', () => {
     expect(host.querySelector('[data-index-favorite]')).toBeNull();
   });
 });
+
+describe('人物订阅', () => {
+  const row = (name: string, entityId: number, following = false, available = true) =>
+    person(name, { entity_id: entityId, following, feed: { following, available } });
+  const reply = (entityId: number, following: boolean) => ({ ok: true, entity_id: entityId, following, sources: [] });
+  const serveFollow = (seedRow: ReturnType<typeof person>, replies: (() => Promise<unknown> | unknown)[], writes: Record<string, unknown>[]) => {
+    let at = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      const next = replies[Math.min(at, replies.length - 1)];
+      at += 1;
+      return { ok: true, status: 200, json: async () => await next() };
+    }));
+  };
+
+  it('RSS 角标可订阅与退订，先翻状态且不误触整卡', async () => {
+    const seedRow = row('甲', 21);
+    seed(indexKey('performers', ''), [seedRow]);
+    const first = pending<unknown>();
+    const second = pending<unknown>();
+    const writes: Record<string, unknown>[] = [];
+    serveFollow(seedRow, [() => first.answer, () => second.answer], writes);
+    const given = props();
+    const host = await open(given); await settle();
+    const button = host.querySelector<HTMLButtonElement>('[data-index-follow]')!;
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('订阅甲的新作');
+    expect(button.closest('[data-index-cell]')).toBeNull();
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(given.openEntity).not.toHaveBeenCalled();
+    expect(writes[0]).toEqual({ action: 'follow', entity_id: 21, enabled: true });
+    await first.release(reply(21, true));
+    await settle();
+    expect(button.getAttribute('aria-label')).toBe('取消订阅甲的新作');
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[1]).toEqual({ action: 'follow', entity_id: 21, enabled: false });
+    await second.release(reply(21, false));
+    await settle();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('订阅失败退回并给通知回执', async () => {
+    const seedRow = row('乙', 22);
+    seed(indexKey('performers', ''), [seedRow]);
+    const writes: Record<string, unknown>[] = [];
+    const failure = pending<unknown>();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      await failure.answer;
+      return { ok: false, status: 500, json: async () => ({ error: '订阅没写上' }) };
+    }));
+    const host = await open(props()); await settle();
+    const button = host.querySelector<HTMLButtonElement>('[data-index-follow]')!;
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    await failure.release(null);
+    await settle();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[0]).toEqual({ action: 'follow', entity_id: 22, enabled: true });
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ alert: true }));
+  });
+
+  it('没有可订阅来源时不发请求，给去补来源的入口', async () => {
+    const seedRow = row('丙', 23, false, false);
+    seed(indexKey('performers', ''), [seedRow]);
+    const posts: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.body) posts.push(JSON.parse(String(init.body)));
+      return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+    }));
+    const given = props();
+    const host = await open(given); await settle();
+    const link = host.querySelector<HTMLAnchorElement>('[data-index-follow-unavailable]')!;
+    expect(link.getAttribute('href')).toBe('/subscriptions?tab=add');
+    expect(link.textContent).toContain('暂无可订阅来源');
+    expect(link.getAttribute('aria-label')).toContain('去添加订阅来源');
+    expect(host.querySelector('button[data-index-follow]')).toBeNull();
+    expect(posts).toHaveLength(0);
+    await click(host.querySelector('[data-index-cell]'));
+    expect(given.openEntity).toHaveBeenCalledWith('performer', '丙');
+  });
+});

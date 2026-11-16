@@ -759,12 +759,31 @@ def q_photo_set(contract: WebContract, args):
 
 
 def _attach_index_following(connection, rows: list[dict]) -> None:
-    """名册人物的订阅状态按已启用、绑定实体的来源汇总。"""
+    """名册人物的订阅状态与可订阅性。
+
+    可订阅的判据和 `subscribe_performer` 同一份：已有 JavDB 演员页或 DMM 女优编号。
+    引用行一次取齐，逐行只跑不碰库的地址拼装，索引页不会按人再查一遍。
+    """
     following = {source[0] for source in connection.execute(
         "SELECT entity_id FROM feed_source WHERE enabled=1 "
         "UNION SELECT entity_id FROM follow_source WHERE enabled=1")}
+    performers = [int(row["entity_id"]) for row in rows
+                  if row.get("entity_kind") == "performer" and row.get("entity_id") is not None]
+    refs_by_entity: dict[int, list[dict]] = {}
+    if performers:
+        marks = ",".join("?" for _ in performers)
+        for ref in connection.execute(
+                "SELECT entity_id,provider,external_kind,external_id,metadata_json "
+                f"FROM entity_external_ref WHERE entity_id IN ({marks})", performers):
+            refs_by_entity.setdefault(int(ref["entity_id"]), []).append(dict(ref))
     for row in rows:
-        row['following'] = row['entity_id'] in following
+        entity_id = row.get("entity_id")
+        row['following'] = entity_id in following
+        if row.get("entity_kind") == "performer" and entity_id is not None:
+            refs = refs_by_entity.get(int(entity_id), [])
+            available = bool(entry_links.javdb_actor_pages(str(row["k"]), refs)
+                             or feeds.dmm_actress_ids_from_refs(refs))
+            row["feed"] = {"following": row["following"], "available": available}
 
 
 def _attach_index_favorites(connection, rows: list[dict]) -> None:

@@ -507,7 +507,9 @@ class WebDataTests(unittest.TestCase):
             feeds.add_source(con, url='https://javdb.com/actors/Other', name='Canonical Creator')
             con.commit()
         people = rm_web.q_index(self.contract, 'performers')['items']
-        self.assertTrue(next(row for row in people if row['entity_id'] == 11)['following'])
+        alice = next(row for row in people if row['entity_id'] == 11)
+        self.assertTrue(alice['following'])
+        self.assertTrue(alice['feed']['following'])
         self.assertFalse(next(row for row in people if row['entity_id'] == 12)['following'])
         filtered = rm_web.q_index(self.contract, 'performers', q='Alice', limit=1)['items']
         self.assertEqual(len(filtered), 1)
@@ -517,6 +519,26 @@ class WebDataTests(unittest.TestCase):
             feeds.set_enabled(con, active, False)
             con.commit()
         self.assertFalse(rm_web.q_index(self.contract, 'performers', q='Alice')['items'][0]['following'])
+
+    def test_people_index_marks_whether_a_performer_can_be_subscribed(self):
+        """名册卡要知道能不能订：有 JavDB 演员页或 DMM 女优编号才显示开关。"""
+        people = {row["entity_id"]: row for row in
+                  rm_web.q_index(self.contract, 'performers', limit=50)['items']}
+        self.assertEqual(people[11]['feed'], {'following': False, 'available': False})
+        with closing(sqlite3.connect(self.db_path)) as con:
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                        "VALUES(14,'performer','Canonical Dmm','canonical dmm','2026-01-01','2026-01-01')")
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(2,14,'performer','test',1.0)")
+            con.execute("INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+                        "VALUES(11,'javdb','performer','AlicePage')")
+            con.execute("INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+                        "VALUES(14,'dmm','performer','1051912')")
+            con.commit()
+        people = {row["entity_id"]: row for row in
+                  rm_web.q_index(self.contract, 'performers', limit=50)['items']}
+        self.assertEqual(people[11]['feed'], {'following': False, 'available': True})
+        self.assertEqual(people[14]['feed'], {'following': False, 'available': True})
 
     def test_people_index_marks_enabled_follow_sources_by_confirmed_identity(self):
         from peach.entity_classification import write_claim

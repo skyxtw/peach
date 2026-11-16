@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "c4e84183-37da-4a73-92dc-c742556e7049", e._sentryDebugIdIdentifier = "sentry-dbid-c4e84183-37da-4a73-92dc-c742556e7049");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "1436c889-d8fe-42a7-a2ee-c7d33e95a9b2", e._sentryDebugIdIdentifier = "sentry-dbid-1436c889-d8fe-42a7-a2ee-c7d33e95a9b2");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -1748,6 +1748,7 @@ var He = {
 		watchStatus: "Watch status"
 	},
 	entityHero: {
+		addSubscribeSource: "Add a subscription source",
 		aliasCount_one: "{{count, number}} alias",
 		aliasCount_other: "{{count, number}} aliases",
 		aliases: "Aliases",
@@ -1774,6 +1775,8 @@ var He = {
 		sourceLink: "Source · {{site}}",
 		studio: "Studio",
 		subscribeNewReleases: "Subscribe to new releases",
+		subscribeUnavailable: "No subscription source yet",
+		subscribeUnavailableHint: "{{name}} has no JavDB actor page or DMM actress ID yet. Add one before subscribing to new releases.",
 		updateCount_one: "{{count, number}} update",
 		updateCount_other: "{{count, number}} updates",
 		videoCountBold_one: "{{num}} video",
@@ -2080,10 +2083,14 @@ var He = {
 		nounStudios: "studios",
 		nounTags: "tags",
 		roster: "People",
+		subscribeAction: "Subscribe to {{name}}'s new releases",
+		subscribeUnavailable: "No source yet",
+		subscribeUnavailableAction: "{{name}} has no subscription source yet; add one",
 		tagCloud: "Tag cloud",
 		tagCount_one: "{{count, number}} tag",
 		tagCount_other: "{{count, number}} tags",
 		tagScope: "Vocabulary",
+		unsubscribeAction: "Unsubscribe from {{name}}'s new releases",
 		updateCountUnconfirmed_one: "{{count, number}} update · Unconfirmed",
 		updateCountUnconfirmed_other: "{{count, number}} updates · Unconfirmed",
 		videoCount_one: "{{count, number}} video",
@@ -8925,6 +8932,7 @@ var He = {
 		watchStatus: "观看状态"
 	},
 	entityHero: {
+		addSubscribeSource: "去添加订阅来源",
 		aliasCount: "{{count, number}} 个别名",
 		aliases: "别名",
 		costars: "同台艺人",
@@ -8946,6 +8954,8 @@ var He = {
 		sourceLink: "来源 · {{site}}",
 		studio: "片商",
 		subscribeNewReleases: "订阅新作",
+		subscribeUnavailable: "暂无可订阅来源",
+		subscribeUnavailableHint: "{{name}}暂无可订阅来源；先添加 JavDB 演员页或 DMM 女优编号，才能订阅新作。",
 		updateCount: "{{count, number}} 项更新",
 		videoCountBold: "{{num}} 个视频"
 	},
@@ -9227,9 +9237,13 @@ var He = {
 		nounStudios: "厂牌",
 		nounTags: "标签",
 		roster: "人物名册",
+		subscribeAction: "订阅{{name}}的新作",
+		subscribeUnavailable: "暂无可订阅来源",
+		subscribeUnavailableAction: "{{name}}暂无可订阅来源，去添加订阅来源",
 		tagCloud: "标签云",
 		tagCount: "{{count, number}} 个标签",
 		tagScope: "词表",
+		unsubscribeAction: "取消订阅{{name}}的新作",
 		updateCountUnconfirmed: "{{count, number}} 项更新 · 待确认",
 		videoCount: "{{count, number}} 个视频"
 	},
@@ -38709,4 +38723,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=c4e84183-37da-4a73-92dc-c742556e7049
+//# debugId=1436c889-d8fe-42a7-a2ee-c7d33e95a9b2

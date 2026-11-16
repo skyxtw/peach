@@ -275,6 +275,7 @@
     "watchStatus": "观看状态"
   },
   "entityHero": {
+    "addSubscribeSource": "去添加订阅来源",
     "aliasCount": "{{count, number}} 个别名",
     "aliases": "别名",
     "costars": "同台艺人",
@@ -296,6 +297,8 @@
     "sourceLink": "来源 · {{site}}",
     "studio": "片商",
     "subscribeNewReleases": "订阅新作",
+    "subscribeUnavailable": "暂无可订阅来源",
+    "subscribeUnavailableHint": "{{name}}暂无可订阅来源；先添加 JavDB 演员页或 DMM 女优编号，才能订阅新作。",
     "updateCount": "{{count, number}} 项更新",
     "videoCountBold": "{{num}} 个视频"
   },
@@ -579,9 +582,13 @@
     "nounStudios": "厂牌",
     "nounTags": "标签",
     "roster": "人物名册",
+    "subscribeAction": "订阅{{name}}的新作",
+    "subscribeUnavailable": "暂无可订阅来源",
+    "subscribeUnavailableAction": "{{name}}暂无可订阅来源，去添加订阅来源",
     "tagCloud": "标签云",
     "tagCount": "{{count, number}} 个标签",
     "tagScope": "词表",
+    "unsubscribeAction": "取消订阅{{name}}的新作",
     "updateCountUnconfirmed": "{{count, number}} 项更新 · 待确认",
     "videoCount": "{{count, number}} 个视频"
   },

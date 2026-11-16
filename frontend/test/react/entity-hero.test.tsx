@@ -512,3 +512,19 @@ describe('「+N」浮层', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('无可订阅来源', () => {
+  it('女优没有 JavDB/DMM 编号时给操作说明和订阅管理入口', async () => {
+    const host = await open(props({ entity: performer({ feed: null }) }));
+    const hint = host.querySelector('[data-entity-feed-empty]')!;
+    expect(hint.textContent).toContain('暂无可订阅来源');
+    expect(hint.querySelector('a')?.getAttribute('href')).toBe('/subscriptions?tab=add');
+    expect(hint.querySelector('a')?.textContent).toBe('去添加订阅来源');
+    expect(host.querySelector('[data-entry-feed]')).toBeNull();
+  });
+
+  it('有订阅来源的女优不出现没有来源的说明', async () => {
+    const host = await open(props());
+    expect(host.querySelector('[data-entity-feed-empty]')).toBeNull();
+  });
+});

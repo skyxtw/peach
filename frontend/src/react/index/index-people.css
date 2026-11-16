@@ -23,3 +23,27 @@
   color: var(--muted);
 }
 .peach-react .index-feed-mark>span{color:var(--feed-mark);background:color-mix(in srgb,var(--feed-mark) 16%,var(--ground))}
+/* 名册卡左上角的订阅键与收藏星标同一层：可订时是 28px 的 RSS 开关，无来源时换成
+   可点的状态条，去订阅管理补 JavDB 演员页或 DMM 编号。 */
+.peach-react [data-index-grid] [data-index-follow][data-entity-action] {
+  position: absolute; top: 6px; left: 6px; z-index: 3;
+  width: 28px; height: 28px; border-radius: 999px;
+  background: color-mix(in srgb, var(--feed-mark) 16%, var(--ground));
+  color: var(--feed-mark);
+  box-shadow: 0 0 0 1px var(--border-10);
+}
+.peach-react [data-index-grid] [data-index-follow][data-entity-action]:is(:hover, [data-hovered]) {
+  background: color-mix(in srgb, var(--feed-mark) 24%, var(--ground));
+  color: var(--feed-mark);
+}
+.peach-react [data-index-grid] [data-index-follow][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--feed-mark) 30%, var(--ground));
+}
+.peach-react [data-index-grid] [data-index-follow][aria-busy="true"] { color: var(--muted); cursor: wait; }
+.peach-react [data-index-grid] [data-index-follow-unavailable] {
+  position: absolute; top: 6px; left: 6px; z-index: 3;
+  display: inline-flex; color: var(--muted); text-decoration: none;
+}
+.peach-react [data-index-grid] [data-index-follow-unavailable]:focus-visible {
+  outline: 2px solid var(--tungsten); outline-offset: 2px;
+}

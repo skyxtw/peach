@@ -67,6 +67,8 @@ export interface IndexPerson {
   following?: boolean;
   /** 收藏状态由 `_attach_index_favorites` 按规范实体身份下发。 */
   favorite?: boolean;
+  /** 订阅状态与可订阅性；只有女优行有，`available=false` 时不给开关。 */
+  feed?: { following: boolean; available: boolean };
   entity_id?: number;
   id?: number;
   k: string;
