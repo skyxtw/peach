@@ -10,6 +10,7 @@
 import { boardTabsHtml, fitSkeleton, iconSwitchHtml, indexSkeletonHtml } from '@peach/legacy/ui';
 import { identityFilterSkeletonHtml } from './identity-filter';
 import { islandButton, islandShortcutsEntry, islandSearchInput } from './island-skeleton';
+import { normalizePeopleSort } from './people-sort';
 import { t } from './i18n';
 
 export type IndexPageKind = 'performers' | 'creators' | 'studios' | 'agencies' | 'series' | 'tags';
@@ -21,6 +22,9 @@ export interface IndexParams {
   scope: 'local' | 'online';
   view: 'alphabet' | 'cloud';
   category: string;
+  /** 本地艺人名册的排序键与方向；其他名册归一成作品数降序。 */
+  sort: string;
+  dir: 'asc' | 'desc';
 }
 
 export const INDEX_TITLES: Readonly<Record<IndexPageKind, string>> = {
@@ -50,9 +54,11 @@ export const peopleLayoutOf = (saved: unknown): 'big' | 'compact' => (saved === 
 /** 地址栏上的那几项。范围与视图只认两个值；类型由页面按这一套词表核对，认不出的回到全部。 */
 export function indexParams(kind: IndexPageKind, search: string): IndexParams {
   const params = new URLSearchParams(search);
+  const ordered = normalizePeopleSort(kind, params.get('sort'), params.get('dir'));
   return {
     kind, q: params.get('q') || '', scope: params.get('scope') === 'online' ? 'online' : 'local',
     view: params.get('view') === 'cloud' ? 'cloud' : 'alphabet', category: params.get('category') || 'all',
+    sort: ordered.sort, dir: ordered.dir,
   };
 }
 

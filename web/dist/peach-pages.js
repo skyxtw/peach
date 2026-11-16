@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "d65f4370-7968-4308-b941-eb7b466b0510", e._sentryDebugIdIdentifier = "sentry-dbid-d65f4370-7968-4308-b941-eb7b466b0510");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "2d082d80-f087-43a7-b80b-bff8e32113bb", e._sentryDebugIdIdentifier = "sentry-dbid-2d082d80-f087-43a7-b80b-bff8e32113bb");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2100,6 +2100,18 @@ var He = {
 		nounStudios: "studios",
 		nounTags: "tags",
 		roster: "People",
+		sortAscending: "ascending",
+		sortBirth: "Birthday",
+		sortBust: "Bust",
+		sortCup: "Cup",
+		sortDebut: "Debut",
+		sortDescending: "descending",
+		sortFact: "{{label}} {{value}}",
+		sortHeight: "Height",
+		sortKana: "Reading",
+		sortLabel: "Performer sort",
+		sortMissing: "{{label}}: not on file",
+		sortVideoCount: "Videos",
 		subscribeAction: "Subscribe to {{name}}'s new releases",
 		subscribeUnavailable: "No source yet",
 		subscribeUnavailableAction: "{{name}} has no subscription source yet; add one",
@@ -9301,6 +9313,18 @@ var He = {
 		nounStudios: "厂牌",
 		nounTags: "标签",
 		roster: "人物名册",
+		sortAscending: "升序",
+		sortBirth: "生日",
+		sortBust: "胸围",
+		sortCup: "罩杯",
+		sortDebut: "出道",
+		sortDescending: "降序",
+		sortFact: "{{label}} {{value}}",
+		sortHeight: "身高",
+		sortKana: "读音",
+		sortLabel: "艺人排序",
+		sortMissing: "{{label}} 资料未取得",
+		sortVideoCount: "作品数",
 		subscribeAction: "订阅{{name}}的新作",
 		subscribeUnavailable: "暂无可订阅来源",
 		subscribeUnavailableAction: "{{name}}暂无可订阅来源，去添加订阅来源",
@@ -38817,4 +38841,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=d65f4370-7968-4308-b941-eb7b466b0510
+//# debugId=2d082d80-f087-43a7-b80b-bff8e32113bb

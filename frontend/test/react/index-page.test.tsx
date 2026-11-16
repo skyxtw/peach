@@ -12,7 +12,8 @@ import { registerNameWritings, setNameLanguage } from '../../src/core/entity-nam
 import { refitNativeImages } from '@peach/card-art';
 import { tagLabel } from '@peach/legacy/tags';
 
-import { indexKey, indexRoute, type IndexProps, type IndexRoute } from '../../src/react/index/index-data';
+import { indexKey, indexRoute, indexUrl, type IndexProps, type IndexRoute } from '../../src/react/index/index-data';
+import { indexPath } from '../../src/react/index/index-controller';
 import { IndexPage } from '../../src/react/index/index-page';
 import { PeopleGrid } from '../../src/react/index/index-people';
 import { onlineAuthorsKey, onlineTagsKey } from '../../src/react/follow/online-vocab';
@@ -345,6 +346,57 @@ describe('名册', () => {
     await click(pending);
     expect(given.openEntity).toHaveBeenLastCalledWith('creator', 'InitialA');
     expect(given.openFollowAuthor).not.toHaveBeenCalled();
+  });
+});
+
+describe('名册排序', () => {
+  it('排序键写回地址并按新键重取；再点一次翻方向', async () => {
+    seed(indexKey('performers', ''), [person('甲')]);
+    const fetcher = serve(() => ({ items: [person('甲')], has_more: false }));
+    const given = props();
+    const host = await open(given);
+    const cup = host.querySelector('[data-entity-sort="cup"]');
+    expect(cup?.getAttribute('aria-pressed')).toBe('false');
+    await click(cup);
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'cup', dir: 'asc' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('sort=cup');
+    expect(urls(fetcher).at(-1)).toContain('dir=asc');
+    await click(host.querySelector('[data-entity-sort="cup"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'cup', dir: 'desc' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('dir=desc');
+  });
+
+  it('按资料排序时读数显示这一列的值；缺资料明说「资料未取得」', async () => {
+    const rows = [person('甲', { cup: 'G' }), person('乙', { entity_id: 2 })];
+    seed(indexKey('performers', '', 'all', 'cup', 'asc'), rows);
+    const host = await open(props({ sort: 'cup', dir: 'asc' }));
+    const found = [...host.querySelectorAll('[data-index-cell]')].map((cell) => cell.textContent || '');
+    expect(found[0]).toContain('罩杯 G');
+    expect(found[1]).toContain('罩杯 资料未取得');
+    expect(found[1]).not.toContain('罩杯 0');
+  });
+
+  it('地址上的 sort/dir 归一：缺省省掉，认不出的回退', () => {
+    const ordered = indexRoute({
+      kind: 'performers', q: '', scope: 'local', view: 'alphabet', category: 'all', sort: 'cup', dir: 'asc',
+    });
+    expect(ordered).toMatchObject({ sort: 'cup', dir: 'asc' });
+    expect(indexPath(ordered)).toBe('/performers?sort=cup&dir=asc');
+    expect(indexPath(indexRoute({ ...ordered, sort: 'n', dir: 'desc' }))).toBe('/performers');
+    expect(indexRoute({ ...ordered, sort: 'bogus' })).toMatchObject({ sort: 'n', dir: 'desc' });
+    expect(indexRoute({ ...ordered, dir: 'sideways' })).toMatchObject({ sort: 'cup', dir: 'asc' });
+    expect(indexUrl('performers', '', 'all', 120, 0, 'cup', 'asc')).toContain('sort=cup&dir=asc');
+    expect(indexUrl('performers', '', 'all', 120, 0)).not.toContain('sort=');
+  });
+
+  it('排序键只在本地艺人名册出现', async () => {
+    seed(indexKey('creators', ''), [person('卖家')]);
+    const host = await open(props({ kind: 'creators' }));
+    expect(host.querySelector('[data-index-sorts]')).toBeNull();
   });
 });
 

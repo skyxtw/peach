@@ -37,3 +37,11 @@ it.each(PAGES)('%s%s 骨架里的每个字形都在 sprite 里', (kind, search) 
     expect(used.filter((name) => !sprite.has(name))).toEqual([]);
   }
 });
+
+it('地址上的排序参数归一：艺人名册认白名单，其他名册与错值回到作品数降序', () => {
+  expect(indexParams('performers', '?sort=cup&dir=asc')).toMatchObject({ sort: 'cup', dir: 'asc' });
+  expect(indexParams('performers', '?sort=cup')).toMatchObject({ sort: 'cup', dir: 'asc' });
+  expect(indexParams('performers', '?sort=debut&dir=sideways')).toMatchObject({ sort: 'debut', dir: 'desc' });
+  expect(indexParams('performers', '?sort=bogus')).toMatchObject({ sort: 'n', dir: 'desc' });
+  expect(indexParams('tags', '?sort=cup&dir=asc')).toMatchObject({ sort: 'n', dir: 'desc' });
+});

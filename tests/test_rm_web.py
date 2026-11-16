@@ -472,6 +472,73 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(next(row["n"] for row in index["items"] if row["k"] == "Canonical Alice"), 2)
         self.assertEqual([(row["k"], row["n"]) for row in facets["tagperformers"]], [("Canonical Alice", 2)])
 
+    def test_performer_index_sorts_profile_columns_with_nulls_last_and_stable_pages(self):
+        """艺人名册按资料排序：空值排最后、罩杯按 A→Z 位次、同值用 id 兜底，翻页不重不漏。"""
+        profiles = {
+            21: ("2020-01-01", None, "C", 80, 150, "1990-01-01", "あ"),
+            22: ("2021-01-01", None, "A", 90, 160, "1991-01-01", "い"),
+            23: (None, None, None, None, None, None, None),
+            24: (None, 2015, "Z", None, None, None, "う"),
+            25: ("2019-01-01", None, "b", 85, 155, "1989-01-01", "え"),
+            26: ("2020-01-01", None, "D", 85, 155, "1992-01-01", "お"),
+        }
+        with closing(sqlite3.connect(self.db_path)) as con, con:
+            for eid in profiles:
+                con.execute(
+                    "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(?, 'performer', ?, ?, '2026-01-01', '2026-01-01')",
+                    (eid, f"Person {eid}", f"person {eid}"))
+                con.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(1,?,'performer','test',1.0)", (eid,))
+            # 22 名下两部作品：作品数排序要能看出方向，其余人是同值的 id 兜底。
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(2,22,'performer','test',1.0)")
+            for eid, (debut_date, debut_year, cup, bust, height, birth, kana) in profiles.items():
+                con.execute(
+                    "INSERT INTO performer_profile(entity_id,debut_date,debut_year,cup,bust_cm,height_cm,"
+                    "birth_date,kana,source,source_url,fetched_at) VALUES(?,?,?,?,?,?,?,?,'test','','2026-01-01')",
+                    (eid, debut_date, debut_year, cup, bust, height, birth, kana))
+
+        def ids(**args):
+            rows = rm_web.q_index(self.contract, "performers", **args)["items"]
+            return [row["entity_id"] for row in rows]
+
+        # 出厂排序就是作品数降序，同值按 id 升序；夹具里的 11、12 与新增的 21…26 都在名册里。
+        self.assertEqual(ids(), [12, 22, 11, 21, 23, 24, 25, 26])
+        # 缺资料的永远在最后：22 有两部片，但资料排序不看作品数。
+        self.assertEqual(ids(sort="debut", direction="asc"), [24, 25, 21, 26, 22, 11, 12, 23])
+        self.assertEqual(ids(sort="cup", direction="asc"), [22, 25, 21, 26, 24, 11, 12, 23])
+        self.assertEqual(ids(sort="bust", direction="desc"), [22, 25, 26, 21, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="height", direction="asc"), [21, 25, 26, 22, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="birth", direction="desc"), [26, 22, 21, 25, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="kana", direction="asc"), [21, 22, 24, 25, 26, 11, 12, 23])
+        # 只缺日期的出道年不算缺资料，排在同一年确有日期的前面。
+        self.assertEqual(ids(sort="debut", direction="desc"), [22, 21, 26, 25, 24, 11, 12, 23])
+        row = next(row for row in rm_web.q_index(self.contract, "performers", sort="cup")["items"]
+                   if row["entity_id"] == 21)
+        self.assertEqual((row["cup"], row["bust_cm"], row["height_cm"], row["birth_date"], row["kana"]),
+                         ("C", 80, 150, "1990-01-01", "あ"))
+        missing = next(row for row in rm_web.q_index(self.contract, "performers")["items"]
+                       if row["entity_id"] == 23)
+        self.assertIsNone(missing["cup"])
+
+        # 翻页按同一份排序：逐页拼起来和一次取齐一致，没有重复也没有丢失。
+        expected = ids(sort="cup", direction="asc")
+        pages = [id for offset in range(0, len(expected) + 1, 2)
+                 for id in ids(sort="cup", direction="asc", limit=2, offset=offset)]
+        self.assertEqual(pages, expected)
+        self.assertEqual(len(set(pages)), len(expected))
+        # 认不出的键与方向安全回退：列回作品数、方向回该列默认，不报错。
+        self.assertEqual(ids(sort="不存在"), ids())
+        self.assertEqual(ids(sort="cup", direction="sideways"), ids(sort="cup", direction="asc"))
+        # 缓存键带上解析后的排序，换一列就是另一份答案。
+        self.contract.cache.clear()
+        self.assertNotEqual(ids(sort="cup", direction="asc"), ids(sort="debut", direction="asc"))
+        ids()
+        unique = {key for key in self.contract.cache if key.startswith("('index'")}
+        self.assertEqual(len(unique), 3)
+
     def test_creator_card_and_detail_share_available_entity_image(self):
         (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
         row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]

@@ -16,6 +16,8 @@ import { indexSkeletonHtml, spinnerHtml } from '@peach/legacy/ui';
 
 import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { IndexSearch } from './index-search';
+import { SortKeys } from '../entity-filter/entity-filter-page';
+import type { EntitySortKey } from '../entity-filter/entity-filter';
 import { DataTableFooter } from '../components/table-controls';
 import { tagSkeletonHtml, TAG_PAGE_SIZE, TAG_PAGE_SIZES } from '../../tag-skeleton';
 import { INDEX_NOUNS } from '../../index-skeleton';
@@ -41,6 +43,7 @@ import {
 import { OnlineAuthors, PeopleGrid } from './index-people';
 import { TagAlphabet, TagCloud, TagDock, TagFilters, type TagEntry } from './index-tags';
 import { TagManager } from './tag-manager';
+import { PEOPLE_SORTS, nextPeopleSort, normalizePeopleSort, peopleSortAria } from '../../people-sort';
 import { t } from '../../i18n';
 
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人。所以这个开关切的
@@ -93,9 +96,10 @@ type Item = IndexPerson | IndexTag | OnlineAuthor | OnlineTag;
 export function IndexPage(props: IndexProps) {
   const [managing, setManaging] = useState(false);
   const [route, setRoute] = useState<IndexRoute>(() => indexRoute(
-    { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category },
+    { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category,
+      sort: props.sort, dir: props.dir },
   ));
-  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category]);
+  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category, props.sort, props.dir]);
   const [previousIncoming, setPreviousIncoming] = useState(incoming);
   if (incoming !== previousIncoming) {
     setPreviousIncoming(incoming);
@@ -105,7 +109,8 @@ export function IndexPage(props: IndexProps) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [match, setMatch] = useState<'any' | 'all'>('any');
   const root = useRef<HTMLDivElement>(null);
-  const { kind, q, scope, view, category } = route;
+  const { kind, q, scope, view, category, sort, dir } = route;
+  const orderedSort = normalizePeopleSort(kind, sort, dir);
   const title = INDEX_TITLES[kind], noun = INDEX_NOUNS[kind];
   const onlineTags = kind === 'tags' && scope === 'online';
   const onlineAuthors = kind === 'performers' && scope === 'online';
@@ -130,6 +135,17 @@ export function IndexPage(props: IndexProps) {
     const next = { ...route, ...patch };
     setRoute(next);
     props.route(next, { replace });
+  };
+
+  /* 一排排序键：按下态与资料页那排共用一套绘制与方向箭头，换列重取由查询键带着走。 */
+  const peopleSorts: EntitySortKey[] = PEOPLE_SORTS.map((option) => ({
+    key: option.key, label: option.label, pressed: option.key === orderedSort.sort,
+    dir: option.key === orderedSort.sort ? orderedSort.dir : '',
+    ariaLabel: peopleSortAria(option.key, orderedSort.sort, orderedSort.dir),
+  }));
+  const changeSort = (key: string) => {
+    const next = nextPeopleSort(key, orderedSort.sort, orderedSort.dir);
+    go({ sort: next.sort, dir: next.dir });
   };
 
   const { pagination, onChange: changePage } = useTagPagination(JSON.stringify(route));
@@ -221,7 +237,8 @@ export function IndexPage(props: IndexProps) {
     if (!items.length) return <IndexEmpty kind={kind} filtered={!!q || category !== 'all'}
       online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all' })} />;
     if (onlineAuthors) return <OnlineAuthors items={items as OnlineAuthor[]} layout={layout} props={props} />;
-    if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props} actions />;
+    if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props}
+      actions sort={kind === 'performers' ? orderedSort.sort : 'n'} />;
     const actions = { online: onlineTags, picked, press: pressTag };
     return view === 'alphabet' ? <TagAlphabet groups={groups} actions={actions} /> : <TagCloud tags={tags} actions={actions} />;
   };
@@ -259,12 +276,18 @@ export function IndexPage(props: IndexProps) {
         onCategory={next => go({ category: next })} onView={next => go({ view: next })}
         onJump={at => root.current?.querySelector(`[data-alpha-group="${at}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })} /> : <>
       {kind === 'performers' && scope === 'local' ? (
-        <div aria-label={t('catalog:peopleIndex.identityCategory')} className={IDENTITY_ROW_CLASS}>
-          {IDENTITY_CATEGORIES.filter((entry) => entry[0] === category || hasEntries(entry)).map(([key, label]) => (
-            <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
-              aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
-          ))}
-        </div>
+        <>
+          <div aria-label={t('catalog:peopleIndex.identityCategory')} className={IDENTITY_ROW_CLASS}>
+            {IDENTITY_CATEGORIES.filter((entry) => entry[0] === category || hasEntries(entry)).map(([key, label]) => (
+              <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
+                aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
+            ))}
+          </div>
+          <div data-index-sorts="" role="group" aria-label={t('catalog:peopleIndex.sortLabel')}
+            className="mb-4 flex min-w-0 flex-wrap items-center gap-1">
+            <SortKeys sorts={peopleSorts} onSort={changeSort} />
+          </div>
+        </>
       ) : null}
       {kind === 'tags' ? (
         <TagFilters categories={categories} category={category} online={onlineTags} readout={readout}

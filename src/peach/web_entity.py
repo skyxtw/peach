@@ -803,23 +803,62 @@ def _attach_index_favorites(connection, rows: list[dict]) -> None:
 INDEX_TABLES = ("asset", "asset_entity", "asset_tag", "asset_tag_preference", "entity",
                 "entity_alias", "entity_redirect", "entity_classification", "entity_external_ref",
                 "entity_identity_link", "entity_link", "entity_membership", "label_maker",
-                "feed_source", "follow_source", "profile")
+                "feed_source", "follow_source", "performer_profile", "profile")
 
 
-def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category=""):
+#: 艺人名册能按资料排序的列：键 → (SQL 表达式, 默认方向)。只有本地艺人名册认这些键；
+#: `cup` 按字母位次比（A=1 … Z=26），`debut` 先看日期，只有年份的用「某年 00 月 00 日」
+#: 排在同一年确有日期的前面，不会因为只缺日期就被当成没有资料。表达式里的空值统一由
+#: `_index_order_by` 排到最后。
+INDEX_PERSON_SORTS = {
+    "n": ("n", "desc"),
+    "debut": ("COALESCE(NULLIF(pp.debut_date,''),"
+              " CASE WHEN pp.debut_year IS NOT NULL THEN CAST(pp.debut_year AS TEXT) || '-00-00' END)",
+              "desc"),
+    "cup": ("CASE WHEN upper(substr(trim(pp.cup),1,1)) BETWEEN 'A' AND 'Z'"
+            " THEN unicode(upper(substr(trim(pp.cup),1,1))) - 64 END", "asc"),
+    "bust": ("pp.bust_cm", "desc"),
+    "height": ("pp.height_cm", "desc"),
+    "birth": ("NULLIF(pp.birth_date,'')", "desc"),
+    "kana": ("NULLIF(pp.kana,'')", "asc"),
+}
+
+
+def _index_sort(kind, sort, direction):
+    """白名单化名册排序：其他名册与认不出的键回作品数降序，方向缺省按该列的默认。"""
+    if kind != "performers" or sort not in INDEX_PERSON_SORTS:
+        return "n", "desc"
+    default = INDEX_PERSON_SORTS[sort][1]
+    return sort, direction if direction in ("asc", "desc") else default
+
+
+def _index_order_by(sort, direction):
+    """排序子句：空值统一排最后，`e.id` 兜底，同值时翻页不会换序、重复或漏行。"""
+    if sort == "n":
+        return f"n {direction.upper()},e.id ASC"
+    expression = INDEX_PERSON_SORTS[sort][0]
+    return f"({expression} IS NULL) ASC,{expression} {direction.upper()},e.id ASC"
+
+
+def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
+            sort="n", direction=""):
     """全部艺人 / 创作者 / 厂牌 / 事务所 / 标签的索引页数据。
 
     账本那一段十来条 SQL，名册页合计三四百毫秒；没有搜索词时按 `INDEX_TABLES` 的版本缓存，
     作品数按 `video_work_key` 计，所以分组快照的输入也一起核对。
     搜索词的键空间不封闭，带搜索词照旧现算。读目录索引的头像与标识标志在缓存之外现做。
+    只有本地艺人名册认 `sort`／`direction`；其他名册与认不出的键一律按作品数降序，
+    缓存键带上解析后的排序，换个排法不会拿回另一份答案。
     """
+    sort, direction = _index_sort(kind, sort, direction)
+
     def read():
-        return _index_rows(contract, kind, q, limit, offset, category)
+        return _index_rows(contract, kind, q, limit, offset, category, sort, direction)
     if q or kind not in {"agencies", "tags", *INDEX_ENTITY_KINDS}:
         rows, has_more, category_counts = read()
     else:
         rows, has_more, category_counts = contract.cached_until_changed(
-            repr(("index", kind, limit, offset, category)), read, *group_inputs(contract),
+            repr(("index", kind, limit, offset, category, sort, direction)), read, *group_inputs(contract),
             tables=INDEX_TABLES)
     # 下面还要往每行补目录索引的标志，不能写进缓存里那一份。
     rows = [dict(row) for row in rows]
@@ -830,7 +869,9 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
     return result
 
 
-def _index_rows(contract: WebContract, kind, q, limit, offset, category):
+def _index_rows(contract: WebContract, kind, q, limit, offset, category,
+                sort="n", direction=""):
+    sort, direction = _index_sort(kind, sort, direction)
     category_counts = None
     with contract.read_connection() as c:
         if kind == "agencies":
@@ -881,21 +922,27 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category):
             rows = rows[:limit]
         elif kind in INDEX_ENTITY_KINDS:
             entity_kind = INDEX_ENTITY_KINDS[kind]
+            # 艺人名册多带一条女优资料（ADR-0067）：排序按它算，格子里资料缺了也要说得出缺哪项。
+            profile = profile_join = ""
+            if entity_kind == "performer":
+                profile = (",pp.debut_date,pp.debut_year,pp.birth_date,pp.height_cm,"
+                           "pp.bust_cm,pp.cup,pp.kana")
+                profile_join = " LEFT JOIN performer_profile pp ON pp.entity_id=e.id"
             sql = ("SELECT e.id entity_id,e.kind entity_kind,e.canonical_name k,count(DISTINCT " + video_work_key(contract, c) + ") n,"
                    "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
                    " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
                    (" AND (e.kind='creator' OR (" + solo_performer_clause("a2.id", "e.id") + '))' if entity_kind == "performer" else "") +
                    " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
-                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
-                   "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                   "JOIN asset a ON a.id=ae.asset_id "
-                   "WHERE " + COUNTED_VIDEO + " AND " + entity_classification.index_scope(c,entity_kind) + ' ')
+                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep" + profile +
+                   " FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                   "JOIN asset a ON a.id=ae.asset_id" + profile_join +
+                   " WHERE " + COUNTED_VIDEO + " AND " + entity_classification.index_scope(c,entity_kind) + ' ')
             par = []
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
             clause, values = entity_classification.filter_sql(category,connection=c)
             sql += clause
             par.extend(values)
-            sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC,e.id ASC LIMIT ? OFFSET ?"
+            sql += "GROUP BY e.id,e.canonical_name ORDER BY " + _index_order_by(sort, direction) + " LIMIT ? OFFSET ?"
             par.extend((limit + 1, offset))
             rows = [dict(r) for r in c.execute(sql, par)]
             has_more = len(rows) > limit

@@ -150,6 +150,8 @@ def _get_index(contract, args):
         min(max(int(args.get("limit", "180")), 1), 600),
         max(int(args.get("offset", "0")), 0),
         args.get("category", ""),
+        args.get("sort", "") or "n",
+        args.get("dir", ""),
     )
 
 
