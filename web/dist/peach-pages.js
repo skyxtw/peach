@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "8206e2db-7f4b-4247-b222-6df3b32b7c66", e._sentryDebugIdIdentifier = "sentry-dbid-8206e2db-7f4b-4247-b222-6df3b32b7c66");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "3ba118c5-ef77-481b-9d07-cdc7320e795b", e._sentryDebugIdIdentifier = "sentry-dbid-3ba118c5-ef77-481b-9d07-cdc7320e795b");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2170,6 +2170,7 @@ var He = {
 		longPressSpeed: "Hold to speed up",
 		longPressSpeedHint: "Temporarily speed up while holding the picture; release to restore. Touch screens only.",
 		seekStep: "Back / forward",
+		speedBoost: "{{rate}}× speed",
 		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
 		seekStepSeconds: "{{seconds}} s",
 		retryMemorySave: "Retry saving playback state",
@@ -9335,6 +9336,7 @@ var He = {
 		longPressSpeed: "长按倍速",
 		longPressSpeedHint: "按住画面时临时加速，松开恢复；触屏生效。",
 		seekStep: "快退 / 快进",
+		speedBoost: "{{rate}}× 加速",
 		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
 		seekStepSeconds: "{{seconds}} 秒",
 		retryMemorySave: "重试保存播放记忆",
@@ -38751,4 +38753,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=8206e2db-7f4b-4247-b222-6df3b32b7c66
+//# debugId=3ba118c5-ef77-481b-9d07-cdc7320e795b

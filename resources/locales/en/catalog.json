@@ -713,6 +713,7 @@
     "longPressSpeed": "Hold to speed up",
     "longPressSpeedHint": "Temporarily speed up while holding the picture; release to restore. Touch screens only.",
     "seekStep": "Back / forward",
+    "speedBoost": "{{rate}}× speed",
     "seekStepHint": "Seconds used by the control bar, double-tap, and keyboard seek.",
     "seekStepSeconds": "{{seconds}} s",
     "retryMemorySave": "Retry saving playback state",

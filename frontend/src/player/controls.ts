@@ -539,8 +539,8 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
 /* 舞台上的触屏双击：左半区后退、右半区前进，步长同 seekSeconds。
  *
  *  单击仍走播放/暂停，但要等双击窗口过去才兑现；浏览器合成的 click 与 dblclick 都要在捕获阶段
- *  吃掉，否则第一下会先触发播放、第二下又会被 Video.js 当成双击全屏。鼠标不接管，原来的单击与
- *  双击全屏行为不变。鼠标按住同样触发长按倍速，方便非触屏设备验收；普通单击与双击仍走原路径。
+ *  吃掉，否则第一下会先触发播放、第二下又会被 Video.js 当成双击全屏。普通鼠标单击与双击全屏
+ *  仍走原路径；鼠标按住同样触发长按倍速，方便非触屏设备验收。
  *  沉浸模式有自己的手势，这个函数只挂在舞台播放器上。 */
 const TAP_MS = 300;
 const TAP_SLOP = 12;
@@ -552,10 +552,13 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   const video = root.querySelector<HTMLVideoElement>('video');
   if (!video || root.hasAttribute('data-player-touch-seek')) return;
   root.setAttribute('data-player-touch-seek', '');
+  const badge = document.createElement('div');
+  badge.className = 'vjs-peach-speed-badge'; badge.hidden = true; root.append(badge);
   let down: { x: number; y: number; at: number } | null = null;
   let lastTap: { side: -1 | 1; at: number } | null = null;
   let tapTimer: ReturnType<typeof setTimeout> | null = null;
   let holdTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdGuard: ReturnType<typeof setInterval> | null = null;
   let holdRate = 1;
   let holding = false;
   let suppressUntil = 0;
@@ -571,7 +574,9 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   const clearHold = () => { if (holdTimer) clearTimeout(holdTimer); holdTimer = null };
   const restoreRate = () => {
     clearHold();
-    if (holding) { holding = false; player.playbackRate(holdRate) }
+    if (holdGuard) { clearInterval(holdGuard); holdGuard = null }
+    if (!holding) return;
+    holding = false; player.playbackRate(holdRate); badge.hidden = true;
   };
   const onDown = (event: PointerEvent) => {
     if (!inStage() || event.button > 0) return;
@@ -583,6 +588,12 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
       holding = true;
       holdRate = Number(player.playbackRate()) || 1;
       player.playbackRate(longPressSpeed());
+      badge.textContent = t('catalog:playerQuality.speedBoost', { rate: longPressSpeed() });
+      badge.hidden = false;
+      /* 起播/换源时浏览器或 Video.js 可能把 rate 写回 1；按住期间每 250ms 重新断言一次。 */
+      holdGuard = setInterval(() => {
+        if (holding && Math.abs((Number(player.playbackRate()) || 1) - longPressSpeed()) > .01) player.playbackRate(longPressSpeed());
+      }, 250);
     }, LONG_PRESS_MS);
   };
   const onMove = (event: PointerEvent) => {
@@ -594,8 +605,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     clearHold();
     const started = down; down = null;
     if (holding) {
-      holding = false; player.playbackRate(holdRate);
-      suppressUntil = Date.now() + TAP_SUPPRESS_MS;
+      restoreRate(); suppressUntil = Date.now() + TAP_SUPPRESS_MS;
       return;
     }
     if (event.pointerType === 'mouse') return;
@@ -610,7 +620,9 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     lastTap = { side, at: now };
     tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
   };
-  const onCancel = () => { clearHold(); restoreRate(); down = null };
+  const onCancel = () => { restoreRate(); down = null };
+  /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复，不依赖 pointerleave。 */
+  const releaseOutside = () => { if (!holding) return; restoreRate(); suppressUntil = Date.now() + TAP_SUPPRESS_MS; down = null };
   const captureClick = (event: Event) => {
     if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
   };
@@ -621,17 +633,20 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
   video.addEventListener('pointermove', onMove);
   video.addEventListener('pointerup', onUp);
   video.addEventListener('pointercancel', onCancel);
-  video.addEventListener('pointerleave', onCancel);
+  window.addEventListener('pointerup', releaseOutside, true);
+  window.addEventListener('pointercancel', releaseOutside, true);
   root.addEventListener('click', captureClick, true);
   root.addEventListener('dblclick', captureDoubleClick, true);
   player.on('dispose', () => {
     if (tapTimer) clearTimeout(tapTimer);
-    clearHold();
+    restoreRate();
     video.removeEventListener('pointerdown', onDown);
     video.removeEventListener('pointermove', onMove);
     video.removeEventListener('pointerup', onUp);
     video.removeEventListener('pointercancel', onCancel);
-    video.removeEventListener('pointerleave', onCancel);
+    window.removeEventListener('pointerup', releaseOutside, true);
+    window.removeEventListener('pointercancel', releaseOutside, true);
+    badge.remove();
     root.removeEventListener('click', captureClick, true);
     root.removeEventListener('dblclick', captureDoubleClick, true);
     root.removeAttribute('data-player-touch-seek');
