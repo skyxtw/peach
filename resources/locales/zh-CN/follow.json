@@ -302,9 +302,9 @@
     "goToPrimary": "前往写入端管理关注",
     "listFailed": "关注列表未取得",
     "listLoading": "正在读取关注列表",
-    "overview": "关注概览",
+    "overview": "订阅概览",
     "readOnly": "本机只能浏览",
-    "sectionTabs": "关注管理区域"
+    "sectionTabs": "订阅管理区域"
   },
   "followOverview": {
     "actressUnit": "位",
