@@ -403,6 +403,24 @@ class LedgerRevisionTests(unittest.TestCase):
         for key in ("entity-shapes", "catalog-group-rows", "search-recommendations:"):
             self.assertIn(key, self.contract.cache)
 
+    def test_startup_warms_the_performer_index_before_the_other_pages(self):
+        """名册首屏先拿缓存；推荐池、广告预热不再排在它前面抢 CPU。"""
+        import asyncio
+        from peach import api
+        pages = api.WARM_AGGREGATES[:2]
+        calls = []
+        original = api.web_contract.dispatch_api_get
+
+        def record(contract, path, args):
+            calls.append((path, dict(args)))
+            return original(contract, path, args)
+
+        with mock.patch.object(api, "WARM_AGGREGATES", pages), mock.patch.object(
+                api.web_contract, "dispatch_api_get", side_effect=record):
+            asyncio.run(api._warm_ledger_aggregates(True, self.contract, asyncio.Event()))
+        self.assertEqual(calls, [("/api/index", {"kind": "performers", "limit": "60"}),
+                                 pages[1]])
+
     def test_a_commit_during_a_versioned_computation_keeps_the_result(self):
         def derive():
             self.calls += 1
