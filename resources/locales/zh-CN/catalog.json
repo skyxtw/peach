@@ -574,7 +574,16 @@
     "lastFetched": "上次拉取 {{time}}",
     "neverFetched": "尚未拉取",
     "openReleases": "查看新作",
-    "manage": "管理订阅"
+    "manage": "管理订阅",
+    "mergeEntry": "合并重复厂牌",
+    "mergeTitle": "合并两个厂牌实体",
+    "mergeHint": "把重复的厂牌并到保留项：别名、统计和订阅一起迁移；不可撤销。输入实体名称或 id。",
+    "mergeTarget": "要保留的厂牌",
+    "mergeSource": "要并掉的厂牌",
+    "mergeSubmit": "合并",
+    "mergeBusy": "合并中…",
+    "mergeClose": "收起",
+    "mergeDone": "已把 {{source}} 并入 {{target}}，迁移 {{count, number}} 条作品。"
   },
   "javWant": {
     "added": "已加入想要",

@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from . import media_libraries, settings_file
+from . import media_libraries, settings_file, studio_merge
 from .follow_discovery import MAX_SUGGESTIONS, MAX_TERM_LENGTH
 from .review_csv import candidate_root_version
 from .web_activity import (
@@ -467,6 +467,7 @@ POST_HANDLERS = {
     "/api/feeds/check": w_feed_check,
     "/api/feeds/source": w_feed_source,
     "/api/feeds/bind-studio": w_bind_studio,
+    "/api/feeds/merge-studio": studio_merge.merge,
     "/api/feeds/discovery": w_feed_discovery,
     "/api/feeds/schedule/run": w_feed_schedule_run,
     "/api/follow/check": w_follow_check,

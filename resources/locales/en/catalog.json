@@ -615,7 +615,16 @@
     "lastFetched": "Last fetch {{time}}",
     "neverFetched": "Not fetched yet",
     "openReleases": "Open new releases",
-    "manage": "Manage subscriptions"
+    "manage": "Manage subscriptions",
+    "mergeEntry": "Merge duplicate studios",
+    "mergeTitle": "Merge two studio entities",
+    "mergeHint": "Merge a duplicate into the kept studio: aliases, stats and subscriptions move together; irreversible. Enter a name or id.",
+    "mergeTarget": "Studio to keep",
+    "mergeSource": "Studio to merge away",
+    "mergeSubmit": "Merge",
+    "mergeBusy": "Merging…",
+    "mergeClose": "Close",
+    "mergeDone": "Merged {{source}} into {{target}}; moved {{count, number}} assets."
   },
   "javWant": {
     "added": "Added to Wants",

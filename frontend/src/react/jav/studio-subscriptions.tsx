@@ -1,8 +1,9 @@
 /* JAV 页「厂牌订阅」分区：只列挂着片商实体的订阅源，不混入演员订阅。 */
-import { useQuery } from '@tanstack/react-query';
+import { useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logoUrl } from '@peach/card-art';
 import { Note } from '../components/note';
-import { apiGet, errorMessage } from '../../api';
+import { apiGet, apiSend, errorMessage } from '../../api';
 import { t } from '../../i18n';
 
 interface FeedSource {
@@ -37,7 +38,48 @@ function studios(sources: FeedSource[]): StudioRow[] {
   return [...byId.values()].sort((a, b) => b.newCount - a.newCount || a.name.localeCompare(b.name));
 }
 
+function MergeStudiosForm({ close }: { close(): void }) {
+  const client = useQueryClient();
+  const [target, setTarget] = useState('');
+  const [source, setSource] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !target.trim() || !source.trim()) return;
+    setBusy(true); setError('');
+    try {
+      const result = await apiSend<{ target: string; source: string; assets: number }>('/api/feeds/merge-studio',
+        { target: target.trim(), source: source.trim() });
+      setDone(t('catalog:studioSubscriptions.mergeDone', { target: result.target, source: result.source, count: result.assets }));
+      setTarget(''); setSource('');
+      await client.invalidateQueries({ queryKey: ['studio-subscriptions'] });
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <form data-studio-merge="" onSubmit={submit} className="flex flex-col gap-2 rounded-xl border border-separator-border bg-background-secondary-default p-4">
+    <strong className="text-body-1-medium text-text-primary">{t('catalog:studioSubscriptions.mergeTitle')}</strong>
+    <p className="text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeHint')}</p>
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="flex min-w-40 flex-col gap-1 text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeTarget')}
+        <input value={target} onChange={(event) => setTarget(event.target.value)} disabled={busy} className="h-9 rounded-lg border border-separator-border bg-surface px-2 text-body-2-regular text-text-primary" /></label>
+      <label className="flex min-w-40 flex-col gap-1 text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeSource')}
+        <input value={source} onChange={(event) => setSource(event.target.value)} disabled={busy} className="h-9 rounded-lg border border-separator-border bg-surface px-2 text-body-2-regular text-text-primary" /></label>
+      <button type="submit" disabled={busy || !target.trim() || !source.trim()} className="h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50">
+        {busy ? t('catalog:studioSubscriptions.mergeBusy') : t('catalog:studioSubscriptions.mergeSubmit')}</button>
+      <button type="button" className="h-9 rounded-lg px-3 text-body-2-medium text-text-secondary hover:bg-control" onClick={close}>{t('catalog:studioSubscriptions.mergeClose')}</button>
+    </div>
+    {done ? <p className="text-caption-1-regular text-text-primary">{done}</p> : null}
+    {error ? <p className="text-caption-1-regular text-text-primary">{error}</p> : null}
+  </form>;
+}
+
 export function StudioSubscriptions({ navigate }: { navigate(path: string): void }) {
+  const [mergeOpen, setMergeOpen] = useState(false);
   const query = useQuery({ queryKey: ['studio-subscriptions'], queryFn: ({ signal }) => apiGet<FeedSources>('/api/feeds', signal) });
   if (query.isPending) return <div data-studio-subscriptions-loading="" className="text-body-2-regular text-text-secondary">{t('catalog:studioSubscriptions.loading')}</div>;
   if (query.isError) return <Note tone="error" title={t('catalog:studioSubscriptions.failed')}>{errorMessage(query.error)}</Note>;
@@ -52,7 +94,10 @@ export function StudioSubscriptions({ navigate }: { navigate(path: string): void
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="text-title-2-medium text-text-primary">{t('catalog:studioSubscriptions.title')}</h2>
         <p className="text-body-2-regular text-text-secondary">{t('catalog:studioSubscriptions.hint')}</p></div>
+      <button type="button" className="rounded-lg px-3 py-1.5 text-body-2-medium text-text-secondary hover:bg-control"
+        onClick={() => setMergeOpen((open) => !open)}>{t('catalog:studioSubscriptions.mergeEntry')}</button>
     </header>
+    {mergeOpen ? <MergeStudiosForm close={() => setMergeOpen(false)} /> : null}
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {rows.map((row) => <article key={row.entityId} data-studio-subscription="" className="flex min-w-0 flex-col gap-3 rounded-xl border border-separator-border bg-surface p-4">
         <div className="flex min-w-0 items-center gap-3">

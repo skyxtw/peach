@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "c232fc5e-ee6b-49b4-91f0-95da36d2c644", e._sentryDebugIdIdentifier = "sentry-dbid-c232fc5e-ee6b-49b4-91f0-95da36d2c644");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "c76cf8fc-e106-47d0-8b7b-61c1c7d4971d", e._sentryDebugIdIdentifier = "sentry-dbid-c76cf8fc-e106-47d0-8b7b-61c1c7d4971d");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2072,7 +2072,16 @@ var He = {
 		lastFetched: "Last fetch {{time}}",
 		neverFetched: "Not fetched yet",
 		openReleases: "Open new releases",
-		manage: "Manage subscriptions"
+		manage: "Manage subscriptions",
+		mergeEntry: "Merge duplicate studios",
+		mergeTitle: "Merge two studio entities",
+		mergeHint: "Merge a duplicate into the kept studio: aliases, stats and subscriptions move together; irreversible. Enter a name or id.",
+		mergeTarget: "Studio to keep",
+		mergeSource: "Studio to merge away",
+		mergeSubmit: "Merge",
+		mergeBusy: "Merging…",
+		mergeClose: "Close",
+		mergeDone: "Merged {{source}} into {{target}}; moved {{count, number}} assets."
 	},
 	javWant: {
 		added: "Added to Wants",
@@ -9336,7 +9345,16 @@ var He = {
 		lastFetched: "上次拉取 {{time}}",
 		neverFetched: "尚未拉取",
 		openReleases: "查看新作",
-		manage: "管理订阅"
+		manage: "管理订阅",
+		mergeEntry: "合并重复厂牌",
+		mergeTitle: "合并两个厂牌实体",
+		mergeHint: "把重复的厂牌并到保留项：别名、统计和订阅一起迁移；不可撤销。输入实体名称或 id。",
+		mergeTarget: "要保留的厂牌",
+		mergeSource: "要并掉的厂牌",
+		mergeSubmit: "合并",
+		mergeBusy: "合并中…",
+		mergeClose: "收起",
+		mergeDone: "已把 {{source}} 并入 {{target}}，迁移 {{count, number}} 条作品。"
 	},
 	javWant: {
 		added: "已加入想要",
@@ -38937,4 +38955,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=c232fc5e-ee6b-49b4-91f0-95da36d2c644
+//# debugId=c76cf8fc-e106-47d0-8b7b-61c1c7d4971d
