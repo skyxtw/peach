@@ -907,6 +907,38 @@ def peach_logo_small(request: Request):
     return asset_response(request, PROJECT_ROOT / "resources" / name, "image/png")
 
 
+#: 主屏幕 Web App 的声明：iOS/Android 读这一份决定 standalone、图标与起始页。
+#: 局域网 HTTP 没有 service worker，这里只做「加到主屏幕」可用的最小声明。
+_PWA_MANIFEST = json.dumps({
+    "name": "Peach", "short_name": "Peach", "start_url": "/", "display": "standalone",
+    "background_color": "#080A0D", "theme_color": "#080A0D",
+    "icons": [
+        {"src": "/peach-pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        {"src": "/peach-pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+    ],
+}, ensure_ascii=False)
+
+
+@router.api_route("/manifest.webmanifest", methods=["GET", "HEAD"])
+def web_manifest():
+    """登录页也要能读到 manifest；不要求会话，与 favicon 同一档。"""
+    response = Response(_PWA_MANIFEST, media_type="application/manifest+json")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.api_route("/apple-touch-icon.png", methods=["GET", "HEAD"])
+def apple_touch_icon(request: Request):
+    return asset_response(request, PROJECT_ROOT / "resources" / "apple-touch-icon.png", "image/png")
+
+
+@router.api_route("/peach-pwa-192.png", methods=["GET", "HEAD"])
+@router.api_route("/peach-pwa-512.png", methods=["GET", "HEAD"])
+def pwa_icon(request: Request):
+    name = request.url.path.rsplit("/", 1)[-1]
+    return asset_response(request, PROJECT_ROOT / "resources" / name, "image/png")
+
+
 @router.api_route("/performers/", methods=["GET", "HEAD"])
 @router.api_route("/creators/", methods=["GET", "HEAD"])
 @router.api_route("/studios/", methods=["GET", "HEAD"])
