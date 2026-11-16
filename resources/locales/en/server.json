@@ -966,11 +966,11 @@
       "sourceHttpStatus": "The source returned HTTP {{status}}.",
       "scheduleDisabled": "Subscription fetching isn't enabled.",
       "noSourceIds": "This person has no ID on JavDB or DMM.",
-      "noStudioIds": "This studio has no DMM maker or label ID bound yet.",
+      "noStudioIds": "No DMM ID is bound to this studio yet.",
       "studioOnly": "DMM IDs can only be bound to studio entities.",
       "dmmIdTaken": "This DMM ID is already bound to another studio.",
       "performerMissing": "This actress can't be found.",
-      "entityMissing": "This entity isn't in the ledger.",
+      "entityMissing": "This entity isn't in the database.",
       "entityNotSubscribable": "This kind of entity can't subscribe to new releases.",
       "nameRequired": "Enter an actress name first.",
       "javdbSearchFailed": "JavDB search failed: {{error}}",
@@ -1120,7 +1120,7 @@
     },
     "feeds": {
       "dmmActressIdDigits": "DMM actress IDs must be numeric",
-      "dmmMakerIdDigits": "DMM maker IDs must be numeric",
+      "dmmMakerIdDigits": "DMM studio IDs must be numeric",
       "dmmLabelIdDigits": "DMM label IDs must be numeric",
       "httpsRequired": "Subscription URL must start with https://",
       "duplicateUrl": "This subscription URL is already in the list"
@@ -4073,7 +4073,7 @@
       "kind": {
         "javdbActor": "JAV subscription",
         "dmmActress": "JAV subscription · DMM",
-        "dmmMaker": "JAV subscription · DMM maker",
+        "dmmMaker": "JAV subscription · DMM studio",
         "dmmLabel": "JAV subscription · DMM label"
       }
     },

@@ -365,7 +365,7 @@
     "idHint": "ASCII digits only, e.g. 3152",
     "idPlaceholder": "3152",
     "label": "Label",
-    "maker": "Maker",
+    "maker": "Studio",
     "submit": "Bind",
     "submitting": "Binding…",
     "title": "Bind a DMM ID"
