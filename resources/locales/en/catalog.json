@@ -583,7 +583,23 @@
     "discover": "Discover",
     "label": "JAV sections",
     "newReleases": "New releases",
+    "studioSubscriptions": "Studio subscriptions",
     "wants": "Wants"
+  },
+  "studioSubscriptions": {
+    "title": "Studio subscriptions",
+    "hint": "Only sources linked to a studio entity; performer subscriptions stay under Following.",
+    "loading": "Loading studio subscriptions…",
+    "failed": "Could not load studio subscriptions",
+    "empty": "No studio subscriptions yet",
+    "emptyHint": "Open a studio page and turn on Subscribe to new releases; it will appear here.",
+    "browse": "Browse studios",
+    "newCount": "{{count, number}} new",
+    "seenCount": "{{count, number}} seen",
+    "lastFetched": "Last fetch {{time}}",
+    "neverFetched": "Not fetched yet",
+    "openReleases": "Open new releases",
+    "manage": "Manage subscriptions"
   },
   "javWant": {
     "added": "Added to Wants",

@@ -149,7 +149,9 @@ export function sidebarHost(){
 export function mountSidebar(){
   const scroll=$('#drawerScroll');
   const anchors=[...(scroll.querySelector('[data-sidebar-head]')?.children||[])];
-  scroll.innerHTML=sidebarSkeletonHtml(preferencesState.appSettings.sidebarOrder,layoutState.NAV_CATALOG,navOn);
+  const sidebarOrder=preferencesState.appSettings.sidebarOrder.includes('studio-subscriptions')
+    ?preferencesState.appSettings.sidebarOrder:[...preferencesState.appSettings.sidebarOrder,'studio-subscriptions'];
+  scroll.innerHTML=sidebarSkeletonHtml(sidebarOrder,layoutState.NAV_CATALOG,navOn);
   scroll.querySelector('[data-sidebar-head]').append(...anchors);
   applicationEffects.listen(scroll, 'click', event=>{
     if(sidebarApi())return;
@@ -361,6 +363,7 @@ export function navOn(k){
   }
   // JAV 分区及馆藏 JAV 筛选共用导航状态；竖屏由内存里的筛选开关判定。
   if(k==='jav')return path==='/jav'||javActive();
+  if(k==='studio-subscriptions')return path==='/jav'&&new URLSearchParams(location.search).get('tab')==='studios';
   if(k==='shorts')return state.orient===PORTRAIT;
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
   // 否则它会和当前所在的入口同时高亮。
@@ -383,6 +386,7 @@ export function navTo(k){
   if(layoutState.DIRECT_MANAGE_NAV[k]){openManage(layoutState.DIRECT_MANAGE_NAV[k]);return}
   if(k==='manage'){openManage();return}
   if(k==='jav'){navigationState.navigatePath('/jav');return}
+  if(k==='studio-subscriptions'){navigationState.navigatePath('/jav?tab=studios');return}
   if(k===''){goHome();return}
   // 有自己路径的入口（追更、播放列表、沉浸模式、索引页）按路由元数据的 `nav` 找路径进。
   const path=STATE_ROUTES[k]?null:navigationState.routePathOf('nav',k);

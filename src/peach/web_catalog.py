@@ -608,6 +608,25 @@ def con_entities(contract: WebContract, ids, qm):
         return [row for row in rows if row[1] not in excluded]
 
 
+def attach_performer_feed(contract: WebContract, refs: list[dict]) -> None:
+    """给详情页的演员格补上订阅状态；详情页不再单独问一次 /api/entity。"""
+    ids = sorted({int(ref["id"]) for ref in refs if isinstance(ref.get("id"), int)})
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    with contract.read_connection() as connection:
+        following = {int(row[0]) for row in connection.execute(
+            f"SELECT DISTINCT entity_id FROM feed_source WHERE enabled=1 AND entity_id IN ({marks})", ids)}
+        available = {int(row[0]) for row in connection.execute(
+            f"SELECT DISTINCT entity_id FROM entity_external_ref WHERE external_kind='performer'"
+            f" AND provider IN ('dmm','javdb') AND entity_id IN ({marks})", ids)}
+    for ref in refs:
+        if isinstance(ref.get("id"), int):
+            eid = int(ref["id"])
+            if eid in available or eid in following:
+                ref["feed"] = {"following": eid in following, "available": eid in available}
+
+
 def entity_ref(contract: WebContract, kind: str, entity_id, name: str) -> dict:
     """身份引用：id、名字，加上「实体图取不取得到」和这张图的取景。
 
@@ -1225,6 +1244,7 @@ def q_item(contract: WebContract, aid):
         for kind in ("creator", "performer", "studio", "series")
     }
     attach_creator_reference_details(contract, d['entity_refs']['creator'])
+    attach_performer_feed(contract, d['entity_refs']['performer'])
     if d["entities"]["creator"]:
         d["creator"] = d["entities"]["creator"][0]
     if d["entities"]["studio"]:

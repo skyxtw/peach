@@ -214,11 +214,21 @@ export function mountPlayerQualityControl(
   const isOpen = () => menu.getAttribute('aria-hidden') !== 'true';
   const placeDrawer = () => {
     const stage = playerHost().stage();
-    const mobile = player.el().classList.contains('vjs-peach-xsmall');
-    const parent = mobile && stage ? stage : player.el();
+    const media = player.el();
+    const mobile = media.classList.contains('vjs-peach-xsmall');
+    /* 浏览器原生全屏把 media-container（或播放器根）放进 top layer；抽屉挂在根上时
+       和全屏元素是兄弟，整块不渲染。挂到当前全屏元素里，并用 fixed 定位；退出全屏
+       由 fullscreenchange 移回根。 */
+    const fullscreen = document.fullscreenElement;
+    const inTopLayer = !mobile && fullscreen instanceof HTMLElement
+      && fullscreen !== media && fullscreen !== video && media.contains(fullscreen);
+    const parent = mobile && stage ? stage : (inTopLayer ? fullscreen : media);
     drawer.toggleAttribute('data-mobile', mobile);
+    drawer.toggleAttribute('data-fullscreen', inTopLayer);
     if (drawer.parentElement !== parent) parent.append(drawer);
   };
+  const placeDrawerAfterFullscreen = () => { if (isOpen()) placeDrawer() };
+  player.on('fullscreenchange', placeDrawerAfterFullscreen);
   const setOpen = (open: boolean) => {
     if (open) placeDrawer();
     menu.setAttribute('aria-hidden', String(!open)); drawer.setAttribute('aria-hidden', String(!open));
@@ -556,6 +566,7 @@ export function mountPlayerQualityControl(
     panelRun++;
     document.removeEventListener('pointerdown', outside);
     document.removeEventListener(PLAYER_PANEL_EVENT, closeSettingsForOtherPanel);
+    player.off('fullscreenchange', placeDrawerAfterFullscreen);
     if (panelTimer) clearTimeout(panelTimer);
     drawer.remove();
   });

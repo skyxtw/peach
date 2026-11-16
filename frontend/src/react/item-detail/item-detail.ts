@@ -31,6 +31,8 @@ export interface DetailEntityRef extends FaceRef {
   logo_version?: string;
   /** 厂牌是某家片商旗下的 label 时（ADR-0049），从近到远的上级片商链。 */
   makers?: DetailEntityRef[];
+  /** 演员格上的订阅开关状态，由 `/api/item` 一起下发。 */
+  feed?: { following: boolean; available: boolean };
 }
 
 /** 卡片条目里声明过的那些字段。`MediaItem` 带着 `[field: string]: unknown`，直接 `Omit` 会把
