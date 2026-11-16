@@ -79,6 +79,7 @@
   "sidebar": {
     "flagged": "Flagged",
     "following": "Following",
+    "actorSubscriptions": "Actor subscriptions",
     "studioSubscriptions": "Studio subscriptions",
     "home": "Home",
     "immerse": "Immersive",

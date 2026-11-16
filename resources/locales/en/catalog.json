@@ -583,8 +583,24 @@
     "discover": "Discover",
     "label": "JAV sections",
     "newReleases": "New releases",
+    "actorSubscriptions": "Actor subscriptions",
     "studioSubscriptions": "Studio subscriptions",
     "wants": "Wants"
+  },
+  "actorSubscriptions": {
+    "title": "Actor subscriptions",
+    "hint": "JAV performer subscriptions only; non-JAV creators stay under Following, studios under Studio subscriptions.",
+    "loading": "Loading actor subscriptions…",
+    "failed": "Could not load actor subscriptions",
+    "empty": "No actor subscriptions yet",
+    "emptyHint": "Open a performer page and turn on Subscribe to new releases; it will appear here.",
+    "browse": "Browse performers",
+    "newCount": "{{count, number}} new",
+    "seenCount": "{{count, number}} seen",
+    "lastFetched": "Last fetch {{time}}",
+    "neverFetched": "Not fetched yet",
+    "openReleases": "Open new releases",
+    "manage": "Manage subscriptions"
   },
   "studioSubscriptions": {
     "title": "Studio subscriptions",

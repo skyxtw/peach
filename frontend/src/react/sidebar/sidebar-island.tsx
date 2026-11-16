@@ -101,10 +101,14 @@ function Navigation({ host: at, epoch, version }: { host: SidebarHost; epoch: nu
   const commit = useCommitNavigationOrder(at.store);
   const rawOrder = at.store.value.sidebarOrder;
   const order = (() => {
-    if (rawOrder.includes('studio-subscriptions')) return rawOrder;
-    const atFollow = rawOrder.indexOf('follow');
-    return atFollow < 0 ? [...rawOrder, 'studio-subscriptions']
-      : [...rawOrder.slice(0, atFollow + 1), 'studio-subscriptions', ...rawOrder.slice(atFollow + 1)];
+    let next = [...rawOrder];
+    for (const key of ['actor-subscriptions', 'studio-subscriptions']) {
+      if (next.includes(key)) continue;
+      const atFollow = next.indexOf('follow');
+      next = atFollow < 0 ? [...next, key]
+        : [...next.slice(0, atFollow + 1), key, ...next.slice(atFollow + 1)];
+    }
+    return next;
   })();
   const byKey = new Map(at.navCatalog.map((item) => [item[0], item]));
   const items = order.map((key) => byKey.get(key)).filter((item) => item !== undefined);

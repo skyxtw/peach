@@ -149,7 +149,7 @@ export function sidebarHost(){
 export function mountSidebar(){
   const scroll=$('#drawerScroll');
   const anchors=[...(scroll.querySelector('[data-sidebar-head]')?.children||[])];
-  const sidebarOrder=(()=>{const order=preferencesState.appSettings.sidebarOrder;if(order.includes('studio-subscriptions'))return order;const at=order.indexOf('follow');return at<0?[...order,'studio-subscriptions']:[...order.slice(0,at+1),'studio-subscriptions',...order.slice(at+1)]})();
+  const sidebarOrder=(()=>{let order=[...preferencesState.appSettings.sidebarOrder];for(const key of ['actor-subscriptions','studio-subscriptions']){if(order.includes(key))continue;const at=order.indexOf('follow');order=at<0?[...order,key]:[...order.slice(0,at+1),key,...order.slice(at+1)]}return order})();
   scroll.innerHTML=sidebarSkeletonHtml(sidebarOrder,layoutState.NAV_CATALOG,navOn);
   scroll.querySelector('[data-sidebar-head]').append(...anchors);
   applicationEffects.listen(scroll, 'click', event=>{
@@ -362,6 +362,7 @@ export function navOn(k){
   }
   // JAV 分区及馆藏 JAV 筛选共用导航状态；竖屏由内存里的筛选开关判定。
   if(k==='jav')return path==='/jav'||javActive();
+  if(k==='actor-subscriptions')return path==='/jav'&&new URLSearchParams(location.search).get('tab')==='actors';
   if(k==='studio-subscriptions')return path==='/jav'&&new URLSearchParams(location.search).get('tab')==='studios';
   if(k==='shorts')return state.orient===PORTRAIT;
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
@@ -385,6 +386,7 @@ export function navTo(k){
   if(layoutState.DIRECT_MANAGE_NAV[k]){openManage(layoutState.DIRECT_MANAGE_NAV[k]);return}
   if(k==='manage'){openManage();return}
   if(k==='jav'){navigationState.navigatePath('/jav');return}
+  if(k==='actor-subscriptions'){navigationState.navigatePath('/jav?tab=actors');return}
   if(k==='studio-subscriptions'){navigationState.navigatePath('/jav?tab=studios');return}
   if(k===''){goHome();return}
   // 有自己路径的入口（追更、播放列表、沉浸模式、索引页）按路由元数据的 `nav` 找路径进。

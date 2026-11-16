@@ -542,8 +542,24 @@
     "discover": "发现",
     "label": "JAV 分区",
     "newReleases": "新作",
+    "actorSubscriptions": "演员订阅",
     "studioSubscriptions": "厂牌订阅",
     "wants": "想要"
+  },
+  "actorSubscriptions": {
+    "title": "演员订阅",
+    "hint": "只看 JAV 女优订阅；非 JAV 创作者在「关注」，厂牌在「厂牌订阅」。",
+    "loading": "正在读取演员订阅…",
+    "failed": "读取演员订阅失败",
+    "empty": "还没有订阅演员",
+    "emptyHint": "打开一位女优的资料页，点「订阅新作」后就会出现在这里。",
+    "browse": "去浏览演员",
+    "newCount": "新作 {{count, number}}",
+    "seenCount": "已见 {{count, number}}",
+    "lastFetched": "上次拉取 {{time}}",
+    "neverFetched": "尚未拉取",
+    "openReleases": "查看新作",
+    "manage": "管理订阅"
   },
   "studioSubscriptions": {
     "title": "厂牌订阅",

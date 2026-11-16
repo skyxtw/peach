@@ -38,7 +38,7 @@
     "quality": "高清版",
     "review": "人工复核",
     "stats": "统计",
-    "subscriptions": "关注管理",
+    "subscriptions": "订阅管理",
     "taste": "口味",
     "trash": "回收站"
   },
@@ -78,6 +78,7 @@
   "sidebar": {
     "flagged": "已标记",
     "following": "关注",
+    "actorSubscriptions": "演员订阅",
     "studioSubscriptions": "厂牌订阅",
     "home": "首页",
     "immerse": "沉浸模式",

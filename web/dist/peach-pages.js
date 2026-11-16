@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "49d9a12f-f42b-4ef2-9e3a-11352250c955", e._sentryDebugIdIdentifier = "sentry-dbid-49d9a12f-f42b-4ef2-9e3a-11352250c955");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "c232fc5e-ee6b-49b4-91f0-95da36d2c644", e._sentryDebugIdIdentifier = "sentry-dbid-c232fc5e-ee6b-49b4-91f0-95da36d2c644");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2040,8 +2040,24 @@ var He = {
 		discover: "Discover",
 		label: "JAV sections",
 		newReleases: "New releases",
+		actorSubscriptions: "Actor subscriptions",
 		studioSubscriptions: "Studio subscriptions",
 		wants: "Wants"
+	},
+	actorSubscriptions: {
+		title: "Actor subscriptions",
+		hint: "JAV performer subscriptions only; non-JAV creators stay under Following, studios under Studio subscriptions.",
+		loading: "Loading actor subscriptions…",
+		failed: "Could not load actor subscriptions",
+		empty: "No actor subscriptions yet",
+		emptyHint: "Open a performer page and turn on Subscribe to new releases; it will appear here.",
+		browse: "Browse performers",
+		newCount: "{{count, number}} new",
+		seenCount: "{{count, number}} seen",
+		lastFetched: "Last fetch {{time}}",
+		neverFetched: "Not fetched yet",
+		openReleases: "Open new releases",
+		manage: "Manage subscriptions"
 	},
 	studioSubscriptions: {
 		title: "Studio subscriptions",
@@ -5084,6 +5100,7 @@ var He = {
 	sidebar: {
 		flagged: "Flagged",
 		following: "Following",
+		actorSubscriptions: "Actor subscriptions",
 		studioSubscriptions: "Studio subscriptions",
 		home: "Home",
 		immerse: "Immersive",
@@ -9287,8 +9304,24 @@ var He = {
 		discover: "发现",
 		label: "JAV 分区",
 		newReleases: "新作",
+		actorSubscriptions: "演员订阅",
 		studioSubscriptions: "厂牌订阅",
 		wants: "想要"
+	},
+	actorSubscriptions: {
+		title: "演员订阅",
+		hint: "只看 JAV 女优订阅；非 JAV 创作者在「关注」，厂牌在「厂牌订阅」。",
+		loading: "正在读取演员订阅…",
+		failed: "读取演员订阅失败",
+		empty: "还没有订阅演员",
+		emptyHint: "打开一位女优的资料页，点「订阅新作」后就会出现在这里。",
+		browse: "去浏览演员",
+		newCount: "新作 {{count, number}}",
+		seenCount: "已见 {{count, number}}",
+		lastFetched: "上次拉取 {{time}}",
+		neverFetched: "尚未拉取",
+		openReleases: "查看新作",
+		manage: "管理订阅"
 	},
 	studioSubscriptions: {
 		title: "厂牌订阅",
@@ -10588,9 +10621,9 @@ var He = {
 		goToPrimary: "前往写入端管理关注",
 		listFailed: "关注列表未取得",
 		listLoading: "正在读取关注列表",
-		overview: "关注概览",
+		overview: "订阅概览",
 		readOnly: "本机只能浏览",
-		sectionTabs: "关注管理区域"
+		sectionTabs: "订阅管理区域"
 	},
 	followOverview: {
 		actressUnit: "位",
@@ -12013,7 +12046,7 @@ var He = {
 		quality: "高清版",
 		review: "人工复核",
 		stats: "统计",
-		subscriptions: "关注管理",
+		subscriptions: "订阅管理",
 		taste: "口味",
 		trash: "回收站"
 	},
@@ -12051,6 +12084,7 @@ var He = {
 	sidebar: {
 		flagged: "已标记",
 		following: "关注",
+		actorSubscriptions: "演员订阅",
 		studioSubscriptions: "厂牌订阅",
 		home: "首页",
 		immerse: "沉浸模式",
@@ -15298,7 +15332,7 @@ var He = {
 		settings: "Peach 配置",
 		sources: "来源和凭证",
 		stats: "统计",
-		subscriptions: "关注管理",
+		subscriptions: "订阅管理",
 		tags: "标签",
 		tasks: "任务中心",
 		taste: "口味",
@@ -38903,4 +38937,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=49d9a12f-f42b-4ef2-9e3a-11352250c955
+//# debugId=c232fc5e-ee6b-49b4-91f0-95da36d2c644
