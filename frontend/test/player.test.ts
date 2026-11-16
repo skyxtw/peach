@@ -29,7 +29,7 @@ function stubFetch(reply: (url: string) => unknown): FetchCall[] {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const host = (seekSeconds = 10): PlayerHost => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, longPressSpeed: 2, fullscreenFit: 'contain', miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, seekLargeSeconds: 60, longPressSpeed: 2, fullscreenFit: 'contain', miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {},
   toast: () => {},
   loadSourceStatus: async () => ({}),
@@ -437,7 +437,13 @@ describe('播放器清晰度', () => {
       expect(saveSettings).toHaveBeenCalled();
       expect(input.value).toBe('30');
       view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
-      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒');
+      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒 / 60 秒');
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-step]')!.click();
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-large-preset="120"]')!.click();
+      expect(settings.seekLargeSeconds).toBe(120);
+      expect(view.root.querySelector<HTMLInputElement>('[data-player-seek-large-input]')!.value).toBe('120');
+      view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
+      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒 / 120 秒');
     } finally {
       configurePlayer(host());
       view.close();
@@ -478,7 +484,7 @@ describe('播放器清晰度', () => {
       expect([...drawer.querySelectorAll('.vjs-peach-settings-group')].map(node => node.textContent)).toEqual(['控制', '画面', '界面']);
       const keys = drawer.querySelector<HTMLButtonElement>('[data-player-settings-tab="keys"]')!;
       keys.click();
-      expect([...drawer.querySelectorAll('.vjs-peach-shortcut')]).toHaveLength(8);
+      expect([...drawer.querySelectorAll('.vjs-peach-shortcut')]).toHaveLength(9);
       expect(keys.getAttribute('aria-selected')).toBe('true');
       drawer.querySelector<HTMLButtonElement>('[data-player-settings-tab="play"]')!.click();
       expect(drawer.querySelector('[data-player-speed]')).not.toBeNull();

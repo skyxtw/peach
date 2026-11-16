@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "3682cd54-faf2-42c2-bc42-510bdc0b9cb1", e._sentryDebugIdIdentifier = "sentry-dbid-3682cd54-faf2-42c2-bc42-510bdc0b9cb1");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "94c50a81-796d-4bf0-b654-1cf039971f87", e._sentryDebugIdIdentifier = "sentry-dbid-94c50a81-796d-4bf0-b654-1cf039971f87");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, n) => {
@@ -2191,6 +2191,9 @@ var Ve = "peach.settings.v1", He = {
 		seekStep: "Back / forward",
 		speedBoost: "{{rate}}× speed",
 		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
+		seekLargeStep: "Large seek step",
+		seekLargeStepHint: "Hold Shift and click seek, or press Shift + ← / → to use this step.",
+		shortcutSeekLarge: "Large seek back / forward",
 		seekStepSeconds: "{{seconds}} s",
 		retryMemorySave: "Retry saving playback state",
 		rotation: "Rotation",
@@ -9364,6 +9367,9 @@ var Ve = "peach.settings.v1", He = {
 		seekStep: "快退 / 快进",
 		speedBoost: "{{rate}}× 加速",
 		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
+		seekLargeStep: "长跳步长",
+		seekLargeStepHint: "按住 Shift 再点快退/快进，或按 Shift + ← / → 使用这个步长。",
+		shortcutSeekLarge: "长跳快退 / 快进",
 		seekStepSeconds: "{{seconds}} 秒",
 		retryMemorySave: "重试保存播放记忆",
 		rotation: "画面旋转",
@@ -48089,6 +48095,7 @@ var afe = [
 	sortDefaultsVersion: 3,
 	hoverDelaySeconds: 5,
 	seekSeconds: 10,
+	seekLargeSeconds: 60,
 	longPressSpeed: 2,
 	fullscreenFit: "contain",
 	searchHistoryLimit: 10,
@@ -48124,7 +48131,7 @@ function sfe(e) {
 	let r = !1, i = +n.sortDefaultsVersion || 0;
 	i < 2 && n.defaultSort === "new" && (n.defaultSort = "seed", r = !0);
 	let a = kM[n.defaultSort];
-	return i < 3 && a && (n.defaultSort = a[0], r = !0), n.sortDefaultsVersion = 3, n.batchSize = mM(+n.batchSize, 1, 200, 60), n.defaultSort = ZM(n.defaultSort, DM, "seed"), n.hoverDelaySeconds = mM(+n.hoverDelaySeconds, 0, 60, 5), n.seekSeconds = mM(+n.seekSeconds, 1, 300, 10), n.longPressSpeed = mM(+n.longPressSpeed, 1, 4, 2), n.fullscreenFit = ZM(n.fullscreenFit, [
+	return i < 3 && a && (n.defaultSort = a[0], r = !0), n.sortDefaultsVersion = 3, n.batchSize = mM(+n.batchSize, 1, 200, 60), n.defaultSort = ZM(n.defaultSort, DM, "seed"), n.hoverDelaySeconds = mM(+n.hoverDelaySeconds, 0, 60, 5), n.seekSeconds = mM(+n.seekSeconds, 1, 300, 10), n.seekLargeSeconds = mM(+n.seekLargeSeconds, 1, 600, 60), n.longPressSpeed = mM(+n.longPressSpeed, 1, 4, 2), n.fullscreenFit = ZM(n.fullscreenFit, [
 		"contain",
 		"cover",
 		"original"
@@ -49622,16 +49629,16 @@ function AP(e, t, n = {}, r = null) {
 				O = null, r.remove(), f.classList.remove("vjs-peach-popup-animating"), f.style.height = "";
 			}, 250));
 		}), i;
-	}, j = (e, t) => e.querySelector(t), M = "main", N = () => Math.max(1, Number(RN().settings().seekSeconds) || 10), P = () => R("catalog:playerQuality.seekStepSeconds", { seconds: N() }), F = () => Math.min(4, Math.max(1, Number(RN().settings().longPressSpeed) || 2)), I = () => `${F()}×`, L = () => {
+	}, j = (e, t) => e.querySelector(t), M = "main", N = () => Math.max(1, Number(RN().settings().seekSeconds) || 10), P = () => Math.max(1, Number(RN().settings().seekLargeSeconds) || 60), F = () => `${R("catalog:playerQuality.seekStepSeconds", { seconds: N() })} / ${R("catalog:playerQuality.seekStepSeconds", { seconds: P() })}`, I = () => Math.min(4, Math.max(1, Number(RN().settings().longPressSpeed) || 2)), L = () => `${I()}×`, ee = () => {
 		let e = RN().settings().fullscreenFit;
 		return e === "cover" || e === "original" ? e : "contain";
-	}, ee = () => L() === "cover" ? R("catalog:playerQuality.fullscreenFitCover") : L() === "original" ? R("catalog:playerQuality.fullscreenFitOriginal") : R("catalog:playerQuality.fullscreenFitContain"), te = (t = 0) => {
+	}, te = () => ee() === "cover" ? R("catalog:playerQuality.fullscreenFitCover") : ee() === "original" ? R("catalog:playerQuality.fullscreenFitOriginal") : R("catalog:playerQuality.fullscreenFitContain"), ne = (t = 0) => {
 		M = "main", d("play");
 		let { active: n } = S(), r = m.current(), i = A(`<div class="vjs-peach-panel-menu">
       <div class="vjs-peach-settings-group">${R("catalog:playerQuality.groupControl")}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${H("player-speed")}<span>${R("catalog:playerQuality.speed")}</span><b>${r === 1 ? R("catalog:playerQuality.normalSpeed") : `${r}×`}</b>${H("player-menu-next")}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-seek-step>${H("rotate-cw", "vjs-peach-menu-line-icon")}<span>${R("catalog:playerQuality.seekStep")}</span><b>${P()}</b>${H("player-menu-next")}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-long-press>${H("player-speed")}<span>${R("catalog:playerQuality.longPressSpeed")}</span><b>${I()}</b>${H("player-menu-next")}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-seek-step>${H("rotate-cw", "vjs-peach-menu-line-icon")}<span>${R("catalog:playerQuality.seekStep")}</span><b>${F()}</b>${H("player-menu-next")}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-long-press>${H("player-speed")}<span>${R("catalog:playerQuality.longPressSpeed")}</span><b>${L()}</b>${H("player-menu-next")}</button>
       <div class="vjs-peach-settings-group">${R("catalog:playerQuality.groupPicture")}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${RN().settings().ambientMode}">
         ${H("player-ambient")}<span>${R("catalog:playerQuality.ambientMode")}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
@@ -49641,27 +49648,28 @@ function AP(e, t, n = {}, r = null) {
       <div class="vjs-peach-settings-group">${R("catalog:playerQuality.groupInterface")}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-theater-row aria-checked="${RN().settings().theaterMode}">
         ${H("theater-enter", "vjs-peach-menu-line-icon")}<span>${R("catalog:playerControls.theaterMode")}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-fullscreen-fit>${H("player-fullscreen-enter")}<span>${R("catalog:playerQuality.fullscreenFit")}</span><b>${ee()}</b>${H("player-menu-next")}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-fullscreen-fit>${H("player-fullscreen-enter")}<span>${R("catalog:playerQuality.fullscreenFit")}</span><b>${te()}</b>${H("player-menu-next")}</button>
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${R("catalog:playerQuality.retryMemorySave")}</button></div></div>`, t);
 		j(i, "[data-player-ambient]").onclick = () => {
-			Zfe(!RN().settings().ambientMode), te();
-		}, j(i, "[data-player-speed]").onclick = () => ue(), j(i, "[data-player-seek-step]").onclick = () => re(), j(i, "[data-player-long-press]").onclick = () => ie(), j(i, "[data-player-subtitles]").onclick = () => g?.show(), j(i, "[data-player-quality-view]").onclick = () => me(), j(i, "[data-player-rotation]").onclick = () => oe(), j(i, "[data-player-theater-row]").onclick = () => {
-			OP(!RN().settings().theaterMode), te();
+			Zfe(!RN().settings().ambientMode), ne();
+		}, j(i, "[data-player-speed]").onclick = () => de(), j(i, "[data-player-seek-step]").onclick = () => ie(), j(i, "[data-player-long-press]").onclick = () => ae(), j(i, "[data-player-subtitles]").onclick = () => g?.show(), j(i, "[data-player-quality-view]").onclick = () => he(), j(i, "[data-player-rotation]").onclick = () => se(), j(i, "[data-player-theater-row]").onclick = () => {
+			OP(!RN().settings().theaterMode), ne();
 		}, j(i, "[data-player-fullscreen-fit]").onclick = () => {
 			let t = [
 				"contain",
 				"cover",
 				"original"
-			], n = t[(t.indexOf(L()) + 1) % t.length];
-			RN().settings().fullscreenFit = n, RN().saveSettings(), kP(e), te();
+			], n = t[(t.indexOf(ee()) + 1) % t.length];
+			RN().settings().fullscreenFit = n, RN().saveSettings(), kP(e), ne();
 		}, j(i, "[data-player-memory-retry]").onclick = () => {
 			h.retry();
-		}, ae();
-	}, ne = () => {
+		}, oe();
+	}, re = () => {
 		M = "shortcuts", d("keys");
 		let e = [
 			["Space", R("catalog:playerQuality.shortcutPlayPause")],
 			["← / →", R("catalog:playerQuality.shortcutSeek")],
+			["Shift + ← / →", R("catalog:playerQuality.shortcutSeekLarge")],
 			["↑ / ↓", R("catalog:playerQuality.shortcutVolume")],
 			["M", R("catalog:playerQuality.shortcutMute")],
 			["F", R("catalog:playerQuality.shortcutFullscreen")],
@@ -49670,7 +49678,7 @@ function AP(e, t, n = {}, r = null) {
 			["Esc", R("catalog:playerQuality.shortcutClose")]
 		];
 		A(`<div class="vjs-peach-panel-menu vjs-peach-shortcuts">${e.map(([e, t]) => `<div class="vjs-peach-shortcut"><kbd>${e}</kbd><span>${t}</span></div>`).join("")}</div>`, 1);
-	}, re = (e = 1) => {
+	}, ie = (e = 1) => {
 		M = "seek", d("play");
 		let t = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.seekStep")}</strong></div>
       <div class="vjs-peach-seek-panel"><div class="vjs-peach-seek-stepper">
@@ -49684,14 +49692,33 @@ function AP(e, t, n = {}, r = null) {
 			30,
 			60
 		].map((e) => `<button type="button" class="vjs-peach-speed-button" data-player-seek-preset="${e}" aria-pressed="false">${e}</button>`).join("")}</div>
-        <p class="vjs-peach-seek-hint">${R("catalog:playerQuality.seekStepHint")}</p></div>`, e), n = t.querySelector("[data-player-seek-input]"), r = (e) => {
+        <p class="vjs-peach-seek-hint">${R("catalog:playerQuality.seekStepHint")}</p>
+        <h4 class="vjs-peach-seek-group">${R("catalog:playerQuality.seekLargeStep")}</h4>
+        <div class="vjs-peach-seek-stepper">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-down aria-label="${R("catalog:playerQuality.seekLargeStep")} -">${H("minus")}</button>
+          <input type="number" class="vjs-peach-seek-input" data-player-seek-large-input min="1" max="600" step="1" inputmode="numeric" aria-label="${R("catalog:playerQuality.seekLargeStep")}">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-up aria-label="${R("catalog:playerQuality.seekLargeStep")} +">${H("plus")}</button>
+        </div><div class="vjs-peach-seek-presets">${[
+			30,
+			60,
+			120,
+			300
+		].map((e) => `<button type="button" class="vjs-peach-speed-button" data-player-seek-large-preset="${e}" aria-pressed="false">${e}</button>`).join("")}</div>
+        <p class="vjs-peach-seek-hint">${R("catalog:playerQuality.seekLargeStepHint")}</p></div>`, e), n = t.querySelector("[data-player-seek-input]"), r = (e) => {
 			let r = RN().settings();
 			r.seekSeconds = Math.min(300, Math.max(1, Math.round(e) || 10)), RN().saveSettings(), n.value = String(r.seekSeconds), document.dispatchEvent(new CustomEvent(CP, { detail: r.seekSeconds })), t.querySelectorAll("[data-player-seek-preset]").forEach((e) => e.setAttribute("aria-pressed", String(Number(e.dataset.playerSeekPreset) === r.seekSeconds)));
 		};
-		j(t, "[data-player-menu-back]").onclick = () => te(-1), n.value = String(N()), n.onchange = () => r(Number(n.value)), t.querySelectorAll("[data-player-seek-preset]").forEach((e) => {
+		j(t, "[data-player-menu-back]").onclick = () => ne(-1), n.value = String(N()), n.onchange = () => r(Number(n.value)), t.querySelectorAll("[data-player-seek-preset]").forEach((e) => {
 			e.onclick = () => r(Number(e.dataset.playerSeekPreset));
 		}), j(t, "[data-player-seek-down]").onclick = () => r(N() - 5), j(t, "[data-player-seek-up]").onclick = () => r(N() + 5), t.querySelectorAll("[data-player-seek-preset]").forEach((e) => e.setAttribute("aria-pressed", String(Number(e.dataset.playerSeekPreset) === N())));
-	}, ie = (e = 1) => {
+		let i = t.querySelector("[data-player-seek-large-input]"), a = (e) => {
+			let n = RN().settings();
+			n.seekLargeSeconds = Math.min(600, Math.max(1, Math.round(e) || 60)), RN().saveSettings(), i.value = String(n.seekLargeSeconds), document.dispatchEvent(new CustomEvent(CP, { detail: n.seekSeconds })), t.querySelectorAll("[data-player-seek-large-preset]").forEach((e) => e.setAttribute("aria-pressed", String(Number(e.dataset.playerSeekLargePreset) === n.seekLargeSeconds)));
+		};
+		i.value = String(P()), i.onchange = () => a(Number(i.value)), t.querySelectorAll("[data-player-seek-large-preset]").forEach((e) => {
+			e.onclick = () => a(Number(e.dataset.playerSeekLargePreset));
+		}), j(t, "[data-player-seek-large-down]").onclick = () => a(P() - 15), j(t, "[data-player-seek-large-up]").onclick = () => a(P() + 15), t.querySelectorAll("[data-player-seek-large-preset]").forEach((e) => e.setAttribute("aria-pressed", String(Number(e.dataset.playerSeekLargePreset) === P())));
+	}, ae = (e = 1) => {
 		M = "longpress", d("play");
 		let t = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.longPressSpeed")}</strong></div>
       <div class="vjs-peach-panel-menu">${[
@@ -49699,24 +49726,24 @@ function AP(e, t, n = {}, r = null) {
 			2,
 			3,
 			4
-		].map((e) => `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-long-press-option="${e}" aria-checked="${e === F()}"><span class="vjs-peach-option-check">${e === F() ? H("player-option-check") : ""}</span><span class="vjs-peach-option-label">${e}×</span></button>`).join("")}
+		].map((e) => `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-long-press-option="${e}" aria-checked="${e === I()}"><span class="vjs-peach-option-check">${e === I() ? H("player-option-check") : ""}</span><span class="vjs-peach-option-label">${e}×</span></button>`).join("")}
         <p class="vjs-peach-seek-hint">${R("catalog:playerQuality.longPressSpeedHint")}</p></div>`, e);
-		j(t, "[data-player-menu-back]").onclick = () => te(-1), t.querySelectorAll("[data-player-long-press-option]").forEach((e) => {
+		j(t, "[data-player-menu-back]").onclick = () => ne(-1), t.querySelectorAll("[data-player-long-press-option]").forEach((e) => {
 			e.onclick = () => {
 				let t = RN().settings();
-				t.longPressSpeed = Number(e.dataset.playerLongPressOption), RN().saveSettings(), te(-1);
+				t.longPressSpeed = Number(e.dataset.playerLongPressOption), RN().saveSettings(), ne(-1);
 			};
 		});
 	};
 	u.forEach((e) => {
 		e.onclick = () => {
-			e.dataset.playerSettingsTab === "keys" ? ne() : te();
+			e.dataset.playerSettingsTab === "keys" ? re() : ne();
 		};
 	});
-	let ae = () => {
+	let oe = () => {
 		let e = f.querySelector("[data-player-memory-error]");
 		e && (e.hidden = !h.error, e.querySelector("p").textContent = h.error);
-	}, oe = () => {
+	}, se = () => {
 		M = "rotation";
 		let e = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.rotation")}</strong></div><div class="vjs-peach-panel-menu">${[
 			0,
@@ -49724,41 +49751,41 @@ function AP(e, t, n = {}, r = null) {
 			180,
 			270
 		].map((e) => `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-rotation-option="${e}" aria-checked="${e === p.angle()}"><span class="vjs-peach-option-check">${e === p.angle() ? H("player-option-check") : ""}</span><span class="vjs-peach-option-label">${e === 0 ? R("catalog:playerQuality.originalOrientation", { angle: e }) : `${e}°`}</span></button>`).join("")}</div>`, 1);
-		j(e, "[data-player-menu-back]").onclick = () => te(-1), e.querySelectorAll("[data-player-rotation-option]").forEach((e) => {
+		j(e, "[data-player-menu-back]").onclick = () => ne(-1), e.querySelectorAll("[data-player-rotation-option]").forEach((e) => {
 			e.onclick = () => {
-				p.set(Number(e.dataset.playerRotationOption)), te(-1);
+				p.set(Number(e.dataset.playerRotationOption)), ne(-1);
 			};
 		});
-	}, se = .05, ce = [
+	}, ce = .05, le = [
 		1,
 		1.25,
 		1.5,
 		2,
 		3
-	], le = (e) => Number.isInteger(e) ? e.toFixed(1) : String(e), ue = (e = 1) => {
+	], ue = (e) => Number.isInteger(e) ? e.toFixed(1) : String(e), de = (e = 1) => {
 		M = "speed";
 		let t = .25, n = (e) => Math.min(3, Math.max(t, Number(e.toFixed(2)))), r = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.speed")}</strong></div>
       <div class="vjs-peach-speed-panel"><div class="vjs-peach-speed-display"><output data-player-speed-display></output></div>
-      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="${R("catalog:playerQuality.speedDown", { step: se })}">${H("minus")}</button>
-      <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${t}" max="3" step="${se}" aria-label="${R("catalog:playerQuality.speed")}">
-      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="${R("catalog:playerQuality.speedUp", { step: se })}">${H("plus")}</button></div>
-      <div class="vjs-peach-speed-chips">${ce.map((e) => `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${e}" aria-pressed="false">${le(e)}</button>${e === 1 ? `<span class="vjs-peach-speed-preset-label">${R("catalog:playerQuality.normalSpeed")}</span>` : ""}</span>`).join("")}</div></div>`, e), i = r.querySelector("[data-player-speed-display]"), a = r.querySelector("[data-player-speed-range]"), o = n(m.current()), s = () => {
+      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="${R("catalog:playerQuality.speedDown", { step: ce })}">${H("minus")}</button>
+      <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${t}" max="3" step="${ce}" aria-label="${R("catalog:playerQuality.speed")}">
+      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="${R("catalog:playerQuality.speedUp", { step: ce })}">${H("plus")}</button></div>
+      <div class="vjs-peach-speed-chips">${le.map((e) => `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${e}" aria-pressed="false">${ue(e)}</button>${e === 1 ? `<span class="vjs-peach-speed-preset-label">${R("catalog:playerQuality.normalSpeed")}</span>` : ""}</span>`).join("")}</div></div>`, e), i = r.querySelector("[data-player-speed-display]"), a = r.querySelector("[data-player-speed-range]"), o = n(m.current()), s = () => {
 			i.textContent = `${o.toFixed(2)}x`, a.value = String(o), a.style.setProperty("--peach-speed-percent", `${(o - t) / 2.75 * 100}%`), r.querySelectorAll("[data-player-speed-option]").forEach((e) => e.setAttribute("aria-pressed", String(Number(e.dataset.playerSpeedOption) === o)));
 		}, c = (e) => {
 			o = n(e), m.set(o), s();
 		};
-		j(r, "[data-player-menu-back]").onclick = () => te(-1), a.oninput = () => c(Number(a.value)), r.querySelectorAll("[data-player-speed-step]").forEach((e) => {
-			e.onclick = () => c(o + Number(e.dataset.playerSpeedStep) * se);
+		j(r, "[data-player-menu-back]").onclick = () => ne(-1), a.oninput = () => c(Number(a.value)), r.querySelectorAll("[data-player-speed-step]").forEach((e) => {
+			e.onclick = () => c(o + Number(e.dataset.playerSpeedStep) * ce);
 		}), r.querySelectorAll("[data-player-speed-option]").forEach((e) => {
 			e.onclick = () => c(Number(e.dataset.playerSpeedOption));
 		}), s();
-	}, de = () => {
+	}, fe = () => {
 		let { options: e, active: t } = S();
 		return e.map((e) => `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${U(e.key)}" aria-checked="${e.key === t.key}"><span class="vjs-peach-option-check">${e.key === t.key ? H("player-option-check") : ""}</span><span class="vjs-peach-option-label">${U(e.label)}</span></button>`).join("");
-	}, fe = (e) => {
+	}, pe = (e) => {
 		let t = e.contains(document.activeElement) ? document.activeElement.dataset.playerQualityOption : void 0;
-		e.innerHTML = de(), pe(e), [...e.querySelectorAll("[data-player-quality-option]")].find((e) => t !== void 0 && e.dataset.playerQualityOption === t)?.focus();
-	}, pe = (n) => {
+		e.innerHTML = fe(), me(e), [...e.querySelectorAll("[data-player-quality-option]")].find((e) => t !== void 0 && e.dataset.playerQualityOption === t)?.focus();
+	}, me = (n) => {
 		n.querySelectorAll("[data-player-quality-option]").forEach((n) => {
 			n.onclick = () => {
 				if (y = n.dataset.playerQualityOption || "auto", _?.length) for (let e = 0; e < _.length; e++) _[e].enabled = y === "auto" || y === String(e);
@@ -49771,54 +49798,54 @@ function AP(e, t, n = {}, r = null) {
 						r > 0 && e.currentTime(r), i && e.play()?.catch(() => {});
 					});
 				}
-				te(-1);
+				ne(-1);
 			};
 		});
-	}, me = (e = 1) => {
+	}, he = (e = 1) => {
 		M = "quality";
-		let t = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.quality")}</strong></div><div class="vjs-peach-panel-menu">${de()}</div>`, e);
-		j(t, "[data-player-menu-back]").onclick = () => te(-1), pe(j(t, ".vjs-peach-panel-menu"));
-	}, he = () => {
+		let t = A(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${R("catalog:playerQuality.backMenu")}">${H("player-menu-back")}</button><strong>${R("catalog:playerQuality.quality")}</strong></div><div class="vjs-peach-panel-menu">${fe()}</div>`, e);
+		j(t, "[data-player-menu-back]").onclick = () => ne(-1), me(j(t, ".vjs-peach-panel-menu"));
+	}, ge = () => {
 		if (!C()) {
 			S();
 			return;
 		}
 		let e = f.lastElementChild;
 		if (M === "quality" && e) {
-			fe(j(e, ".vjs-peach-panel-menu"));
+			pe(j(e, ".vjs-peach-panel-menu"));
 			return;
 		}
 		let { active: t } = S(), n = M === "main" ? e?.querySelector("[data-player-quality-view] b") : null;
 		n && (n.textContent = t.label);
 		let r = M === "main" ? e?.querySelector("[data-player-rotation] b") : null, i = M === "main" ? e?.querySelector("[data-player-speed] b") : null, a = M === "main" ? e?.querySelector("[data-player-seek-step] b") : null, o = M === "main" ? e?.querySelector("[data-player-long-press] b") : null;
-		r && (r.textContent = `${p.angle()}°`), i && (i.textContent = m.current() === 1 ? R("catalog:playerQuality.normalSpeed") : `${m.current()}×`), a && (a.textContent = P()), o && (o.textContent = I());
+		r && (r.textContent = `${p.angle()}°`), i && (i.textContent = m.current() === 1 ? R("catalog:playerQuality.normalSpeed") : `${m.current()}×`), a && (a.textContent = F()), o && (o.textContent = L());
 	};
 	s.onclick = (e) => {
 		e.stopPropagation();
 		let t = !C();
-		t && te(), T(t);
+		t && ne(), T(t);
 	};
-	let ge = (e) => {
+	let _e = (e) => {
 		!a.contains(e.target) && !l.contains(e.target) && E();
 	};
-	document.addEventListener("pointerdown", ge);
-	let _e = (e) => {
+	document.addEventListener("pointerdown", _e);
+	let ve = (e) => {
 		if (e.key === "Escape" && C() && (e.preventDefault(), e.stopPropagation(), E(), s.focus()), ["ArrowDown", "ArrowUp"].includes(e.key) && C() && !(e.target instanceof HTMLInputElement)) {
 			e.preventDefault();
 			let t = [...f.querySelectorAll("button:not([disabled]),input,a[href]")].filter((e) => e.offsetParent !== null && !e.closest("[inert]"));
 			t[(t.indexOf(document.activeElement) + (e.key === "ArrowDown" ? 1 : t.length - 1)) % t.length]?.focus();
 		}
 	};
-	a.addEventListener("keydown", _e), l.addEventListener("keydown", _e), t.addEventListener("loadedmetadata", he), t.addEventListener("resize", he), t.addEventListener("ratechange", he), _?.on?.([
+	a.addEventListener("keydown", ve), l.addEventListener("keydown", ve), t.addEventListener("loadedmetadata", ge), t.addEventListener("resize", ge), t.addEventListener("ratechange", ge), _?.on?.([
 		"addqualitylevel",
 		"removequalitylevel",
 		"change"
-	], he);
-	let ve = h.subscribe(() => {
-		ae(), he();
+	], ge);
+	let ye = h.subscribe(() => {
+		oe(), ge();
 	});
 	return e.on("dispose", () => {
-		ve(), t.removeEventListener("loadedmetadata", he), t.removeEventListener("resize", he), t.removeEventListener("ratechange", he), k++, document.removeEventListener("pointerdown", ge), document.removeEventListener(QN, D), O && clearTimeout(O), l.remove();
+		ye(), t.removeEventListener("loadedmetadata", ge), t.removeEventListener("resize", ge), t.removeEventListener("ratechange", ge), k++, document.removeEventListener("pointerdown", _e), document.removeEventListener(QN, D), O && clearTimeout(O), l.remove();
 	}), g = new Kfe(e, t, {
 		render: A,
 		open: () => {
@@ -49826,30 +49853,30 @@ function AP(e, t, n = {}, r = null) {
 		},
 		close: E,
 		back: () => {
-			g?.hide(), te(-1);
+			g?.hide(), ne(-1);
 		}
 	}), S(), rpe(e, a), ipe(e), (e) => {
-		v = e?.length ? e : null, he();
+		v = e?.length ? e : null, ge();
 	};
 }
 function $fe(e, t) {
 	if (t.querySelector("[data-player-seek]")) return;
 	let n = t.querySelector(":scope>.vjs-play-control"), r = e.el().querySelector("video");
 	if (!n || !r) return;
-	let i = () => Math.max(1, Number(RN().settings().seekSeconds) || 10), a = [], o = (e, t, n) => {
-		let o = document.createElement("div");
-		o.className = "vjs-peach-seek vjs-control", o.dataset.playerSeek = n;
-		let s = document.createElement("button");
-		s.type = "button", s.className = "vjs-button", s.innerHTML = H(t, "vjs-peach-control-icon vjs-peach-seek-icon"), o.append(s);
-		let c = () => R(e < 0 ? "catalog:stagePlayer.seekBack" : "catalog:stagePlayer.seekForward", { count: i() }), l = wP(s, c());
-		return a.push(() => l(c())), s.onclick = (t) => {
-			t.stopPropagation(), l(c()), SP(r, i() * e);
-		}, o;
-	}, s = () => a.forEach((e) => e());
-	document.addEventListener(CP, s);
-	let c = o(-1, "rotate-ccw", "back"), l = o(1, "rotate-cw", "forward");
-	n.after(c, l), e.on("dispose", () => {
-		document.removeEventListener(CP, s), c.remove(), l.remove();
+	let i = () => Math.max(1, Number(RN().settings().seekSeconds) || 10), a = () => Math.max(1, Number(RN().settings().seekLargeSeconds) || 60), o = [], s = (e, t, n) => {
+		let s = document.createElement("div");
+		s.className = "vjs-peach-seek vjs-control", s.dataset.playerSeek = n;
+		let c = document.createElement("button");
+		c.type = "button", c.className = "vjs-button", c.innerHTML = H(t, "vjs-peach-control-icon vjs-peach-seek-icon"), s.append(c);
+		let l = () => R(e < 0 ? "catalog:stagePlayer.seekBack" : "catalog:stagePlayer.seekForward", { count: i() }), u = wP(c, l());
+		return o.push(() => u(l())), c.onclick = (t) => {
+			t.stopPropagation(), u(l()), SP(r, (t.shiftKey ? a() : i()) * e);
+		}, s;
+	}, c = () => o.forEach((e) => e());
+	document.addEventListener(CP, c);
+	let l = s(-1, "rotate-ccw", "back"), u = s(1, "rotate-cw", "forward");
+	n.after(l, u), e.on("dispose", () => {
+		document.removeEventListener(CP, c), l.remove(), u.remove();
 	});
 }
 var jP = 300, MP = 12, NP = 450, epe = 500, tpe = 24;
@@ -102944,7 +102971,7 @@ function Aqe() {
 				return;
 			}
 			if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-				e.preventDefault(), SP(t, Z.appSettings.seekSeconds * (e.key === "ArrowRight" ? 1 : -1));
+				e.preventDefault(), SP(t, (e.shiftKey ? Z.appSettings.seekLargeSeconds || 60 : Z.appSettings.seekSeconds || 10) * (e.key === "ArrowRight" ? 1 : -1));
 				return;
 			}
 			if (e.key === " " || e.key === "k" || e.key === "K") {
@@ -103774,4 +103801,4 @@ if (!CJe) throw Error(R("shell:errorReport.hostMissing"));
 SJe(CJe);
 export { ZL as $2ec61d1d4f780267$export$a8a3e93435678ff9, Uge as $3a442827418ebe87$export$eb2fcfdbd7ba97d4, HR as $542a13ca2fa5b484$export$5b6b19405a83ff9d, lO as $72abaeab4d80592f$export$78efe591171d7d45, Pz as $76d00c5a4edb230a$export$76ccd210b9029917, jz as $76d00c5a4edb230a$export$816b5d811295e6bc, Lz as $76d00c5a4edb230a$export$b59bdbef9ce70de2, zz as $76d00c5a4edb230a$export$f6f0c3fe4ec306ea, Az as $76d00c5a4edb230a$export$f850895b287ef28e, dye as $b4f18e3395fe64d7$export$3d96ec278d3efce4, uye as $b4f18e3395fe64d7$export$3e41faf802a29e71, sye as $b4f18e3395fe64d7$export$b2539bed5023c21c, Uz as $b4f18e3395fe64d7$export$e51a686c67fdaa2d, mye as $bd263d78e9bf3c56$export$f5c9f3c2c4054eec, BD as $ea3928288112382f$export$439d29a4e110a164, tz as $f2ff30fde7b014be$export$3ddf2d174ce01153, cz as $fe21c36db05242bb$export$a98f0dcb43a68a25, lz as $fe21c36db05242bb$export$d7b12c4107be0d61, Hbe as $l, VM as ACCENTS, CIe as AMANE_BRIDGE_CHECK_URL, O0 as AMANE_BRIDGE_KEY, wIe as AMANE_BRIDGE_REBUILD_URL, oW as ActivityMotion, sW as ActivityStatus, xa as ApiError, IG as ArtSlot, x3 as BATCH_DELETE_TEXT, Y as Button, Qz as ButtonLink, hV as Bx, D0 as CHECK_ALL_KEY, X1 as CLEANUP_ENTRY, Y1 as CLEANUP_ENTRY_GRID, kh as CLEANUP_HASH_REDIRECTS, jh as CLEANUP_TOOLS, ei as CLOUD_LOCATIONS, W2 as CLOUD_PROXY_HELP, io as COLUMN_SORT, q0 as CONFIGURATION_KEY, nh as CONFIGURATION_SECTIONS, DZ as CONFIGURATION_URL, TIe as COOKIE_TEXT_LIMIT, E0 as COVER_JOB_KEY, Xd as COVER_STATE_TITLE, ds as CREDENTIAL_STATE, x0 as CUSTOM_SOURCES_KEY, b0 as CUSTOM_SOURCES_URL, tq as CatalogViewToggle, SU as Checkbox, xU as CheckboxGlyph, $z as ChevronSortDown, bG as Chip, GG as CloudDownloadDialog, pW as CollapseChevron, fW as CollapseRegion, U1 as CollectionSummary, wxe as CommandSteps, xPe as CoverQueue, YAe as DEFAULT_CATEGORY, Ta as DEFAULT_SORT, g1 as DIAGNOSTICS_KEY, Vje as DIRECTORY_TEMPLATE_ERROR, mTe as DISCOVERY_METADATA_KEY, QG as DISCOVERY_SORTS, RG as DOWNLOADS_KEY, LG as DOWNLOADS_URL, qX as DUPLICATES_KEY, FG as DataTableFooter, DX as DataTableFrame, PG as DataTableSort, PV as Disclosure, qwe as DownloadsPanel, Abe as E3, XAe as ENTITY_REVIEW_KINDS, H2 as ENTRY_LINKS_HELP, U2 as ENTRY_LINKS_HINT, sV as Ea, KSe as EmptyFocusButton, nU as EmptyState, jV as ErrorText, cxe as Eu, NV as ExternalLink, eo as FEEDS_KEY, Kme as FEED_SCHEDULE_KEY, q1 as FIELDSET_FOOT, cHe as FLOW_LABEL_X, n5 as FLOW_VIEWBOX, Qa as FOLLOW_CHECK_KEY, nH as FOLLOW_CHECK_TASK, Za as FOLLOW_CREDENTIALS_KEY, ZUe as FOLLOW_INITIAL_RANGE_OPTIONS, Xa as FOLLOW_MANAGE_KEY, d$ as FOLLOW_MANAGE_NAV, $a as FOLLOW_RESOLVE_KEY, aL as FOLLOW_SCHEDULE_KEY, Dxe as Fact, Exe as FactList, MV as FieldLabel, u0 as Fieldset, l0 as FieldsetTitle, VSe as FilterGlass, LH as FilterGlassRows, IH as FilterIconButton, RH as FilterPill, Sxe as Footer, fV as Gg, zH as GlassPill, yV as HN, AV as Help, WH as HintText, LAe as IDLE_REPAIR, NH as IconButton, v1 as IndexSearch, YH as Input, JH as InputBase, f0 as IssueRow, Mxe as ItemLibrary, aN as JAV_LAYOUTS, z4 as JAV_RECOMMENDATION_GRID, YUe as JAV_SELECTION_EVENT, eQ as JUNK_KEY, fK as JavHeader, jAe as KEEP_LABELS, _be as L1, no as LAYOUTS, V2 as LIBRARY_FOLDER_HELP, NU as LIBRARY_PROCESSING_KEY, bZ as LINKS_KEY, xZ as LINK_CHECK_KEY, xje as LINK_KINDS, SZ as LINK_PRUNE_KEY, ga as LOC, UH as Label, zV as LibraryLabel, g0 as LibraryProcessingCard, hU as LibraryShortcuts, kV as LinkButton, Wbe as Lo, Mbe as M6, Yme as MEDIA_PROCESSING_KEY, Jme as MEDIA_PROCESSING_URL, QX as MEDIA_REPAIR_KEY, ZX as MEDIA_REPAIR_URL, Na as MEDIA_SOURCES_KEY, jl as MEDIA_SOURCE_ICONS, Qr as MEDIA_SOURCE_OPTIONS, Yz as MENU_ITEM, Xz as MENU_ITEM_INTERACTIVE, Jz as MENU_POPOVER_SURFACE, Kbe as Ma, SB as MenuDialog, rJ as MixCard, XH as ModalFrame, XS as MotionConfigContext, CV as NR, d0 as NameLink, QH as Note, wV as OA, PZ as ORGANIZE_KEY, v3 as ORGANIZE_PARAMETER_HINT, _3 as ORGANIZE_SCOPE_HINT, g3 as ORGANIZE_TEXT, LZ as ORPHAN_RECORDS_KEY, b3 as ORPHAN_RECORDS_TEXT, uV as OV, tU as ObjectOrderDialog, YB as P7, ZZ as PERFORMER_DELETE_KEY, nTe as PHASES, OZ as PICK_FOLDER_URL, Q1 as PLAIN_STAT_STRIP, v0 as PLAYLISTS_KEY, GLe as POLICY_COLUMNS, qLe as POLICY_COVER_NOTE, KLe as POLICY_MATRIX, B2 as POLICY_SUMMARY, p0 as PathLine, xV as Pf, JFe as PlainStat, eW as ProcessingMode, lW as Progress, rZ as QUALITY_GOALS_KEY, bV as RB, I4 as RELEASE_COLUMN_VISIBILITY_KEY, F4 as RELEASE_COLUMN_WIDTHS_KEY, SG as RELEASE_NOTICE_EVENT, sK as RELEASE_PAGE_SIZES, $G as RELEASE_SORTS, SRe as RELEASE_SORT_COLUMNS, p1 as REPAIRS_KEY, e0 as REPAIR_CARD_TEXT, sh as REPAIR_CENTER_PATH, $X as REPAIR_LIBRARIES_KEY, HZ as RESOURCE_APPLY_KEY, VZ as RESOURCE_SCAN_KEY, y3 as RESOURCE_SYNC_TEXT, s0 as RESULT_PANEL, c0 as RESULT_SECTION, JAe as REVIEW_CATEGORIES, $Z as REVIEW_COUNTS_KEY, QAe as REVIEW_DECISION_LABELS, oZ as REVIEW_KEY, sZ as REVIEW_LABELS, lZ as REVIEW_QUEUES, ZAe as REVIEW_QUEUE_LABELS, uH as RUNNING_POLL_MS, jq as RetryNote, fxe as Rf, TV as Rk, yxe as Rows, C0 as SCRAPING_CHECK_ALL_URL, xIe as SCRAPING_CHECK_URL, w0 as SCRAPING_COVER_URL, T0 as SCRAPING_KEY, bIe as SCRAPING_SETTINGS_URL, MW as SEGMENT, jW as SEGMENTED_TRACK, iL as SETTINGS_KEY, nL as SETTINGS_URL, Ea as SORT_DEFAULT_DIR, wa as SORT_OPTIONS, ti as SOURCE_LABELS, D8 as STATS_KEY, KFe as STAT_STRIP, qFe as STAT_STRIP_SIX, vxe as Section, QFe as SectionHeading, xxe as SectionSkeleton, AW as SegmentedRadioGroup, HCe as SegmentedTabList, wq as Segments, jG as Select, tB as Select$1, Z0 as SelectField, nB as SelectItem, PX as SelectionActions, lM as SelectionDock, FX as SelectionPopover, EV as SettingsCard, _xe as SettingsRow, DV as SettingsSectionLabel, Tq as Shuffle, jxe as SiteLabel, NG as SortDirectionIcon, Eq as SortKeys, GV as SortableBoardTabs, q$ as SourceAvatar, RV as SourceLabel, FV as SourceMark, bxe as Stack, YFe as StatCard, xG as StatusLabel, lxe as Su, a6 as Switch, lH as TASKS_KEY, UVe as TASTE_REFRESH_KEY, eHe as TASTE_REFRESH_TASK, WVe as TASTE_WINDOWS, qme as THUMBNAIL_JOBS_KEY, nQ as TRASH_KEY, pH as TRIGGER_LABELS, gX as Table, IX as TableColumnControls, LX as TableColumnResizer, zX as TableSelectionHeader, R1 as TagManager, Txe as TaskCenterLink, uW as TaskProgress, KH as TextField, GH as TextFieldContext, cV as Un, pxe as Uz, qG as WANTS_KEY, b6 as WantMagnets, ey as WithPromise, $B as Wt, oV as Xc, SV as Xf, tV as Xl, eV as Xt, ZB as _8, o as __commonJSMin, s as __exportAll, l as __toESM, vV as _p, dxe as aB, aW as activityKind, zo as addAlias, Ro as addSource, YG as addWant, BC as animate, W as apiGet, G as apiSend, $M as appSettingsStore, oMe as applyConfirmText, XZ as applyLeftovers, aMe as applyPlanText, cMe as applyText, rN as applyTheme, sx as asNumber, Jje as attachOrphan, xo as authorAvatar, Co as authorGroups, bo as authorInitial, yo as authorName, iY as autoResetPageIndex, jc as avatarInner, N8 as bandRows, Hje as baseName, IAe as batchOperate, bpe as beginPlayerGuidePreview, Ci as bodyFieldErrors, mM as boundedPreference, NAe as bulkCloudPreferences, $H as busyProps, uxe as cB, hBe as cachedMagnetStates, Jv as calcGeneratorVelocity, aje as canApprove, Sv as cancelFrame, $je as candidateText, ZW as cardClass, vN as cardRatio, wX as catalogListSkeletonCellHtml, aV as cc, Dwe as checkClientUpdates, ss as checkEvidenceGap, os as checkFailures, Xo as checkFeeds, Eje as checkLine, is as checkReceipt, as as checkSummary, DIe as checkText, tFe as checkText$1, cs as checkedText, Hq as clickedBlank, P7 as closeDrawerAfterNav, wAe as cloudLocations, S4 as cloudProxySkeleton, gT as clsx, Ybe as cn, yi as codedText, xb as collectMotionValues, wY as columnVisibilityFeature, dX as column_getCanSort, sX as column_getSortFn, rje as commonReviewSources, WG as composingKey, lh as configurationSection, JVe as configureTasteBrowser, kd as confirmModal, _Te as controlDiscoveryMetadata, vTe as controlReleaseMetadata, hSe as controlTask, BJ as copyInstancePropertiesWithoutMemos, pTe as coverArrived, dTe as coverFetching, Qd as coverFetchingHtml, Yd as coverReason, Zd as coverStateAction, wc as coverUrl, hY as createColumnHelper, fIe as createPlaylist, fs as credentialDone, v4 as credentialsSkeleton, mje as currentReviewRow, NL as cx, Nbe as d6, mV as dZ, dje as decisionPayload, fje as decisionReceipt, uje as defaultChoice, uMe as deletePerformerVideos, mIe as deletePlaylist, D4 as devicesSkeleton, x as diagnosticHeaders, z2 as diagnosticsSkeleton, yTe as discoveryArtwork, aK as discoveryKey, cTe as discoveryScore, y9 as disposeStage, kAe as distinctName, ns as dropSources, sxe as du, PAe as duplicateVictims, CH as elapsedText, Br as entityDisplayName, Ac as entityFaceImg, Ji as entityPath, mo as errorHeadline, Sa as errorMessage, U as esc, rY as expandRowModel, HB as f1, Pc as facePos, po as feedIntervalText, M0 as fetchAmaneBridge, j0 as fetchCheckAllJob, jo as fetchCheckJob, J0 as fetchConfiguration, A0 as fetchCoverJob, iK as fetchCoverNow, Ao as fetchCredentials, S0 as fetchCustomSources, QZ as fetchDeletePerformers, lMe as fetchDeletePlan, _1 as fetchDiagnostics, oK as fetchDiscoveries, gTe as fetchDiscoveryMetadata, YX as fetchDuplicates, Qme as fetchFeedSchedule, Jo as fetchFeeds, ko as fetchFollow, Zme as fetchFollowSchedule, iQ as fetchJunkSummary, VU as fetchLibraryProcessing, TZ as fetchLinkCheck, EZ as fetchLinkPrune, wZ as fetchLinkStats, Xme as fetchMediaProcessing, eZ as fetchMediaRepair, Pa as fetchMediaSources, FZ as fetchOrganize, Pje as fetchOrganizeExample, RZ as fetchOrphanRecords, hIe as fetchPlaylist, y0 as fetchPlaylists, iZ as fetchQualityGoals, dK as fetchReleases, tZ as fetchRepairLibraries, h1 as fetchRepairs, Mo as fetchResolveJob, WZ as fetchResourceApply, UZ as fetchResourceScan, _Z as fetchReview, rQ as fetchReviewCounts, oL as fetchSettings, k0 as fetchSources, O8 as fetchStats, No as fetchSuggestions, fH as fetchTasks, $8 as fetchTaste, YVe as fetchTasteJob, $me as fetchThumbnailJobs, aQ as fetchTrashSummary, JG as fetchWants, tje as filterReviewRows, ma as firstGrapheme, SJ as flexRender, dHe as flowGraph, fHe as flowLabel, cVe as fmtCount, ca as fmtDur, ua as fmtSize, dSe as foldByKind, DSe as foldRoutine, Qo as followFeedByName, $o as followFeedEntity, to as followSuggestKey, jSe as followupDetail, uSe as followupTally, xv as frame, qB as g4, DY as getDefaultPaginationState, _N as gridLayout, So as groupByAuthor, ESe as groupFollowups, fZ as groupReviewRows, rMe as hasChanges, GZ as hasResourceRoots, hH as hasResultProblems, tHe as historySpan, UB as i2, $Ve as importTasteExport, y4 as indexersSkeleton, bt as interfaceLanguage, Wv as interpolate, ZG as invalidateWants, _H as isActive, fo as isBroken, ao as isLayout, Ab as isMotionValue, cZ as isReviewCategory, OSe as isRoutine, b4 as javBrowserSkeleton, V4 as javContentSkeleton, uN as javLayout, B4 as javTagSkeleton, bi as jobText, wt as joinList, gMe as junkBreakdown, EAe as keepGroup, _Ie as keepPlaylist, mn as keepPreviousData, Eo as keepSelected, k8 as known, gbe as l1, Tbe as l7, TSe as latestOfKind, pa as leadingGraphemes, fRe as ledgerBackupsSkeleton, bVe as lengthRows, Ri as linkLabel, Ia as localTime, m1 as localizeRepairs, K0 as localizedFact, Dc as logoUrl, Zo as lookupFeedActor, JB as m7, pV as mM, Vi as mapLimit, qo as markAllPending, vVe as mediumRows, hTe as metadataInterval, yje as mirrorText, BAe as missingToolText, XX as mixedCloudPreferences, DH as momentText, VC as motion, Cb as motionValue, On as notifyManager, Pbe as oe, Wje as organizeOutcome, i3 as overlayHost, oo as pageSizeOf, To as pageWindow, mi as partsLabel, ts as patchSource, lg as peachHistory, lg as peachHistory$1, lje as pendingGenres, uVe as percentText, Lje as pickOrganizeFolder, jZ as pickServerFolder, Z1 as plainStatClass, Uje as planSummary, A8 as playedFor, fVe as playedItemUrl, fSe as pollInterval, jU as pollUntil, hu as popCount, dIe as posterUrl, pbe as previewLibraryColor, Ije as previewOrganize, UAe as previewUrl, CSe as problemDestination, IU as processingActive, xH as progressLabel, wH as progressText, LV as providerIcon, Tje as pruneText, qZ as purgeCount, Yje as purgeOrphan, gV as pv, oxe as qE, K as queryClient, Tt as quoted, WB as r2, sHe as radarRows, hVe as radialArc, gVe as radialBarSize, mVe as radialCeiling, pVe as radialSlices, XP as randomId, aHe as rankDetail, oHe as rankShares, M8 as reachedShare, TH as readableErrorHeadline, lTe as recommendationScore, hje as recordGenre, Zje as recordsText, vIe as recreatePlaylist, lIe as refreshPlaylists, Kd as relayoutCovers, L4 as releaseColumns, cK as releaseFilters, lK as releaseKey, rs as reloadFollowManage, vje as reloadReview, XLe as rememberShape, zje as rememberTemplates, Bo as removeAlias, Yo as removeFeed, Lo as removeSource, QVe as removeTasteSource, XG as removeWants, Vo as renameAliasGroup, pIe as renamePlaylist, gIe as reorderPlaylist, K4 as repairCenterPanelSkeleton, sn as replaceEqualDeep, SVe as replayRows, Vt as require_jsx_runtime, Pt as require_react, Lt as require_react_dom, IJ as require_with_selector, aTe as resetWants, Oa as resolveFollowSort, Zv as resolveStartTime, fCe as restartEffectText, uIe as resumeAssetId, eje as reviewGroupingOptions, dZ as reviewQueueData, uZ as reviewQueueOf, hMe as reviewSummary, nje as reviewWindow, sje as rowEvidence, gZ as rowFieldName, PY as rowPaginationFeature, tX as rowSelectionFeature, mX as rowSortingFeature, pZ as rowSubject, cje as rowTags, oje as rowTitle, SH as runError, Sbe as s5, Ho as saveCredential, iMe as scanLine, ihe as schedulePollInterval, sTe as searchNote, oh as sectionTitle, aZ as selectRange, ije as selectReviewRange, Do as selectionState, WAe as selectionSummary, fi as serverLabel, vi as serverLabelList, wi as serverText, ree as setFeedEnabled, Io as setSourceEnabled, gSe as setTaskSpeed, ph as settingsPath, _je as settleReviewRows, OAe as sharedNamePrefix, ug as shellNavigate, NUe as showToast, bB as showToast$1, ea as siteMarkUrl, JJ as skipFirstRun, PL as sortCx, co as sortLabel, ni as sourceDefaultCost, us as sourceIconUrl, sMe as sourceMeta, eu as spinnerHtml, Hv as spring, wB as spriteGlyph, pi as stageText, Po as startCheck, Sje as startLinkCheck, Cje as startLinkPrune, Rje as startOrganize, Fo as startResolve, tMe as startResourceApply, eMe as startResourceScan, ZVe as startTasteRefresh, GFe as statCardClass, ySe as statusLabel, zAe as statusLine, uo as statusText, yN as storeJavLayout, pje as submitDecision, kH as summaryItems, Uq as suppressShiftTextSelection, R as t, gY as tableFeatures, YJ as tableMemo, wo as tableRows, SSe as taskIssues, vH as taskName, wSe as taskSubject, e5 as tasteDate, rHe as tasteDimensions, nHe as tasteHours, Z8 as tasteKey, KVe as tasteRefetchInterval, qVe as tasteTime, YV as textLang, P4 as tierPlaceholdersHtml, j_ as time, Bbe as tl, Oo as toggleGroup, t5 as topScores, Cxe as translateWithNodes, Zbe as um, Gbe as uo, eU as useAction, o$ as useBackgroundJob, eq as useCatalogView, vG as useClientUpdates, Xg as useConstant, AH as useEntityNames, Zg as useIsomorphicLayoutEffect, VB as useLibraryTints, br as useMutation, BV as useNavigationOrder, m0 as useOrderedLibraries, CU as useOverlayScrollbar, yr as useQuery, Ut as useQueryClient, OC as useReducedMotion, rhe as useRunSchedule, the as useSaveFollowSchedule, sL as useSaveSettings, ahe as useSaveThumbnailMode, hX as useTable, AX as useTablePreferences, HH as useViewGlide, FAe as victimBytes, Vbe as vl, oTe as wantName, dVe as watchNote, j8 as watchedShare, Fbe as we, Xu as wireHorizontalScroller, OU as withBackoff, Bje as withOrganizeJob, uTe as writeJavQuery, jbe as z3 };
 
-//# debugId=3682cd54-faf2-42c2-bc42-510bdc0b9cb1
+//# debugId=94c50a81-796d-4bf0-b654-1cf039971f87

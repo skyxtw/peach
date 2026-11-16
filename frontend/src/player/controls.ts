@@ -269,7 +269,8 @@ export function mountPlayerQualityControl(
   /** 菜单此刻摆的是哪一面；轨道与尺寸变化只就地改这一面（`refreshPanel`）。 */
   let view: 'main' | 'seek' | 'longpress' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
   const seekStep = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
-  const seekLabel = () => t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() });
+  const seekLargeStep = () => Math.max(1, Number(playerHost().settings().seekLargeSeconds) || 60);
+  const seekLabel = () => `${t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() })} / ${t('catalog:playerQuality.seekStepSeconds', { seconds: seekLargeStep() })}`;
   const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
   const longPressLabel = () => `${longPressSpeed()}×`;
   const fullscreenFit = () => {
@@ -324,6 +325,7 @@ export function mountPlayerQualityControl(
     const rows: [string, string][] = [
       ['Space', t('catalog:playerQuality.shortcutPlayPause')],
       ['← / →', t('catalog:playerQuality.shortcutSeek')],
+      ['Shift + ← / →', t('catalog:playerQuality.shortcutSeekLarge')],
       ['↑ / ↓', t('catalog:playerQuality.shortcutVolume')],
       ['M', t('catalog:playerQuality.shortcutMute')],
       ['F', t('catalog:playerQuality.shortcutFullscreen')],
@@ -337,6 +339,7 @@ export function mountPlayerQualityControl(
   const showSeek = (direction = 1) => {
     view = 'seek'; syncTabs('play');
     const presets = [5, 10, 15, 30, 60];
+    const largePresets = [30, 60, 120, 300];
     const panel = renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${t('catalog:playerQuality.backMenu')}">${icon('player-menu-back')}</button><strong>${t('catalog:playerQuality.seekStep')}</strong></div>
       <div class="vjs-peach-seek-panel"><div class="vjs-peach-seek-stepper">
         <button type="button" class="vjs-peach-speed-button" data-player-seek-down aria-label="${t('catalog:playerQuality.seekStep')} -">${icon('minus')}</button>
@@ -344,7 +347,15 @@ export function mountPlayerQualityControl(
         <button type="button" class="vjs-peach-speed-button" data-player-seek-up aria-label="${t('catalog:playerQuality.seekStep')} +">${icon('plus')}</button>
       </div><div class="vjs-peach-seek-presets">${presets.map(seconds =>
         `<button type="button" class="vjs-peach-speed-button" data-player-seek-preset="${seconds}" aria-pressed="false">${seconds}</button>`).join('')}</div>
-        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekStepHint')}</p></div>`, direction);
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekStepHint')}</p>
+        <h4 class="vjs-peach-seek-group">${t('catalog:playerQuality.seekLargeStep')}</h4>
+        <div class="vjs-peach-seek-stepper">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-down aria-label="${t('catalog:playerQuality.seekLargeStep')} -">${icon('minus')}</button>
+          <input type="number" class="vjs-peach-seek-input" data-player-seek-large-input min="1" max="600" step="1" inputmode="numeric" aria-label="${t('catalog:playerQuality.seekLargeStep')}">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-up aria-label="${t('catalog:playerQuality.seekLargeStep')} +">${icon('plus')}</button>
+        </div><div class="vjs-peach-seek-presets">${largePresets.map(seconds =>
+          `<button type="button" class="vjs-peach-speed-button" data-player-seek-large-preset="${seconds}" aria-pressed="false">${seconds}</button>`).join('')}</div>
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekLargeStepHint')}</p></div>`, direction);
     const input = panel.querySelector<HTMLInputElement>('[data-player-seek-input]')!;
     const apply = (value: number) => {
       const settings = playerHost().settings();
@@ -364,6 +375,24 @@ export function mountPlayerQualityControl(
     button(panel, '[data-player-seek-up]').onclick = () => apply(seekStep() + 5);
     panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
       option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === seekStep())));
+    const largeInput = panel.querySelector<HTMLInputElement>('[data-player-seek-large-input]')!;
+    const applyLarge = (value: number) => {
+      const settings = playerHost().settings();
+      settings.seekLargeSeconds = Math.min(600, Math.max(1, Math.round(value) || 60));
+      playerHost().saveSettings(); largeInput.value = String(settings.seekLargeSeconds);
+      document.dispatchEvent(new CustomEvent(SEEK_STEP_EVENT, { detail: settings.seekSeconds }));
+      panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option =>
+        option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekLargePreset) === settings.seekLargeSeconds)));
+    };
+    largeInput.value = String(seekLargeStep());
+    largeInput.onchange = () => applyLarge(Number(largeInput.value));
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option => {
+      option.onclick = () => applyLarge(Number(option.dataset.playerSeekLargePreset));
+    });
+    button(panel, '[data-player-seek-large-down]').onclick = () => applyLarge(seekLargeStep() - 15);
+    button(panel, '[data-player-seek-large-up]').onclick = () => applyLarge(seekLargeStep() + 15);
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option =>
+      option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekLargePreset) === seekLargeStep())));
   };
   const showLongPress = (direction = 1) => {
     view = 'longpress'; syncTabs('play');
@@ -548,6 +577,7 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
   const video = player.el().querySelector<HTMLVideoElement>('video');
   if (!play || !video) return;
   const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const largeStep = () => Math.max(1, Number(playerHost().settings().seekLargeSeconds) || 60);
   const refreshers: (() => void)[] = [];
   const make = (side: -1 | 1, name: string, key: string) => {
     const wrap = document.createElement('div');
@@ -561,7 +591,7 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
     const label = () => t(side < 0 ? 'catalog:stagePlayer.seekBack' : 'catalog:stagePlayer.seekForward', { count: step() });
     const sync = playerControlTooltip(button, label());
     refreshers.push(() => sync(label()));
-    button.onclick = (event) => { event.stopPropagation(); sync(label()); seekVideoBy(video, step() * side) };
+    button.onclick = (event) => { event.stopPropagation(); sync(label()); seekVideoBy(video, (event.shiftKey ? largeStep() : step()) * side) };
     return wrap;
   };
   const refresh = () => refreshers.forEach(sync => sync());

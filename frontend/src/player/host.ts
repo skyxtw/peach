@@ -10,6 +10,8 @@ export interface PlayerSettings {
   ambientMode: boolean;
   theaterMode: boolean;
   seekSeconds: number;
+  /** Shift + 方向键/快退快进键的长跳步长。 */
+  seekLargeSeconds: number;
   /** 触屏长按时的临时倍速。 */
   longPressSpeed: number;
   /** 全屏时画面的缩放方式。 */

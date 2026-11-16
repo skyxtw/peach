@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "f3fde387-0d69-49bb-870f-4dcf1288edbc", e._sentryDebugIdIdentifier = "sentry-dbid-f3fde387-0d69-49bb-870f-4dcf1288edbc");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "bd3c92c8-346e-41af-ac7a-99f9230659a9", e._sentryDebugIdIdentifier = "sentry-dbid-bd3c92c8-346e-41af-ac7a-99f9230659a9");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2179,6 +2179,9 @@ var He = {
 		seekStep: "Back / forward",
 		speedBoost: "{{rate}}× speed",
 		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
+		seekLargeStep: "Large seek step",
+		seekLargeStepHint: "Hold Shift and click seek, or press Shift + ← / → to use this step.",
+		shortcutSeekLarge: "Large seek back / forward",
 		seekStepSeconds: "{{seconds}} s",
 		retryMemorySave: "Retry saving playback state",
 		rotation: "Rotation",
@@ -9352,6 +9355,9 @@ var He = {
 		seekStep: "快退 / 快进",
 		speedBoost: "{{rate}}× 加速",
 		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
+		seekLargeStep: "长跳步长",
+		seekLargeStepHint: "按住 Shift 再点快退/快进，或按 Shift + ← / → 使用这个步长。",
+		shortcutSeekLarge: "长跳快退 / 快进",
 		seekStepSeconds: "{{seconds}} 秒",
 		retryMemorySave: "重试保存播放记忆",
 		rotation: "画面旋转",
@@ -38767,4 +38773,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=f3fde387-0d69-49bb-870f-4dcf1288edbc
+//# debugId=bd3c92c8-346e-41af-ac7a-99f9230659a9

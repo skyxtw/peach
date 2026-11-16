@@ -18,7 +18,7 @@ afterEach(() => { stopPlaybackPosition(video); stopTelemetry(video); vi.useRealT
 
 describe('视频续播位置', () => {
   it('关注片段的实际时长独立于帖子时长，恢复到该片段的保存位置', async () => {
-    configurePlayer({ settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds: 10, longPressSpeed: 2, fullscreenFit: 'contain',
+    configurePlayer({ settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds: 10, seekLargeSeconds: 60, longPressSpeed: 2, fullscreenFit: 'contain',
       miniplayer: true, detailAutoplay: false, javImage: 'cover' }), saveSettings: () => {}, toast: () => {},
       loadSourceStatus: async () => ({}), offlineReason: () => '', stage: () => null });
     setDetailPlayer(null);

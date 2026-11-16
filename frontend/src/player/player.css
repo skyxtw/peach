@@ -526,6 +526,7 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
   background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font:inherit;font-size:12px;cursor:pointer}
 .vjs-peach-seek-presets .vjs-peach-speed-button[aria-pressed="true"]{background:rgba(255,255,255,.22);color:#fff}
 .vjs-peach-seek-hint{margin:0;color:rgba(255,255,255,.5);font-size:12px;line-height:1.5}
+.vjs-peach-seek-group{margin:4px 0 0;color:rgba(255,255,255,.65);font-size:var(--fs-sm);font-weight:500}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls{margin-left:auto}
 
 .vjs-peach-shortcut{display:flex;align-items:center;justify-content:space-between;min-height:42px;padding:0 8px;border-radius:9px}

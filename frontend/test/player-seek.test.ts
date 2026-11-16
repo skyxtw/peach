@@ -6,7 +6,7 @@ import { configurePlayer } from '../src/player/host';
 import type { VjsPlayer } from '../src/player/types';
 
 const host = (seekSeconds = 10, longPressSpeed = 2) => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, longPressSpeed, fullscreenFit: 'contain' as const, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, seekLargeSeconds: 60, longPressSpeed, fullscreenFit: 'contain' as const, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {}, toast: () => {}, loadSourceStatus: async () => ({}), offlineReason: () => '', stage: () => null,
 });
 
