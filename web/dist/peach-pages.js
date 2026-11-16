@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "b704ae3f-99c7-4a3d-afd3-b10622e667bc", e._sentryDebugIdIdentifier = "sentry-dbid-b704ae3f-99c7-4a3d-afd3-b10622e667bc");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "edf5521e-f7b5-418c-b7e3-0f72c68532d6", e._sentryDebugIdIdentifier = "sentry-dbid-edf5521e-f7b5-418c-b7e3-0f72c68532d6");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -1748,6 +1748,7 @@ var He = {
 		watchStatus: "Watch status"
 	},
 	entityHero: {
+		addSubscribeSource: "Add a subscription source",
 		aliasCount_one: "{{count, number}} alias",
 		aliasCount_other: "{{count, number}} aliases",
 		aliases: "Aliases",
@@ -1774,6 +1775,8 @@ var He = {
 		sourceLink: "Source · {{site}}",
 		studio: "Studio",
 		subscribeNewReleases: "Subscribe to new releases",
+		subscribeUnavailable: "No subscription source yet",
+		subscribeUnavailableHint: "{{name}} has no JavDB actor page or DMM actress ID yet. Add one before subscribing to new releases.",
 		updateCount_one: "{{count, number}} update",
 		updateCount_other: "{{count, number}} updates",
 		videoCountBold_one: "{{num}} video",
@@ -1836,6 +1839,8 @@ var He = {
 		siteSamples: "{{site}} samples"
 	},
 	externalPlayback: {
+		defaultPlayerNoResume: "The system default player cannot start at the web position or report progress. Choose VLC, mpv, or IINA to resume.",
+		detectingPlayers: "Detecting players…",
 		externalPlayer: "External player",
 		m3uPlaylist: "M3U playlist",
 		openInPlayer: "Open in external player",
@@ -2095,10 +2100,14 @@ var He = {
 		nounStudios: "studios",
 		nounTags: "tags",
 		roster: "People",
+		subscribeAction: "Subscribe to {{name}}'s new releases",
+		subscribeUnavailable: "No source yet",
+		subscribeUnavailableAction: "{{name}} has no subscription source yet; add one",
 		tagCloud: "Tag cloud",
 		tagCount_one: "{{count, number}} tag",
 		tagCount_other: "{{count, number}} tags",
 		tagScope: "Vocabulary",
+		unsubscribeAction: "Unsubscribe from {{name}}'s new releases",
 		updateCountUnconfirmed_one: "{{count, number}} update · Unconfirmed",
 		updateCountUnconfirmed_other: "{{count, number}} updates · Unconfirmed",
 		videoCount_one: "{{count, number}} video",
@@ -2168,21 +2177,51 @@ var He = {
 	},
 	playerQuality: {
 		ambientMode: "Ambient mode",
+		closeSettings: "Close player settings",
+		groupControl: "Controls",
+		groupInterface: "Interface",
+		groupPicture: "Picture",
 		auto: "Auto",
 		backMenu: "Back",
 		current: "Current quality",
 		normalSpeed: "Normal",
 		original: "Original",
 		originalOrientation: "{{angle}}° (original)",
-		playerSettings: "Player settings",
+		playerSettings: "Player preferences",
 		quality: "Quality",
+		gestureBrightness: "Brightness {{percent}}%",
+		gestureSeek: "{{delta}} s · {{time}}",
+		gestureVolume: "Volume {{percent}}%",
+		fullscreenFit: "Fullscreen size",
+		fullscreenFitContain: "Fit",
+		fullscreenFitCover: "Fill",
+		fullscreenFitOriginal: "Original",
+		longPressSpeed: "Hold to speed up",
+		longPressSpeedHint: "Temporarily speed up while holding the picture; release to restore. Touch screens only.",
+		seekStep: "Back / forward",
+		speedBoost: "{{rate}}× speed",
+		seekStepHint: "Seconds used by the control bar, double-tap, and keyboard seek.",
+		seekLargeStep: "Large seek step",
+		seekLargeStepHint: "Hold Shift and click seek, or press Shift + ← / → to use this step.",
+		shortcutSeekLarge: "Large seek back / forward",
+		seekStepSeconds: "{{seconds}} s",
 		retryMemorySave: "Retry saving playback state",
 		rotation: "Rotation",
 		settings: "Settings",
 		speed: "Playback speed",
 		speedDown: "Decrease speed by {{step}}",
 		speedUp: "Increase speed by {{step}}",
-		stream: "Stream {{number}}"
+		shortcutClose: "Close panel / exit",
+		shortcutFullscreen: "Fullscreen",
+		shortcutMiniplayer: "Mini player",
+		shortcutMute: "Mute",
+		shortcutPlayPause: "Play / pause",
+		shortcutSeek: "Back / forward",
+		shortcutTheater: "Theater mode",
+		shortcutVolume: "Volume",
+		stream: "Stream {{number}}",
+		tabPlayback: "Playback",
+		tabShortcuts: "Shortcuts"
 	},
 	playerShell: {
 		buffering: "Buffering",
@@ -8940,6 +8979,7 @@ var He = {
 		watchStatus: "观看状态"
 	},
 	entityHero: {
+		addSubscribeSource: "去添加订阅来源",
 		aliasCount: "{{count, number}} 个别名",
 		aliases: "别名",
 		costars: "同台艺人",
@@ -8961,6 +9001,8 @@ var He = {
 		sourceLink: "来源 · {{site}}",
 		studio: "片商",
 		subscribeNewReleases: "订阅新作",
+		subscribeUnavailable: "暂无可订阅来源",
+		subscribeUnavailableHint: "{{name}}暂无可订阅来源；先添加 JavDB 演员页或 DMM 女优编号，才能订阅新作。",
 		updateCount: "{{count, number}} 项更新",
 		videoCountBold: "{{num}} 个视频"
 	},
@@ -9016,6 +9058,8 @@ var He = {
 		siteSamples: "{{site}} 样张"
 	},
 	externalPlayback: {
+		defaultPlayerNoResume: "系统默认播放器不能接收起播位置，也不会回传进度；要续播请选 VLC、mpv 或 IINA。",
+		detectingPlayers: "正在检测播放器…",
 		externalPlayer: "外部播放器",
 		m3uPlaylist: "M3U 播放列表",
 		openInPlayer: "使用外部播放器打开",
@@ -9257,9 +9301,13 @@ var He = {
 		nounStudios: "厂牌",
 		nounTags: "标签",
 		roster: "人物名册",
+		subscribeAction: "订阅{{name}}的新作",
+		subscribeUnavailable: "暂无可订阅来源",
+		subscribeUnavailableAction: "{{name}}暂无可订阅来源，去添加订阅来源",
 		tagCloud: "标签云",
 		tagCount: "{{count, number}} 个标签",
 		tagScope: "词表",
+		unsubscribeAction: "取消订阅{{name}}的新作",
 		updateCountUnconfirmed: "{{count, number}} 项更新 · 待确认",
 		videoCount: "{{count, number}} 个视频"
 	},
@@ -9327,21 +9375,51 @@ var He = {
 	},
 	playerQuality: {
 		ambientMode: "氛围模式",
+		closeSettings: "关闭播放器设置",
+		groupControl: "控制",
+		groupInterface: "界面",
+		groupPicture: "画面",
 		auto: "自动",
 		backMenu: "返回上一个菜单",
 		current: "当前画质",
 		normalSpeed: "正常",
 		original: "原画",
 		originalOrientation: "{{angle}}°（原始方向）",
-		playerSettings: "播放器设置",
+		playerSettings: "播放器偏好",
 		quality: "清晰度",
+		gestureBrightness: "亮度 {{percent}}%",
+		gestureSeek: "{{delta}} 秒 · {{time}}",
+		gestureVolume: "音量 {{percent}}%",
+		fullscreenFit: "全屏画面",
+		fullscreenFitContain: "适应",
+		fullscreenFitCover: "铺满",
+		fullscreenFitOriginal: "原始尺寸",
+		longPressSpeed: "长按倍速",
+		longPressSpeedHint: "按住画面时临时加速，松开恢复；触屏生效。",
+		seekStep: "快退 / 快进",
+		speedBoost: "{{rate}}× 加速",
+		seekStepHint: "控制控制条按钮、双击画面和键盘方向键的秒数。",
+		seekLargeStep: "长跳步长",
+		seekLargeStepHint: "按住 Shift 再点快退/快进，或按 Shift + ← / → 使用这个步长。",
+		shortcutSeekLarge: "长跳快退 / 快进",
+		seekStepSeconds: "{{seconds}} 秒",
 		retryMemorySave: "重试保存播放记忆",
 		rotation: "画面旋转",
 		settings: "设置",
 		speed: "播放速度",
 		speedDown: "播放速度减 {{step}}",
 		speedUp: "播放速度加 {{step}}",
-		stream: "线路 {{number}}"
+		shortcutClose: "关闭面板 / 退出",
+		shortcutFullscreen: "全屏",
+		shortcutMiniplayer: "迷你播放器",
+		shortcutMute: "静音",
+		shortcutPlayPause: "播放 / 暂停",
+		shortcutSeek: "后退 / 前进",
+		shortcutTheater: "影院模式",
+		shortcutVolume: "音量",
+		stream: "线路 {{number}}",
+		tabPlayback: "播放",
+		tabShortcuts: "快捷键"
 	},
 	playerShell: {
 		buffering: "正在缓冲",
@@ -38739,4 +38817,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=b704ae3f-99c7-4a3d-afd3-b10622e667bc
+//# debugId=edf5521e-f7b5-418c-b7e3-0f72c68532d6
