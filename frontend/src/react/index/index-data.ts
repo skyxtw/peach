@@ -12,13 +12,14 @@ import { firstGrapheme } from '@peach/legacy/core';
 
 import { apiGet } from '../../api';
 import { TAG_PAGE_SIZE } from '../../tag-skeleton';
-import { IDENTITY_CATEGORIES } from '../../identity-filter';
+import { IDENTITY_CATEGORIES, normalizeKanaRow } from '../../identity-filter';
 import {
   fetchOnlineAuthors, fetchOnlineTags, onlineAuthorsKey, onlineTagsKey,
   type OnlineAuthor, type OnlineTag,
 } from '../follow/online-vocab';
 import { queryClient } from '../query';
 import { t } from '../../i18n';
+import { PEOPLE_SORTS, isDefaultPeopleSort, normalizePeopleSort, type PeopleSortDir } from '../../people-sort';
 
 export type IndexKind = 'performers' | 'creators' | 'studios' | 'agencies' | 'series' | 'tags';
 export type IndexScope = 'local' | 'online';
@@ -65,6 +66,10 @@ export interface IndexPerson {
   /** 与 `identity_labels` 一一对应的分类 id，按它取译文。 */
   identity_categories?: string[];
   following?: boolean;
+  /** 收藏状态由 `_attach_index_favorites` 按规范实体身份下发。 */
+  favorite?: boolean;
+  /** 订阅状态与可订阅性；只有女优行有，`available=false` 时不给开关。 */
+  feed?: { following: boolean; available: boolean };
   entity_id?: number;
   id?: number;
   k: string;
@@ -78,6 +83,14 @@ export interface IndexPerson {
   has_logo?: boolean;
   members?: number;
   mark?: number | null;
+  /** 女优资料（`performer_profile`）；只有艺人行带，缺项是 null。 */
+  debut_year?: number | null;
+  debut_date?: string | null;
+  birth_date?: string | null;
+  height_cm?: number | null;
+  bust_cm?: number | null;
+  cup?: string | null;
+  kana?: string | null;
 }
 
 export interface IndexTag {
@@ -97,6 +110,8 @@ export interface IndexPage<T> {
   total?: number;
   /** 分类的命中数量；筛选条只显示有内容的分类。 */
   categories?: Record<string, number>;
+  /** 本地艺人名册按五十音行的当前搜索/分类计数；其他名册没有。 */
+  kana_counts?: Record<string, number>;
 }
 
 /** 地址栏上的那几项。页面改它们只经 `IndexProps.route`，壳按这份拼地址。 */
@@ -106,6 +121,11 @@ export interface IndexRoute {
   scope: IndexScope;
   view: TagView;
   category: string;
+  /** 本地艺人名册的排序键与方向；别的名册不认，缺省是作品数降序。 */
+  sort?: string;
+  dir?: string;
+  /** 本地艺人名册的五十音行；别的名册不认，缺省是不筛选。 */
+  kana?: string;
 }
 
 /** 一格头像：圆框里那段 HTML 和人脸取景的 `object-position`。 */
@@ -156,30 +176,48 @@ export function indexRoute(route: IndexRoute): IndexRoute {
   const categories = route.kind === 'tags' ? (scope === 'online' ? ONLINE_TAG_CATEGORIES : TAG_CATEGORIES)
     : route.kind === 'performers' && scope === 'local' ? IDENTITY_CATEGORIES : [];
   const known = categories.some(([key]) => key === route.category);
-  return { ...route, scope, category: known ? route.category : 'all' };
+  return { ...route, scope, category: known ? route.category : 'all',
+    ...normalizePeopleSort(route.kind, route.sort, route.dir),
+    kana: normalizeKanaRow(route.kind, scope, route.kana) };
 }
 
 /** 一种状态下该读哪一份：本地名册、本地词表、在线创作者或在线标签。 */
 export type IndexSource =
-  | { what: 'people'; kind: Exclude<IndexKind, 'tags'>; q: string; category?: string }
+  | { what: 'people'; kind: Exclude<IndexKind, 'tags'>; q: string; category?: string; sort: string; dir: PeopleSortDir; kana: string }
   | { what: 'tags'; q: string; category: string }
   | { what: 'online-authors'; q: string }
   | { what: 'online-tags'; q: string; category: string };
 
-export function indexSource(route: Pick<IndexRoute, 'kind' | 'q' | 'scope' | 'category'>): IndexSource {
+export function indexSource(route: Pick<IndexRoute, 'kind' | 'q' | 'scope' | 'category' | 'sort' | 'dir' | 'kana'>): IndexSource {
   const { kind, q, scope, category } = route;
   if (kind === 'tags') return scope === 'online' ? { what: 'online-tags', q, category } : { what: 'tags', q, category };
   if (kind === 'performers' && scope === 'online') return { what: 'online-authors', q };
-  return { what: 'people', kind, q, ...(category && category !== 'all' ? { category } : {}) };
+  return { what: 'people', kind, q, ...(category && category !== 'all' ? { category } : {}),
+    ...normalizePeopleSort(kind, route.sort, route.dir), kana: normalizeKanaRow(kind, scope, route.kana) };
 }
 
-export const indexKey = (kind: IndexKind, q: string, category = 'all') =>
-  ['index', kind, q, ...(kind === 'tags' || category !== 'all' ? [category] : [])] as const;
+export const indexKey = (kind: IndexKind, q: string, category = 'all', sort?: string, dir?: string,
+                         kana?: string) => {
+  const ordered = normalizePeopleSort(kind, sort, dir);
+  const row = normalizeKanaRow(kind, 'local', kana);
+  return ['index', kind, q,
+    ...(kind === 'tags' || category !== 'all' ? [category] : []),
+    ...(kind === 'performers' && row ? [row] : []),
+    ...(kind === 'performers' && !isDefaultPeopleSort(ordered.sort, ordered.dir) ? [ordered.sort, ordered.dir] : [])] as const;
+};
 
-export function indexUrl(kind: IndexKind, q: string, category: string, limit: number, offset: number): string {
+export function indexUrl(kind: IndexKind, q: string, category: string, limit: number, offset: number,
+                         sort = 'n', dir = 'desc', kana = ''): string {
   const params = new URLSearchParams({ kind, limit: String(limit), offset: String(offset) });
   if (q) params.set('q', q);
   if (category !== 'all') params.set('category', category);
+  const ordered = normalizePeopleSort(kind, sort, dir);
+  const row = normalizeKanaRow(kind, 'local', kana);
+  if (kind === 'performers' && row) params.set('kana', row);
+  if (kind === 'performers' && !isDefaultPeopleSort(ordered.sort, ordered.dir)) {
+    params.set('sort', ordered.sort);
+    params.set('dir', ordered.dir);
+  }
   return `${INDEX_URL}?${params}`;
 }
 
@@ -200,8 +238,10 @@ export function indexQuery(source: IndexSource, pageSize: number = PAGE_SIZE.tag
   const base = { initialPageParam: 0, getNextPageParam: next };
   switch (source.what) {
     case 'people':
-      return { ...base, queryKey: indexKey(source.kind, source.q, source.category || 'all'),
-        queryFn: ({ pageParam, signal }) => apiGet(indexUrl(source.kind, source.q, source.category || 'all', limit, pageParam), signal) };
+      return { ...base, queryKey: indexKey(source.kind, source.q, source.category || 'all', source.sort, source.dir, source.kana),
+        queryFn: ({ pageParam, signal }) => apiGet(
+          indexUrl(source.kind, source.q, source.category || 'all', limit, pageParam, source.sort, source.dir,
+            source.kana), signal) };
     case 'tags':
       return { ...base, queryKey: indexKey('tags', source.q, source.category),
         queryFn: ({ pageParam, signal }) => apiGet(indexUrl('tags', source.q, source.category, limit, pageParam), signal) };
@@ -237,10 +277,35 @@ export const countText = (count: number, more: boolean) => more ? t('catalog:peo
 export const tagColorKey = (online: boolean, cat: string | undefined) =>
   online ? `r34-${cat || 'unknown'}` : cat || 'general';
 
+/** 当前排序列那一格的值；没有就是「资料未取得」，不补零也不猜。 */
+function peopleSortFact(sort: string, item: IndexPerson): string {
+  const label = PEOPLE_SORTS.find((option) => option.key === sort)?.label || sort;
+  const value = sort === 'debut' ? (item.debut_date || (item.debut_year ? String(item.debut_year) : ''))
+    : sort === 'birth' ? (item.birth_date || '')
+      : sort === 'cup' ? (item.cup || '')
+        : sort === 'bust' ? (item.bust_cm ? `${item.bust_cm} cm` : '')
+          : sort === 'height' ? (item.height_cm ? `${item.height_cm} cm` : '')
+            : sort === 'kana' ? (item.kana || '') : '';
+  return value ? t('catalog:peopleIndex.sortFact', { label, value })
+    : t('catalog:peopleIndex.sortMissing', { label });
+}
+
 /** 格子底下那个读数。事务所数的是人：它名下的视频是成员拍的，只报视频数会让它唯一独有的
- *  读数消失。数字一律带单位，同一排格子才读得出数的是人还是片，单独一个「0」也不像漏了字。 */
-export const personReadout = (kind: IndexKind, item: IndexPerson) =>
-  kind === 'agencies' ? t('catalog:peopleIndex.memberCount', { count: item.members || 0 }) : t('catalog:peopleIndex.videoCount', { count: item.n || 0 });
+ *  读数消失。数字一律带单位，同一排格子才读得出数的是人还是片，单独一个「0」也不像漏了字。
+ *  正在按资料排序时，把这一列的值摆在最前面；缺资料的行明说「资料未取得」，后端也把它们排在最后。 */
+export const personReadout = (kind: IndexKind, item: IndexPerson, sort = 'n', kana = '') => {
+  const base = kind === 'agencies'
+    ? t('catalog:peopleIndex.memberCount', { count: item.members || 0 })
+    : t('catalog:peopleIndex.videoCount', { count: item.n || 0 });
+  if (kind !== 'performers') return base;
+  const parts: string[] = [];
+  if (sort !== 'n') parts.push(peopleSortFact(sort, item));
+  // 按五十音筛的时候把读音也报出来；缺资料明说，不补一个假名。
+  if (kana && sort !== 'kana') parts.push(item.kana
+    ? t('catalog:peopleIndex.kanaFact', { value: item.kana })
+    : t('catalog:peopleIndex.kanaMissing'));
+  return [...parts, base].join(' · ');
+};
 
 const COLLATOR = { numeric: true, sensitivity: 'base' } as const;
 

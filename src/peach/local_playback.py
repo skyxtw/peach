@@ -1,6 +1,7 @@
 """通过系统文件关联或已安装的播放器打开已授权媒体；mpv、IINA、VLC 接上观看进度回传。"""
 from __future__ import annotations
 
+import math
 import os
 import secrets
 import shutil
@@ -71,10 +72,28 @@ def _tracked_command(key: str, program: str, path: Path) -> tuple[list[str], Cal
     return None
 
 
+def _start_args(player: str, start_seconds: float) -> list[str]:
+    """网页当前进度交给能接起播位置的播放器；接不了的从文件开头放。"""
+    try:
+        seconds = int(round(float(start_seconds)))
+    except (TypeError, ValueError, OverflowError):
+        return []
+    if not math.isfinite(seconds) or seconds <= 0:
+        return []
+    if player == 'mpv':
+        return [f'--start={seconds}']
+    if player == 'iina':
+        return [f'--mpv-start={seconds}']
+    if player == 'vlc':
+        return [f'--start-time={seconds}']
+    return []
+
+
 def open_media(path: Path, player: str = 'default', *, track: Track | None = None,
-               extra_args: Sequence[str] = ()) -> bool:
+               extra_args: Sequence[str] = (), start_seconds: float = 0) -> bool:
     """打开文件；`track` 给了且播放器能回报进度时接上跟踪，返回是否接上。
 
+    `start_seconds` 是网页当前进度：mpv/IINA/VLC 能接到起播位置，其余播放器从头开始。
     `extra_args` 只给人工验收用（静音、暂停起播），接口不暴露。
     """
     if not available():
@@ -91,7 +110,7 @@ def open_media(path: Path, player: str = 'default', *, track: Track | None = Non
     tracked = _tracked_command(player, chosen[1], path) if chosen and track else None
     if tracked:
         command, connect = tracked
-        process = subprocess.Popen([*command, *extra_args, str(path)], stdin=subprocess.DEVNULL,
+        process = subprocess.Popen([*command, *_start_args(player, start_seconds), *extra_args, str(path)], stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    cwd=str(Path(command[0]).parent))
         return track(connect, lambda: process.poll() is None)
@@ -101,7 +120,7 @@ def open_media(path: Path, player: str = 'default', *, track: Track | None = Non
             command.extend(['-a', chosen[1]])
         subprocess.run([*command, str(path)], check=True, timeout=10, capture_output=True)
     elif chosen:
-        subprocess.Popen([chosen[1], str(path)], stdin=subprocess.DEVNULL,
+        subprocess.Popen([chosen[1], *_start_args(player, start_seconds), str(path)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          cwd=str(Path(chosen[1]).parent))
     else:

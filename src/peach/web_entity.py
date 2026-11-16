@@ -36,6 +36,7 @@ from .web_catalog import (
 )
 from .web_state import WebContract
 from . import entity_classification
+from .kana import KANA_ROWS
 
 
 #: 有资料页的实体种类。事务所（agency）和厂牌是两件事：厂牌出片、事务所出人，
@@ -328,6 +329,9 @@ def q_entity(contract: WebContract, args):
         )]
         d.update(_performer_entries(contract, c, d, alias_rows) if kind == "performer" or 'japanese_av' in d['identity_categories']
                  else {"entry_links": []})
+        # 片商/厂牌页的订阅开关：只有显式绑过 DMM maker/label 编号的实体才出现。
+        if kind == "studio" and feeds.dmm_catalogue_ids(c, d["id"]):
+            d["feed"] = {"following": feeds.entity_following(c, d["id"])}
         # 人物资料与按名义分组的别名。
         if kind in {"performer", "creator"}:
             d.update(performer_header.header(c, d["id"], d["canonical_name"]))
@@ -759,12 +763,31 @@ def q_photo_set(contract: WebContract, args):
 
 
 def _attach_index_following(connection, rows: list[dict]) -> None:
-    """名册人物的订阅状态按已启用、绑定实体的来源汇总。"""
+    """名册人物的订阅状态与可订阅性。
+
+    可订阅的判据和 `subscribe_performer` 同一份：已有 JavDB 演员页或 DMM 女优编号。
+    引用行一次取齐，逐行只跑不碰库的地址拼装，索引页不会按人再查一遍。
+    """
     following = {source[0] for source in connection.execute(
         "SELECT entity_id FROM feed_source WHERE enabled=1 "
         "UNION SELECT entity_id FROM follow_source WHERE enabled=1")}
+    performers = [int(row["entity_id"]) for row in rows
+                  if row.get("entity_kind") == "performer" and row.get("entity_id") is not None]
+    refs_by_entity: dict[int, list[dict]] = {}
+    if performers:
+        marks = ",".join("?" for _ in performers)
+        for ref in connection.execute(
+                "SELECT entity_id,provider,external_kind,external_id,metadata_json "
+                f"FROM entity_external_ref WHERE entity_id IN ({marks})", performers):
+            refs_by_entity.setdefault(int(ref["entity_id"]), []).append(dict(ref))
     for row in rows:
-        row['following'] = row['entity_id'] in following
+        entity_id = row.get("entity_id")
+        row['following'] = entity_id in following
+        if row.get("entity_kind") == "performer" and entity_id is not None:
+            refs = refs_by_entity.get(int(entity_id), [])
+            available = bool(entry_links.javdb_actor_pages(str(row["k"]), refs)
+                             or feeds.dmm_actress_ids_from_refs(refs))
+            row["feed"] = {"following": row["following"], "available": available}
 
 
 def _attach_index_favorites(connection, rows: list[dict]) -> None:
@@ -781,35 +804,105 @@ def _attach_index_favorites(connection, rows: list[dict]) -> None:
 INDEX_TABLES = ("asset", "asset_entity", "asset_tag", "asset_tag_preference", "entity",
                 "entity_alias", "entity_redirect", "entity_classification", "entity_external_ref",
                 "entity_identity_link", "entity_link", "entity_membership", "label_maker",
-                "feed_source", "follow_source", "profile")
+                "feed_source", "follow_source", "performer_profile", "profile")
 
 
-def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category=""):
+#: 艺人名册能按资料排序的列：键 → (SQL 表达式, 默认方向)。只有本地艺人名册认这些键；
+#: `cup` 按字母位次比（A=1 … Z=26），`debut` 先看日期，只有年份的用「某年 00 月 00 日」
+#: 排在同一年确有日期的前面，不会因为只缺日期就被当成没有资料。表达式里的空值统一由
+#: `_index_order_by` 排到最后。
+INDEX_PERSON_SORTS = {
+    "n": ("n", "desc"),
+    "debut": ("COALESCE(NULLIF(pp.debut_date,''),"
+              " CASE WHEN pp.debut_year IS NOT NULL THEN CAST(pp.debut_year AS TEXT) || '-00-00' END)",
+              "desc"),
+    "cup": ("CASE WHEN upper(substr(trim(pp.cup),1,1)) BETWEEN 'A' AND 'Z'"
+            " THEN unicode(upper(substr(trim(pp.cup),1,1))) - 64 END", "asc"),
+    "bust": ("pp.bust_cm", "desc"),
+    "height": ("pp.height_cm", "desc"),
+    "birth": ("NULLIF(pp.birth_date,'')", "desc"),
+    "kana": ("NULLIF(pp.kana,'')", "asc"),
+}
+
+
+def _index_sort(kind, sort, direction):
+    """白名单化名册排序：其他名册与认不出的键回作品数降序，方向缺省按该列的默认。"""
+    if kind != "performers" or sort not in INDEX_PERSON_SORTS:
+        return "n", "desc"
+    default = INDEX_PERSON_SORTS[sort][1]
+    return sort, direction if direction in ("asc", "desc") else default
+
+
+def _index_kana(kind, kana):
+    """五十音行：只有本地艺人名册认；其余名册与认不出的行回空（不过滤）。"""
+    return kana if kind == "performers" and kana in KANA_ROWS else ""
+
+
+def _index_order_by(sort, direction):
+    """排序子句：空值统一排最后，`e.id` 兜底，同值时翻页不会换序、重复或漏行。"""
+    if sort == "n":
+        return f"n {direction.upper()},e.id ASC"
+    expression = INDEX_PERSON_SORTS[sort][0]
+    return f"({expression} IS NULL) ASC,{expression} {direction.upper()},e.id ASC"
+
+
+def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
+            sort="n", direction="", kana=""):
     """全部艺人 / 创作者 / 厂牌 / 事务所 / 标签的索引页数据。
 
     账本那一段十来条 SQL，名册页合计三四百毫秒；没有搜索词时按 `INDEX_TABLES` 的版本缓存，
     作品数按 `video_work_key` 计，所以分组快照的输入也一起核对。
     搜索词的键空间不封闭，带搜索词照旧现算。读目录索引的头像与标识标志在缓存之外现做。
+    只有本地艺人名册认 `sort`／`direction` 与五十音行 `kana`；其他名册与认不出的值
+    一律忽略。缓存键带上解析后的排序与行，换一列或换一行不会拿回另一份答案。
+    本地艺人名册另给 `kana_counts`：当前搜索与分类下每行的人数；选中某行时
+    `categories` 也按该行重算，分类按钮不会继续报整本名册的计数。
     """
+    sort, direction = _index_sort(kind, sort, direction)
+    kana = _index_kana(kind, kana)
+
     def read():
-        return _index_rows(contract, kind, q, limit, offset, category)
+        return _index_rows(contract, kind, q, limit, offset, category, sort, direction, kana)
     if q or kind not in {"agencies", "tags", *INDEX_ENTITY_KINDS}:
-        rows, has_more, category_counts = read()
+        rows, has_more, category_counts, kana_counts = read()
     else:
-        rows, has_more, category_counts = contract.cached_until_changed(
-            repr(("index", kind, limit, offset, category)), read, *group_inputs(contract),
+        rows, has_more, category_counts, kana_counts = contract.cached_until_changed(
+            repr(("index", kind, limit, offset, category, sort, direction, kana)), read, *group_inputs(contract),
             tables=INDEX_TABLES)
     # 下面还要往每行补目录索引的标志，不能写进缓存里那一份。
     rows = [dict(row) for row in rows]
-    result = _decorate_index(contract, kind, rows, has_more, category_counts)
+    result = _decorate_index(contract, kind, rows, has_more, category_counts, kana_counts)
     if kind == 'tags':
         result['total'] = (category_counts.get(category, 0) if category and category != 'all'
                            else sum(category_counts.values()))
     return result
 
 
-def _index_rows(contract: WebContract, kind, q, limit, offset, category):
+def _index_kana_counts(connection, query, category, visible_clause):
+    """一次 GROUP BY 给五十音行出数；没资料的读音归 `other`，仍按当前搜索与分类收窄。"""
+    counts = {row: 0 for row in KANA_ROWS}
+    sql = ("SELECT peach_kana_row(pp.kana) kana_row,count(*) n FROM entity e "
+           "LEFT JOIN performer_profile pp ON pp.entity_id=e.id WHERE "
+           + entity_classification.index_scope(connection, "performer") +
+           " AND EXISTS (SELECT 1 FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id "
+           "WHERE ae.entity_id=e.id AND " + visible_clause + ") ")
+    params = []
+    if query:
+        sql += "AND e.canonical_name LIKE ? "
+        params.append(f"%{query}%")
+    clause, values = entity_classification.filter_sql(category, connection=connection)
+    sql += clause + " GROUP BY 1"
+    for row, count in connection.execute(sql, [*params, *values]):
+        counts[row] = count
+    return counts
+
+
+def _index_rows(contract: WebContract, kind, q, limit, offset, category,
+                sort="n", direction="", kana=""):
+    sort, direction = _index_sort(kind, sort, direction)
+    kana = _index_kana(kind, kana)
     category_counts = None
+    kana_counts = None
     with contract.read_connection() as c:
         if kind == "agencies":
             # 事务所自己不挂作品，所以它排的是人：一家有多少艺人是它的规模，作品数是
@@ -859,21 +952,35 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category):
             rows = rows[:limit]
         elif kind in INDEX_ENTITY_KINDS:
             entity_kind = INDEX_ENTITY_KINDS[kind]
+            # 艺人名册多带一条女优资料（ADR-0067）：排序按它算，格子里资料缺了也要说得出缺哪项。
+            profile = profile_join = ""
+            if entity_kind == "performer":
+                profile = (",pp.debut_date,pp.debut_year,pp.birth_date,pp.height_cm,"
+                           "pp.bust_cm,pp.cup,pp.kana")
+                profile_join = " LEFT JOIN performer_profile pp ON pp.entity_id=e.id"
+            # 主查询固定先扫 asset_entity 再取 asset：0059 的 asset(medium) 索引一旦被选中，
+            # 分类子查询会按每条关系行重算，人物索引会从亚秒级掉到几十秒。CROSS JOIN 不允许重排。
+            # 代表作同理固定先按 entity_id 查关系，再按主键取 asset；不带 INDEXED BY 时，
+            # asset(medium) 索引会让它反过来扫全部视频再按实体过滤。
             sql = ("SELECT e.id entity_id,e.kind entity_kind,e.canonical_name k,count(DISTINCT " + video_work_key(contract, c) + ") n,"
-                   "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+                   "(SELECT a2.id FROM asset_entity ae2 INDEXED BY idx_asset_entity_entity_role "
+                   "JOIN asset a2 ON a2.id=ae2.asset_id "
                    " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
                    (" AND (e.kind='creator' OR (" + solo_performer_clause("a2.id", "e.id") + '))' if entity_kind == "performer" else "") +
                    " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
-                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
-                   "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                   "JOIN asset a ON a.id=ae.asset_id "
-                   "WHERE " + COUNTED_VIDEO + " AND " + entity_classification.index_scope(c,entity_kind) + ' ')
+                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep" + profile +
+                   " FROM asset_entity ae CROSS JOIN entity e ON e.id=ae.entity_id "
+                   "CROSS JOIN asset a ON a.id=ae.asset_id" + profile_join +
+                   " WHERE " + COUNTED_VIDEO + " AND " + entity_classification.index_scope(c,entity_kind) + ' ')
             par = []
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
             clause, values = entity_classification.filter_sql(category,connection=c)
             sql += clause
             par.extend(values)
-            sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC,e.id ASC LIMIT ? OFFSET ?"
+            if entity_kind == "performer" and kana:
+                sql += "AND peach_kana_row(pp.kana)=? "
+                par.append(kana)
+            sql += "GROUP BY e.id,e.canonical_name ORDER BY " + _index_order_by(sort, direction) + " LIMIT ? OFFSET ?"
             par.extend((limit + 1, offset))
             rows = [dict(r) for r in c.execute(sql, par)]
             has_more = len(rows) > limit
@@ -882,7 +989,9 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category):
             for row in rows:
                 row.update(summaries[row['entity_id']])
             _attach_index_following(c, rows)
-            category_counts = entity_classification.counts(c,entity_kind,q,COUNTED_VIDEO)
+            if entity_kind == "performer":
+                kana_counts = _index_kana_counts(c, q, category, COUNTED_VIDEO)
+            category_counts = entity_classification.counts(c,entity_kind,q,COUNTED_VIDEO,kana=kana)
         else:
             sql = ("SELECT e.id entity_id,e.canonical_name k, count(DISTINCT " + video_work_key(contract, c) + ") n "
                    "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -902,10 +1011,10 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category):
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
         _attach_index_favorites(c, rows)
-    return rows, has_more, category_counts
+    return rows, has_more, category_counts, kana_counts
 
 
-def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts):
+def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts, kana_counts=None):
     if kind in INDEX_ENTITY_KINDS:
         entity_kind = INDEX_ENTITY_KINDS[kind]
         # 索引页一屏几十个圆头像，走的是和顶栏那排同一条两级链：规范实体图优先，
@@ -930,6 +1039,8 @@ def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind in {"tags", "performers", "creators"}:
         result["categories"] = category_counts
+    if kind == "performers" and kana_counts is not None:
+        result["kana_counts"] = kana_counts
     return result
 
 

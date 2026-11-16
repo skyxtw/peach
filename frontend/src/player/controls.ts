@@ -9,13 +9,16 @@ import { detailPlayer, resizeSoon } from './registry';
 import { PLAYER_PANEL_EVENT } from './stats';
 import type { PlayerItem, SourceQuality, VjsPlayer } from './types';
 import { SubtitleControls, languageName, subtitleIcon } from './subtitles';
-import { createSeekPreview } from './seek-preview';
+import { createSeekPreview, previewCenter } from './seek-preview';
 import { mountPlayerRotation } from './rotation';
 import { mountPlayerPipControl } from './pip';
 import { mountPlaybackRate, playerMemory } from './memory';
+import { seekVideoBy, toggleVideoPlayback } from './playback';
 import { t } from '../i18n';
 
 type TooltipSync = (label?: string, aria?: string) => void;
+
+const SEEK_STEP_EVENT = 'peachseekstepchange';
 
 /** 控制条上每个按钮的悬停提示都从这里出：文案 + 快捷键徽标，样式取自 YouTube delhi-modern。
  *  原生 title 与状态提示共用同一个同步入口。 */
@@ -65,6 +68,15 @@ export function applyTheaterMode(enabled: boolean, save = true): void {
   const stage = host.stage(); stage?.toggleAttribute('data-theater', settings.theaterMode);
   syncPlayerTheaterButton(stage?.querySelector('[data-player-theater]'));
   resizeSoon(detailPlayer());
+}
+
+/** 全屏画面三档：把偏好写到播放器根节点，CSS 按 `--peach-fullscreen-fit` 挑 object-fit。 */
+export function applyFullscreenFit(player?: VjsPlayer | null): void {
+  const root = (player ?? detailPlayer())?.el();
+  if (!root) return;
+  const fit = playerHost().settings().fullscreenFit;
+  if (fit === 'contain') root.removeAttribute('data-peach-fullscreen-fit');
+  else root.setAttribute('data-peach-fullscreen-fit', fit);
 }
 
 /** 氛围光：按画面平均色给舞台写 `--video-glow`。
@@ -136,13 +148,29 @@ export function mountPlayerQualityControl(
   const root = document.createElement('div');
   root.className = 'vjs-peach-settings vjs-control'; root.dataset.playerQuality = '';
   root.innerHTML = `<button type="button" class="vjs-peach-settings-toggle" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-expanded="false">
-    ${icon('settings')}<span data-player-quality-badge hidden></span></button>
-    <div class="vjs-peach-settings-menu" role="menu" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-hidden="true"></div>`;
+    ${icon('settings')}<span data-player-quality-badge hidden></span></button>`;
   const fullscreen = controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root, fullscreen || null);
   const toggle = root.querySelector('button')!, badge = root.querySelector<HTMLElement>('[data-player-quality-badge]')!;
   playerControlTooltip(toggle, t('catalog:playerQuality.settings'));
-  const menu = root.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
+  const drawer = document.createElement('div');
+  drawer.className = 'vjs-peach-settings-drawer'; drawer.dataset.playerSettingsDrawer = ''; drawer.setAttribute('aria-hidden', 'true');
+  drawer.innerHTML = `<div class="vjs-peach-settings-head"><strong>${t('catalog:playerQuality.playerSettings')}</strong>
+      <button type="button" class="vjs-peach-settings-close" data-player-settings-close aria-label="${t('catalog:playerQuality.closeSettings')}">×</button></div>
+    <div class="vjs-peach-settings-tabs" role="tablist" aria-label="${t('catalog:playerQuality.playerSettings')}">
+      <button type="button" class="vjs-peach-settings-tab" role="tab" data-player-settings-tab="play" aria-selected="true" tabindex="0">${t('catalog:playerQuality.tabPlayback')}</button>
+      <button type="button" class="vjs-peach-settings-tab" role="tab" data-player-settings-tab="keys" aria-selected="false" tabindex="-1">${t('catalog:playerQuality.tabShortcuts')}</button>
+    </div>
+    <div class="vjs-peach-settings-menu" role="menu" aria-label="${t('catalog:playerQuality.playerSettings')}" aria-hidden="true"></div>`;
+  player.el().append(drawer);
+  const settingsTabs = [...drawer.querySelectorAll<HTMLElement>('[data-player-settings-tab]')];
+  const syncTabs = (active: 'play' | 'keys') => {
+    settingsTabs.forEach((tab) => {
+      const selected = tab.dataset.playerSettingsTab === active;
+      tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+    });
+  };
+  const menu = drawer.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
   const rotation = mountPlayerRotation(player, video);
   const rememberRate = mountPlaybackRate(player, video);
   const memory = playerMemory(player);
@@ -184,12 +212,22 @@ export function mountPlayerQualityControl(
     return { options, active };
   };
   const isOpen = () => menu.getAttribute('aria-hidden') !== 'true';
+  const placeDrawer = () => {
+    const stage = playerHost().stage();
+    const mobile = player.el().classList.contains('vjs-peach-xsmall');
+    const parent = mobile && stage ? stage : player.el();
+    drawer.toggleAttribute('data-mobile', mobile);
+    if (drawer.parentElement !== parent) parent.append(drawer);
+  };
   const setOpen = (open: boolean) => {
-    menu.setAttribute('aria-hidden', String(!open)); toggle.setAttribute('aria-expanded', String(open));
+    if (open) placeDrawer();
+    menu.setAttribute('aria-hidden', String(!open)); drawer.setAttribute('aria-hidden', String(!open));
+    toggle.setAttribute('aria-expanded', String(open));
     if (!open) subtitleControls?.hide();
     if (open) document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT, { detail: 'settings' }));
   };
   const close = () => setOpen(false);
+  drawer.querySelector('[data-player-settings-close]')!.addEventListener('click', () => { close(); toggle.focus() });
   const closeSettingsForOtherPanel = (event: Event) => { if ((event as CustomEvent<string>).detail !== 'settings') close() };
   document.addEventListener(PLAYER_PANEL_EVENT, closeSettingsForOtherPanel);
   /* 面板之间的切换照 YouTube 播放器 9470c977 的 www-player.css：popup 自己 .25s
@@ -229,25 +267,151 @@ export function mountPlayerQualityControl(
   };
   const button = (panel: HTMLElement, selector: string) => panel.querySelector<HTMLElement>(selector)!;
   /** 菜单此刻摆的是哪一面；轨道与尺寸变化只就地改这一面（`refreshPanel`）。 */
-  let view: 'main' | 'speed' | 'quality' | 'subtitles' | 'rotation' = 'main';
+  let view: 'main' | 'seek' | 'longpress' | 'speed' | 'quality' | 'subtitles' | 'rotation' | 'shortcuts' = 'main';
+  const seekStep = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const seekLargeStep = () => Math.max(1, Number(playerHost().settings().seekLargeSeconds) || 60);
+  const seekLabel = () => `${t('catalog:playerQuality.seekStepSeconds', { seconds: seekStep() })} / ${t('catalog:playerQuality.seekStepSeconds', { seconds: seekLargeStep() })}`;
+  const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
+  const longPressLabel = () => `${longPressSpeed()}×`;
+  const fullscreenFit = () => {
+    const value = playerHost().settings().fullscreenFit;
+    return value === 'cover' || value === 'original' ? value : 'contain';
+  };
+  const fullscreenFitLabel = () => fullscreenFit() === 'cover'
+    ? t('catalog:playerQuality.fullscreenFitCover')
+    : fullscreenFit() === 'original'
+      ? t('catalog:playerQuality.fullscreenFitOriginal')
+      : t('catalog:playerQuality.fullscreenFitContain');
   const showMain = (direction = 0) => {
-    view = 'main';
+    view = 'main'; syncTabs('play');
     const { active } = qualityRows(), speed = rememberRate.current();
-    const panel = renderPanel(`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
-      ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+    const panel = renderPanel(`<div class="vjs-peach-panel-menu">
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupControl')}</div>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>${t('catalog:playerQuality.speed')}</span><b>${speed === 1 ? t('catalog:playerQuality.normalSpeed') : `${speed}×`}</b>${icon('player-menu-next')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-seek-step>${icon('rotate-cw', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerQuality.seekStep')}</span><b>${seekLabel()}</b>${icon('player-menu-next')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-long-press>${icon('player-speed')}<span>${t('catalog:playerQuality.longPressSpeed')}</span><b>${longPressLabel()}</b>${icon('player-menu-next')}</button>
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupPicture')}</div>
+      <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${playerHost().settings().ambientMode}">
+        ${icon('player-ambient')}<span>${t('catalog:playerQuality.ambientMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-subtitles><span class="vjs-peach-menu-cc" aria-hidden="true">${subtitleIcon()}</span><span>${t('catalog:playerControls.subtitles')}</span><b>${esc(subtitleControls?.label() || t('catalog:subtitles.off'))}</b>${icon('player-menu-next')}</button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-rotation>${icon('rotate-cw', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerQuality.rotation')}</span><b>${rotation.angle()}°</b>${icon('player-menu-next')}</button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>${t('catalog:playerQuality.quality')}</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button>
+      <div class="vjs-peach-settings-group">${t('catalog:playerQuality.groupInterface')}</div>
+      <button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-theater-row aria-checked="${playerHost().settings().theaterMode}">
+        ${icon('theater-enter', 'vjs-peach-menu-line-icon')}<span>${t('catalog:playerControls.theaterMode')}</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-fullscreen-fit>${icon('player-fullscreen-enter')}<span>${t('catalog:playerQuality.fullscreenFit')}</span><b>${fullscreenFitLabel()}</b>${icon('player-menu-next')}</button>
       <div data-player-memory-error hidden><p class="vjs-peach-subtitle-status" role="status"></p><button type="button" class="vjs-peach-menu-row" data-player-memory-retry>${t('catalog:playerQuality.retryMemorySave')}</button></div></div>`, direction);
     button(panel, '[data-player-ambient]').onclick = () => { applyAmbientMode(!playerHost().settings().ambientMode); showMain() };
     button(panel, '[data-player-speed]').onclick = () => showSpeed();
+    button(panel, '[data-player-seek-step]').onclick = () => showSeek();
+    button(panel, '[data-player-long-press]').onclick = () => showLongPress();
     button(panel, '[data-player-subtitles]').onclick = () => subtitleControls?.show();
     button(panel, '[data-player-quality-view]').onclick = () => showQuality();
     button(panel, '[data-player-rotation]').onclick = () => showRotation();
+    button(panel, '[data-player-theater-row]').onclick = () => { applyTheaterMode(!playerHost().settings().theaterMode); showMain() };
+    button(panel, '[data-player-fullscreen-fit]').onclick = () => {
+      const order = ['contain', 'cover', 'original'] as const;
+      const next = order[(order.indexOf(fullscreenFit()) + 1) % order.length]!;
+      playerHost().settings().fullscreenFit = next;
+      playerHost().saveSettings();
+      applyFullscreenFit(player);
+      showMain();
+    };
     button(panel, '[data-player-memory-retry]').onclick = () => { void memory.retry() };
     syncMemoryError();
   };
+  const showShortcuts = () => {
+    view = 'shortcuts'; syncTabs('keys');
+    const rows: [string, string][] = [
+      ['Space', t('catalog:playerQuality.shortcutPlayPause')],
+      ['← / →', t('catalog:playerQuality.shortcutSeek')],
+      ['Shift + ← / →', t('catalog:playerQuality.shortcutSeekLarge')],
+      ['↑ / ↓', t('catalog:playerQuality.shortcutVolume')],
+      ['M', t('catalog:playerQuality.shortcutMute')],
+      ['F', t('catalog:playerQuality.shortcutFullscreen')],
+      ['T', t('catalog:playerQuality.shortcutTheater')],
+      ['I', t('catalog:playerQuality.shortcutMiniplayer')],
+      ['Esc', t('catalog:playerQuality.shortcutClose')],
+    ];
+    renderPanel(`<div class="vjs-peach-panel-menu vjs-peach-shortcuts">${rows.map(([key, label]) =>
+      `<div class="vjs-peach-shortcut"><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div>`, 1);
+  };
+  const showSeek = (direction = 1) => {
+    view = 'seek'; syncTabs('play');
+    const presets = [5, 10, 15, 30, 60];
+    const largePresets = [30, 60, 120, 300];
+    const panel = renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${t('catalog:playerQuality.backMenu')}">${icon('player-menu-back')}</button><strong>${t('catalog:playerQuality.seekStep')}</strong></div>
+      <div class="vjs-peach-seek-panel"><div class="vjs-peach-seek-stepper">
+        <button type="button" class="vjs-peach-speed-button" data-player-seek-down aria-label="${t('catalog:playerQuality.seekStep')} -">${icon('minus')}</button>
+        <input type="number" class="vjs-peach-seek-input" data-player-seek-input min="1" max="300" step="1" inputmode="numeric" aria-label="${t('catalog:playerQuality.seekStep')}">
+        <button type="button" class="vjs-peach-speed-button" data-player-seek-up aria-label="${t('catalog:playerQuality.seekStep')} +">${icon('plus')}</button>
+      </div><div class="vjs-peach-seek-presets">${presets.map(seconds =>
+        `<button type="button" class="vjs-peach-speed-button" data-player-seek-preset="${seconds}" aria-pressed="false">${seconds}</button>`).join('')}</div>
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekStepHint')}</p>
+        <h4 class="vjs-peach-seek-group">${t('catalog:playerQuality.seekLargeStep')}</h4>
+        <div class="vjs-peach-seek-stepper">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-down aria-label="${t('catalog:playerQuality.seekLargeStep')} -">${icon('minus')}</button>
+          <input type="number" class="vjs-peach-seek-input" data-player-seek-large-input min="1" max="600" step="1" inputmode="numeric" aria-label="${t('catalog:playerQuality.seekLargeStep')}">
+          <button type="button" class="vjs-peach-speed-button" data-player-seek-large-up aria-label="${t('catalog:playerQuality.seekLargeStep')} +">${icon('plus')}</button>
+        </div><div class="vjs-peach-seek-presets">${largePresets.map(seconds =>
+          `<button type="button" class="vjs-peach-speed-button" data-player-seek-large-preset="${seconds}" aria-pressed="false">${seconds}</button>`).join('')}</div>
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.seekLargeStepHint')}</p></div>`, direction);
+    const input = panel.querySelector<HTMLInputElement>('[data-player-seek-input]')!;
+    const apply = (value: number) => {
+      const settings = playerHost().settings();
+      settings.seekSeconds = Math.min(300, Math.max(1, Math.round(value) || 10));
+      playerHost().saveSettings(); input.value = String(settings.seekSeconds);
+      document.dispatchEvent(new CustomEvent(SEEK_STEP_EVENT, { detail: settings.seekSeconds }));
+      panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
+        option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === settings.seekSeconds)));
+    };
+    button(panel, '[data-player-menu-back]').onclick = () => showMain(-1);
+    input.value = String(seekStep());
+    input.onchange = () => apply(Number(input.value));
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option => {
+      option.onclick = () => apply(Number(option.dataset.playerSeekPreset));
+    });
+    button(panel, '[data-player-seek-down]').onclick = () => apply(seekStep() - 5);
+    button(panel, '[data-player-seek-up]').onclick = () => apply(seekStep() + 5);
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-preset]').forEach(option =>
+      option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekPreset) === seekStep())));
+    const largeInput = panel.querySelector<HTMLInputElement>('[data-player-seek-large-input]')!;
+    const applyLarge = (value: number) => {
+      const settings = playerHost().settings();
+      settings.seekLargeSeconds = Math.min(600, Math.max(1, Math.round(value) || 60));
+      playerHost().saveSettings(); largeInput.value = String(settings.seekLargeSeconds);
+      document.dispatchEvent(new CustomEvent(SEEK_STEP_EVENT, { detail: settings.seekSeconds }));
+      panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option =>
+        option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekLargePreset) === settings.seekLargeSeconds)));
+    };
+    largeInput.value = String(seekLargeStep());
+    largeInput.onchange = () => applyLarge(Number(largeInput.value));
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option => {
+      option.onclick = () => applyLarge(Number(option.dataset.playerSeekLargePreset));
+    });
+    button(panel, '[data-player-seek-large-down]').onclick = () => applyLarge(seekLargeStep() - 15);
+    button(panel, '[data-player-seek-large-up]').onclick = () => applyLarge(seekLargeStep() + 15);
+    panel.querySelectorAll<HTMLElement>('[data-player-seek-large-preset]').forEach(option =>
+      option.setAttribute('aria-pressed', String(Number(option.dataset.playerSeekLargePreset) === seekLargeStep())));
+  };
+  const showLongPress = (direction = 1) => {
+    view = 'longpress'; syncTabs('play');
+    const panel = renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="${t('catalog:playerQuality.backMenu')}">${icon('player-menu-back')}</button><strong>${t('catalog:playerQuality.longPressSpeed')}</strong></div>
+      <div class="vjs-peach-panel-menu">${[1.5, 2, 3, 4].map(rate =>
+        `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-long-press-option="${rate}" aria-checked="${rate === longPressSpeed()}"><span class="vjs-peach-option-check">${rate === longPressSpeed() ? icon('player-option-check') : ''}</span><span class="vjs-peach-option-label">${rate}×</span></button>`).join('')}
+        <p class="vjs-peach-seek-hint">${t('catalog:playerQuality.longPressSpeedHint')}</p></div>`, direction);
+    button(panel, '[data-player-menu-back]').onclick = () => showMain(-1);
+    panel.querySelectorAll<HTMLElement>('[data-player-long-press-option]').forEach(option => {
+      option.onclick = () => {
+        const settings = playerHost().settings();
+        settings.longPressSpeed = Number(option.dataset.playerLongPressOption);
+        playerHost().saveSettings(); showMain(-1);
+      };
+    });
+  };
+  settingsTabs.forEach((tab) => {
+    tab.onclick = () => { if (tab.dataset.playerSettingsTab === 'keys') showShortcuts(); else showMain() };
+  });
   const syncMemoryError = () => {
     const message = menu.querySelector<HTMLElement>('[data-player-memory-error]');
     if (!message) return;
@@ -358,13 +522,17 @@ export function mountPlayerQualityControl(
     if (label) label.textContent = active.label;
     const angle = view === 'main' ? panel?.querySelector('[data-player-rotation] b') : null;
     const speed = view === 'main' ? panel?.querySelector('[data-player-speed] b') : null;
+    const seek = view === 'main' ? panel?.querySelector('[data-player-seek-step] b') : null;
+    const longPress = view === 'main' ? panel?.querySelector('[data-player-long-press] b') : null;
     if (angle) angle.textContent = `${rotation.angle()}°`;
     if (speed) speed.textContent = rememberRate.current() === 1 ? t('catalog:playerQuality.normalSpeed') : `${rememberRate.current()}×`;
+    if (seek) seek.textContent = seekLabel();
+    if (longPress) longPress.textContent = longPressLabel();
   };
   toggle.onclick = (event) => { event.stopPropagation(); const open = !isOpen(); if (open) showMain(); setOpen(open) };
-  const outside = (event: Event) => { if (!root.contains(event.target as Node)) close() };
+  const outside = (event: Event) => { if (!root.contains(event.target as Node) && !drawer.contains(event.target as Node)) close() };
   document.addEventListener('pointerdown', outside);
-  root.addEventListener('keydown', (event) => {
+  const onKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && isOpen()) { event.preventDefault(); event.stopPropagation(); close(); toggle.focus() }
     if (['ArrowDown', 'ArrowUp'].includes(event.key) && isOpen() && !(event.target instanceof HTMLInputElement)) {
       event.preventDefault();
@@ -372,7 +540,9 @@ export function mountPlayerQualityControl(
       const current = buttons.indexOf(document.activeElement as HTMLElement);
       buttons[(current + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
     }
-  });
+  };
+  root.addEventListener('keydown', onKeydown);
+  drawer.addEventListener('keydown', onKeydown);
   video.addEventListener('loadedmetadata', refreshPanel);
   video.addEventListener('resize', refreshPanel);
   video.addEventListener('ratechange', refreshPanel);
@@ -387,6 +557,7 @@ export function mountPlayerQualityControl(
     document.removeEventListener('pointerdown', outside);
     document.removeEventListener(PLAYER_PANEL_EVENT, closeSettingsForOtherPanel);
     if (panelTimer) clearTimeout(panelTimer);
+    drawer.remove();
   });
   subtitleControls = new SubtitleControls(player, video, {
     render: renderPanel, open: () => { view = 'subtitles'; setOpen(true) }, close,
@@ -396,6 +567,279 @@ export function mountPlayerQualityControl(
   mountPlayerTheaterControl(player, root);
   mountPlayerChromeLayout(player);
   return (next) => { sourceQualities = next?.length ? next : null; refreshPanel() };
+}
+
+/** 舞台控制条上的快退/快进按钮：步长跟设置里的 seekSeconds 走，点击只动原生 video。
+ *  按钮和播放键同一排、同一档圆底；步长在设置里改完后新开的详情就是新秒数。 */
+export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLElement): void {
+  if (controlBar.querySelector('[data-player-seek]')) return;
+  const play = controlBar.querySelector<HTMLElement>(':scope>.vjs-play-control');
+  const video = player.el().querySelector<HTMLVideoElement>('video');
+  if (!play || !video) return;
+  const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const largeStep = () => Math.max(1, Number(playerHost().settings().seekLargeSeconds) || 60);
+  const refreshers: (() => void)[] = [];
+  const make = (side: -1 | 1, name: string, key: string) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'vjs-peach-seek vjs-control';
+    wrap.dataset.playerSeek = key;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'vjs-button';
+    button.innerHTML = icon(name, 'vjs-peach-control-icon vjs-peach-seek-icon');
+    wrap.append(button);
+    const label = () => t(side < 0 ? 'catalog:stagePlayer.seekBack' : 'catalog:stagePlayer.seekForward', { count: step() });
+    const sync = playerControlTooltip(button, label());
+    refreshers.push(() => sync(label()));
+    button.onclick = (event) => { event.stopPropagation(); sync(label()); seekVideoBy(video, (event.shiftKey ? largeStep() : step()) * side) };
+    return wrap;
+  };
+  const refresh = () => refreshers.forEach(sync => sync());
+  document.addEventListener(SEEK_STEP_EVENT, refresh);
+  const back = make(-1, 'rotate-ccw', 'back');
+  const ahead = make(1, 'rotate-cw', 'forward');
+  play.after(back, ahead);
+  player.on('dispose', () => { document.removeEventListener(SEEK_STEP_EVENT, refresh); back.remove(); ahead.remove() });
+}
+
+/* 舞台上的触屏双击：左半区后退、右半区前进，步长同 seekSeconds。
+ *
+ *  单击仍走播放/暂停，但要等双击窗口过去才兑现；浏览器合成的 click 与 dblclick 都要在捕获阶段
+ *  吃掉，否则第一下会先触发播放、第二下又会被 Video.js 当成双击全屏。普通鼠标单击与双击全屏
+ *  仍走原路径；鼠标按住同样触发长按倍速，方便非触屏设备验收。
+ *  沉浸模式有自己的手势，这个函数只挂在舞台播放器上。 */
+const TAP_MS = 300;
+const TAP_SLOP = 12;
+const TAP_SUPPRESS_MS = 450;
+const LONG_PRESS_MS = 500;
+const SWIPE_SLOP = 24;
+
+type GestureMode = 'seek' | 'brightness' | 'volume';
+
+export function mountPlayerTouchSeek(player: VjsPlayer): void {
+  const root = player.el();
+  const video = root.querySelector<HTMLVideoElement>('video');
+  if (!video || root.hasAttribute('data-player-touch-seek')) return;
+  root.setAttribute('data-player-touch-seek', '');
+  const badge = document.createElement('div');
+  badge.className = 'vjs-peach-speed-badge'; badge.hidden = true; root.append(badge);
+  const gesture = document.createElement('div');
+  gesture.className = 'vjs-peach-gesture'; gesture.hidden = true; root.append(gesture);
+  gesture.innerHTML = '<span class="vjs-peach-gesture-icon"></span><span class="vjs-peach-gesture-text"></span>';
+  const gestureIcon = gesture.querySelector<HTMLElement>('.vjs-peach-gesture-icon')!;
+  const gestureText = gesture.querySelector<HTMLElement>('.vjs-peach-gesture-text')!;
+  let down: { x: number; y: number; at: number; inactive: boolean } | null = null;
+  let lastTap: { side: -1 | 1; at: number } | null = null;
+  let tapTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdGuard: ReturnType<typeof setInterval> | null = null;
+  let holdRate = 1;
+  let holding = false;
+  let suppressClick = false;
+  let suppressUntil = 0;
+  let mode: GestureMode | null = null;
+  let targetTime = 0;
+  let startTime = 0;
+  let startVolume = 1;
+  let startBrightness = 1;
+  let brightness = 1;
+  const step = () => Math.max(1, Number(playerHost().settings().seekSeconds) || 10);
+  const longPressSpeed = () => Math.min(4, Math.max(1, Number(playerHost().settings().longPressSpeed) || 2));
+  const inStage = () => { const stage = playerHost().stage(); return !!stage && stage.contains(root) };
+  const sideAt = (x: number): -1 | 1 => {
+    const rect = root.getBoundingClientRect();
+    if (rect.width <= 0) return x < window.innerWidth / 2 ? -1 : 1;
+    return x - rect.left < rect.width / 2 ? -1 : 1;
+  };
+  const clearTap = () => { if (tapTimer) clearTimeout(tapTimer); tapTimer = null; lastTap = null };
+  const clearHold = () => { if (holdTimer) clearTimeout(holdTimer); holdTimer = null };
+  const restoreRate = () => {
+    clearHold();
+    if (holdGuard) { clearInterval(holdGuard); holdGuard = null }
+    if (!holding) return;
+    holding = false; player.playbackRate(holdRate); badge.hidden = true;
+  };
+  const eventInsideVideo = (event: PointerEvent) => {
+    const rect = video.getBoundingClientRect();
+    return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  };
+  const applyBrightness = (value: number) => {
+    brightness = Math.min(1.8, Math.max(.2, value));
+    video.style.filter = brightness === 1 ? '' : `brightness(${brightness})`;
+    return brightness;
+  };
+  const applyVolume = (value: number) => {
+    const next = Math.min(1, Math.max(0, value));
+    video.muted = next === 0; video.volume = next; return next;
+  };
+  const hideGesture = () => { gesture.hidden = true; mode = null; targetTime = 0 };
+  const startGesture = (next: GestureMode) => {
+    clearHold(); restoreRate(); badge.hidden = true; suppressClick = true;
+    mode = next; gesture.hidden = false; gesture.dataset.mode = next;
+    startTime = Number(video.currentTime) || 0; targetTime = startTime;
+    startVolume = video.muted ? 0 : video.volume; startBrightness = brightness;
+    if (next !== 'seek') gestureIcon.innerHTML = next === 'brightness' ? icon('sun', 'vjs-peach-gesture-line') : icon('player-volume', 'vjs-peach-gesture-fill');
+  };
+  const updateGesture = (event: PointerEvent) => {
+    if (!mode || !down) return;
+    const rect = video.getBoundingClientRect();
+    if (mode === 'seek') {
+      const width = Math.max(1, rect.width), duration = Number(video.duration) || 0;
+      const delta = (event.clientX - down.x) / width * 60;
+      targetTime = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, startTime + delta));
+      const shown = targetTime - startTime;
+      gestureIcon.innerHTML = `<b>${shown >= 0 ? '»' : '«'}</b>`;
+      gestureText.textContent = t('catalog:playerQuality.gestureSeek', {
+        delta: `${shown >= 0 ? '+' : ''}${Math.round(shown)}`,
+        time: fmtClock(targetTime),
+      });
+      return;
+    }
+    const dy = (down.y - event.clientY) / Math.max(1, rect.height);
+    if (mode === 'brightness') {
+      const value = applyBrightness(startBrightness + dy * 1.6);
+      gestureIcon.innerHTML = icon('sun', 'vjs-peach-gesture-line');
+      gestureText.textContent = t('catalog:playerQuality.gestureBrightness', { percent: Math.round(value * 100) });
+    } else {
+      const value = applyVolume(startVolume + dy);
+      gestureIcon.innerHTML = icon('player-volume', 'vjs-peach-gesture-fill');
+      gestureText.textContent = t('catalog:playerQuality.gestureVolume', { percent: Math.round(value * 100) });
+    }
+  };
+  const finishGesture = () => {
+    if (!mode) return;
+    if (mode === 'seek' && targetTime > 0) video.currentTime = targetTime;
+    hideGesture(); suppressClick = false; suppressUntil = Date.now() + TAP_SUPPRESS_MS; down = null;
+  };
+
+  const onDown = (event: PointerEvent) => {
+    if (!inStage() || event.button > 0) return;
+    suppressClick = false; hideGesture();
+    clearHold(); restoreRate();
+    down = { x: event.clientX, y: event.clientY, at: Date.now(), inactive: root.classList.contains('vjs-user-inactive') };
+    try { video.setPointerCapture(event.pointerId) } catch { /* 不支持捕获的浏览器 */ }
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      if (!down || !inStage()) return;
+      holding = true; suppressClick = true;
+      holdRate = Number(player.playbackRate()) || 1;
+      player.playbackRate(longPressSpeed());
+      badge.textContent = t('catalog:playerQuality.speedBoost', { rate: longPressSpeed() });
+      badge.hidden = false;
+      /* 起播/换源时浏览器或 Video.js 可能把 rate 写回 1；按住期间每 250ms 重新断言一次。 */
+      holdGuard = setInterval(() => {
+        if (holding && Math.abs((Number(player.playbackRate()) || 1) - longPressSpeed()) > .01) player.playbackRate(longPressSpeed());
+      }, 250);
+    }, LONG_PRESS_MS);
+  };
+  const onMove = (event: PointerEvent) => {
+    if (!down) return;
+    const distance = Math.hypot(event.clientX - down.x, event.clientY - down.y);
+    if (!mode && event.pointerType !== 'mouse' && distance > SWIPE_SLOP) {
+      /* 触屏手指一动就退出长按倍速，优先进入横划/竖划手势。 */
+      clearHold(); restoreRate(); badge.hidden = true;
+      const rect = video.getBoundingClientRect();
+      const horizontal = Math.abs(event.clientX - down.x) > Math.abs(event.clientY - down.y) * 1.15;
+      startGesture(horizontal ? 'seek' : (down.x < rect.left + rect.width / 2 ? 'brightness' : 'volume'));
+    }
+    if (mode) { event.preventDefault(); updateGesture(event); return }
+    if (holding) {
+      if (event.pointerType === 'mouse' && !eventInsideVideo(event)) restoreRate();
+      return;
+    }
+    if (distance > TAP_SLOP) clearHold();
+  };
+  const onUp = (event: PointerEvent) => {
+    clearHold();
+    if (mode) { finishGesture(); return }
+    if (!down || !inStage()) return;
+    const started = down; down = null;
+    if (holding || suppressClick) {
+      restoreRate(); suppressClick = false; suppressUntil = Date.now() + TAP_SUPPRESS_MS;
+      return;
+    }
+    if (event.pointerType === 'mouse') return;
+    if (Date.now() - started.at > 600 || Math.hypot(event.clientX - started.x, event.clientY - started.y) > TAP_SLOP) return;
+    const now = Date.now();
+    /* 控制条自己藏起来时，第一下只把它唤出来，不切换播放。 */
+    if (started.inactive) {
+      suppressUntil = now + TAP_SUPPRESS_MS;
+      root.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: event.clientX, clientY: event.clientY }));
+      return;
+    }
+    const side = sideAt(event.clientX);
+    suppressUntil = now + TAP_SUPPRESS_MS;
+    if (lastTap && lastTap.side === side && now - lastTap.at <= TAP_MS) {
+      clearTap(); seekVideoBy(video, step() * side);
+      return;
+    }
+    if (tapTimer) clearTimeout(tapTimer);
+    lastTap = { side, at: now };
+    tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
+  };
+  const onCancel = () => { restoreRate(); hideGesture(); suppressClick = false; down = null };
+  const keepSelection = (event: Event) => { if (event.target === video) event.preventDefault() };
+  root.addEventListener('contextmenu', keepSelection);
+  /* 桌面滚轮在画面上调音量；设置抽屉里的滚动留给抽屉自己。 */
+  const wheel = document.createElement('div');
+  wheel.className = 'vjs-peach-gesture vjs-peach-wheel-volume'; wheel.hidden = true;
+  wheel.innerHTML = '<span class="vjs-peach-gesture-icon"></span><span class="vjs-peach-gesture-text"></span>';
+  root.append(wheel);
+  const wheelIcon = wheel.querySelector<HTMLElement>('.vjs-peach-gesture-icon')!;
+  const wheelText = wheel.querySelector<HTMLElement>('.vjs-peach-gesture-text')!;
+  let wheelTimer: ReturnType<typeof setTimeout> | null = null;
+  const onWheel = (event: WheelEvent) => {
+    if (event.ctrlKey || (event.target as Element).closest('.vjs-peach-settings-drawer')) return;
+    event.preventDefault();
+    const next = Math.min(1, Math.max(0, (video.muted ? 0 : video.volume) + (event.deltaY > 0 ? -.05 : .05)));
+    video.muted = next === 0; video.volume = next;
+    wheelIcon.innerHTML = icon('player-volume', 'vjs-peach-gesture-fill');
+    wheelText.textContent = t('catalog:playerQuality.gestureVolume', { percent: Math.round(next * 100) });
+    wheel.hidden = false;
+    if (wheelTimer) clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheel.hidden = true }, 800);
+  };
+  root.addEventListener('wheel', onWheel, { passive: false });
+  /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复。 */
+  const releaseOutside = () => {
+    if (mode) { finishGesture(); return }
+    if (!holding && !suppressClick) return;
+    restoreRate(); suppressClick = false; suppressUntil = Date.now() + TAP_SUPPRESS_MS; down = null;
+  };
+  const onLeave = (event: PointerEvent) => { if (holding && !eventInsideVideo(event)) restoreRate() };
+  const captureClick = (event: Event) => {
+    if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
+  };
+  const captureDoubleClick = (event: Event) => {
+    if (event.target === video && inStage() && Date.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation() }
+  };
+  video.addEventListener('pointerdown', onDown);
+  video.addEventListener('pointermove', onMove);
+  video.addEventListener('pointerup', onUp);
+  video.addEventListener('pointercancel', onCancel);
+  video.addEventListener('pointerleave', onLeave);
+  window.addEventListener('pointerup', releaseOutside, true);
+  window.addEventListener('pointercancel', releaseOutside, true);
+  root.addEventListener('click', captureClick, true);
+  root.addEventListener('dblclick', captureDoubleClick, true);
+  player.on('dispose', () => {
+    if (tapTimer) clearTimeout(tapTimer);
+    restoreRate(); hideGesture();
+    video.removeEventListener('pointerdown', onDown);
+    video.removeEventListener('pointermove', onMove);
+    video.removeEventListener('pointerup', onUp);
+    video.removeEventListener('pointercancel', onCancel);
+    video.removeEventListener('pointerleave', onLeave);
+    root.removeEventListener('wheel', onWheel);
+    if (wheelTimer) clearTimeout(wheelTimer);
+    root.removeEventListener('contextmenu', keepSelection);
+    window.removeEventListener('pointerup', releaseOutside, true);
+    window.removeEventListener('pointercancel', releaseOutside, true);
+    badge.remove(); gesture.remove(); wheel.remove();
+    root.removeEventListener('click', captureClick, true);
+    root.removeEventListener('dblclick', captureDoubleClick, true);
+    root.removeAttribute('data-player-touch-seek');
+  });
 }
 
 function mountPlayerTheaterControl(player: VjsPlayer, settingsRoot: Element): void {
@@ -413,7 +857,11 @@ function mountPlayerTheaterControl(player: VjsPlayer, settingsRoot: Element): vo
 
 function mountPlayerChromeLayout(player: VjsPlayer): void {
   const controlBar = player.el().querySelector<HTMLElement>('.vjs-control-bar');
-  if (!controlBar || controlBar.querySelector('.vjs-peach-right-controls')) return;
+  if (!controlBar) return;
+  mountPlayerSeekControls(player, controlBar);
+  mountPlayerTouchSeek(player);
+  applyFullscreenFit(player);
+  if (controlBar.querySelector('.vjs-peach-right-controls')) return;
   const play = controlBar.querySelector<HTMLElement>(':scope>.vjs-play-control');
   if (play && !play.querySelector(':scope>.vjs-peach-hover')) play.insertAdjacentHTML('beforeend', '<span class="vjs-peach-hover" aria-hidden="true"></span>');
   const explicitIcon = (button: HTMLElement | null, name: string) => {
@@ -524,14 +972,45 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
   /* CSS 的 `.vjs-fullscreen` 只能覆盖 Video.js 已经同步状态类的路径。实际浏览器还可能
      走 full-window 回退，或者先触发 fullscreenchange、下一帧才完成 class 更新。把播放器
      自己的 `isFullscreen()` 结果登记到 DOM，画面填充不再依赖某一个实现细节类名。 */
+  /* iPhone 的原生 video 全屏由系统播放器接管，网页控制条会被盖住；这里给 Apple 移动端
+     换成舞台 CSS 全屏，控制条和手势仍归 Peach。Safari 的浏览器工具栏无法由页面隐藏。 */
+  const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let webFullscreen = false;
   const syncFullscreenState = () => {
-    const active = !!player.isFullscreen();
+    const active = webFullscreen || !!player.isFullscreen();
     player.el().toggleAttribute('data-peach-fullscreen', active);
     fullscreenUse?.setAttribute('href', active ? '#i-player-fullscreen-exit' : '#i-player-fullscreen-enter');
     syncFullscreenTooltip(active ? t('catalog:playerControls.exitFullScreen') : t('catalog:playerControls.fullScreen'));
     resizeSoon(player);
   };
   player.on(['fullscreenchange', 'enterFullWindow', 'exitFullWindow'], syncFullscreenState);
+  const toggleWebFullscreen = () => {
+    const stage = playerHost().stage();
+    webFullscreen = !webFullscreen;
+    stage?.toggleAttribute('data-peach-web-fullscreen', webFullscreen);
+    document.documentElement.classList.toggle('peach-web-fullscreen', webFullscreen);
+    syncFullscreenState();
+  };
+  const onWebFullscreenClick = (event: MouseEvent) => {
+    if (!appleMobile) return;
+    event.preventDefault(); event.stopImmediatePropagation(); toggleWebFullscreen();
+  };
+  const onWebFullscreenKey = (event: KeyboardEvent) => {
+    if (!webFullscreen || event.key !== 'Escape') return;
+    event.preventDefault(); event.stopPropagation(); toggleWebFullscreen();
+  };
+  fullscreen?.addEventListener('click', onWebFullscreenClick, true);
+  if (appleMobile) document.addEventListener('keydown', onWebFullscreenKey, true);
+  player.on('dispose', () => {
+    fullscreen?.removeEventListener('click', onWebFullscreenClick, true);
+    document.removeEventListener('keydown', onWebFullscreenKey, true);
+    if (webFullscreen) {
+      webFullscreen = false;
+      playerHost().stage()?.removeAttribute('data-peach-web-fullscreen');
+      document.documentElement.classList.remove('peach-web-fullscreen');
+    }
+  });
   syncFullscreenState();
   const controls = [
     pip,
@@ -547,6 +1026,8 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
     control.insertAdjacentHTML('beforeend', '<span class="vjs-peach-hover" aria-hidden="true"></span>');
     group.append(control);
   });
+  /* 参考 115-lite：时间读数放在右侧动作组前面，不再夹在音量和留白之间。 */
+  if (time.parentElement) { time.remove(); controlBar.insertBefore(time, group) }
   /* 窄屏折叠照 YouTube 的判据来：base.js 9470c977 里播放器宽度 `v.width<528` 打开
      ytp-xsmall-width-mode，右侧收成「设置 + 展开」，点开才铺开其余按钮。判据必须是播放器
      自己的宽度，不是视口——同一个视口下影院模式和普通视图的播放器宽度差一大截。 */
@@ -579,27 +1060,44 @@ function mountPlayerChromeLayout(player: VjsPlayer): void {
 
 /** 进度条上的拖动预览：时间与那一秒的画面，取图与夹边见 `seek-preview.ts`。
  *
- *  有可用图时鼠标悬停显示；触屏按住拖动时显示、松手收起。没有可用图时不显示浮层。 */
+ *  鼠标悬停显示时间（有图时连画面），触屏按住拖动同样显示；没有可用图时只显示时间。
+ *  拖动期间进度条下沿另有一枚时间跟着指针走，松手收起。 */
 export function mountPlayerSeekPreview(player: VjsPlayer, item: PlayerItem | null, options: { thumbnail?: boolean } = {}): void {
   const progress = player.el().querySelector<HTMLElement>('.vjs-control-bar .vjs-progress-control');
   if (!progress || progress.querySelector('[data-player-seek-preview]')) return;
   const preview = createSeekPreview(progress, item, options);
-  const move = (event: PointerEvent) => {
+  const scrub = document.createElement('span');
+  scrub.className = 'vjs-peach-scrub-time'; scrub.hidden = true;
+  progress.append(scrub);
+  const timeText = player.el().querySelector<HTMLElement>('.vjs-peach-time-text');
+  let scrubbing = false;
+  const move = (event: PointerEvent, dragging = false) => {
     const duration = realDuration(player.duration()) || realDuration(item?.duration);
     if (!duration) return;
     const rect = progress.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
     preview.prime();
-    preview.show((event.clientX - rect.left) / rect.width, duration);
+    preview.show(ratio, duration);
+    /* 拖动时右侧那颗时间胶囊跟着指针走；松手后再由 timeupdate 恢复实际播放位置。 */
+    if (dragging) {
+      const seconds = duration * Math.min(1, Math.max(0, ratio));
+      scrub.textContent = fmtClock(seconds); scrub.hidden = false;
+      scrub.style.left = `${previewCenter(event.clientX - rect.left, rect.width, scrub.offsetWidth || 60, 4)}px`;
+      if (timeText) timeText.textContent = `${fmtClock(seconds)} / ${fmtClock(duration)}`;
+    }
   };
-  const hide = () => preview.hide();
-  const lift = (event: PointerEvent) => { if (event.pointerType !== 'mouse') preview.hide() };
+  const restoreTime = () => { scrubbing = false; scrub.hidden = true; player.trigger('timeupdate') };
+  const hide = () => { restoreTime(); preview.hide() };
+  const lift = (event: PointerEvent) => { restoreTime(); if (event.pointerType !== 'mouse') preview.hide() };
   const listeners: [string, (event: PointerEvent) => void][] = [
-    ['pointerdown', move], ['pointermove', move], ['pointerleave', hide], ['pointerup', lift], ['pointercancel', hide],
+    ['pointerdown', (event) => { scrubbing = true; move(event, true) }],
+    ['pointermove', (event) => move(event, scrubbing)],
+    ['pointerleave', hide], ['pointerup', lift], ['pointercancel', hide],
   ];
   for (const [type, listener] of listeners) progress.addEventListener(type, listener as EventListener);
   player.on('dispose', () => {
     for (const [type, listener] of listeners) progress.removeEventListener(type, listener as EventListener);
-    preview.dispose();
+    preview.dispose(); scrub.remove();
   });
 }
 

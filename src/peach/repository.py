@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .catalog_rules import is_jav_code, normalise_code_key, sql_is_local_extra
 from .entities import normalize_entity_name
+from .kana import kana_row
 from .regions import infer_region
 
 #: 当前线程是不是后台写入者，见 `in_background`。
@@ -43,6 +44,7 @@ class LedgerDatabase:
             ('normalise_code_key', 1, lru_cache(maxsize=32768)(normalise_code_key)),
             ('infer_region', 2, lru_cache(maxsize=32768)(infer_region)),
             ('peach_normalize', 1, lru_cache(maxsize=32768)(normalize_entity_name)),
+            ('peach_kana_row', 1, lru_cache(maxsize=32768)(kana_row)),
         )
 
     def connect(self, *, write: bool = False, timeout: float = 30) -> sqlite3.Connection:

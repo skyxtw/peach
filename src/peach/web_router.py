@@ -67,6 +67,7 @@ from .web_feeds import (
     q_feed_lookup,
     q_feed_schedule,
     q_feeds,
+    w_bind_studio,
     w_feed_check,
     w_feed_discovery,
     w_feed_schedule_run,
@@ -149,6 +150,9 @@ def _get_index(contract, args):
         min(max(int(args.get("limit", "180")), 1), 600),
         max(int(args.get("offset", "0")), 0),
         args.get("category", ""),
+        args.get("sort", "") or "n",
+        args.get("dir", ""),
+        args.get("kana", ""),
     )
 
 
@@ -462,6 +466,7 @@ POST_HANDLERS = {
     "/api/scraping/amane-bridge/rebuild": w_scraping_amane_rebuild,
     "/api/feeds/check": w_feed_check,
     "/api/feeds/source": w_feed_source,
+    "/api/feeds/bind-studio": w_bind_studio,
     "/api/feeds/discovery": w_feed_discovery,
     "/api/feeds/schedule/run": w_feed_schedule_run,
     "/api/follow/check": w_follow_check,

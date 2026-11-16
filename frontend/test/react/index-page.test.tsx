@@ -12,16 +12,21 @@ import { registerNameWritings, setNameLanguage } from '../../src/core/entity-nam
 import { refitNativeImages } from '@peach/card-art';
 import { tagLabel } from '@peach/legacy/tags';
 
-import { indexKey, indexRoute, type IndexProps, type IndexRoute } from '../../src/react/index/index-data';
+import { indexKey, indexRoute, indexUrl, type IndexProps, type IndexRoute } from '../../src/react/index/index-data';
+import { indexPath } from '../../src/react/index/index-controller';
 import { IndexPage } from '../../src/react/index/index-page';
+import { PeopleGrid } from '../../src/react/index/index-people';
 import { onlineAuthorsKey, onlineTagsKey } from '../../src/react/follow/online-vocab';
 import { queryClient } from '../../src/react/query';
 import { buttonNamed, click, mount, pending, settle, type } from './render';
+import { showToast } from '../../src/react/toaster';
+import type { Shortcuts } from '../../src/react/library-shortcuts/library-shortcuts';
 
 /* 重量已加载完的图走 `card-art` 那一份；量出来的几何由 `test/card-art/` 守，这里只看什么时候量。 */
 vi.mock('@peach/card-art', async (importOriginal) => ({
   ...await importOriginal<typeof import('@peach/card-art')>(), refitNativeImages: vi.fn(),
 }));
+vi.mock('../../src/react/toaster', () => ({ showToast: vi.fn() }));
 
 afterEach(() => { queryClient.clear() });
 beforeEach(() => { registerNameWritings([]); setNameLanguage('zh-CN') });
@@ -30,8 +35,9 @@ notifyManager.setScheduler((notify) => notify());
 const person = (k: string, patch: Record<string, unknown> = {}) => ({ k, n: 3, entity_id: 1, ...patch });
 const tag = (k: string, cat = 'role') => ({ k, n: 2, cat });
 
-function seed<T>(key: readonly unknown[], items: T[], more = false, categories?: Record<string, number>) {
-  queryClient.setQueryData(key, { pages: [{ items, has_more: more, categories }], pageParams: [0] });
+function seed<T>(key: readonly unknown[], items: T[], more = false, categories?: Record<string, number>,
+                  kanaCounts?: Record<string, number>) {
+  queryClient.setQueryData(key, { pages: [{ items, has_more: more, categories, kana_counts: kanaCounts }], pageParams: [0] });
 }
 
 /** 按地址回话的假 fetch；`answer` 返回 `undefined` 时那一问一直挂着。 */
@@ -344,6 +350,123 @@ describe('名册', () => {
   });
 });
 
+describe('名册排序', () => {
+  it('排序键写回地址并按新键重取；再点一次翻方向', async () => {
+    seed(indexKey('performers', ''), [person('甲')]);
+    const fetcher = serve(() => ({ items: [person('甲')], has_more: false }));
+    const given = props();
+    const host = await open(given);
+    const cup = host.querySelector('[data-entity-sort="cup"]');
+    expect(cup?.getAttribute('aria-pressed')).toBe('false');
+    await click(cup);
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'cup', dir: 'asc' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('sort=cup');
+    expect(urls(fetcher).at(-1)).toContain('dir=asc');
+    await click(host.querySelector('[data-entity-sort="cup"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'cup', dir: 'desc' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('dir=desc');
+  });
+
+  it('按资料排序时读数显示这一列的值；缺资料明说「资料未取得」', async () => {
+    const rows = [person('甲', { cup: 'G' }), person('乙', { entity_id: 2 })];
+    seed(indexKey('performers', '', 'all', 'cup', 'asc'), rows);
+    const host = await open(props({ sort: 'cup', dir: 'asc' }));
+    const found = [...host.querySelectorAll('[data-index-cell]')].map((cell) => cell.textContent || '');
+    expect(found[0]).toContain('罩杯 G');
+    expect(found[1]).toContain('罩杯 资料未取得');
+    expect(found[1]).not.toContain('罩杯 0');
+  });
+
+  it('地址上的 sort/dir 归一：缺省省掉，认不出的回退', () => {
+    const ordered = indexRoute({
+      kind: 'performers', q: '', scope: 'local', view: 'alphabet', category: 'all', sort: 'cup', dir: 'asc',
+    });
+    expect(ordered).toMatchObject({ sort: 'cup', dir: 'asc' });
+    expect(indexPath(ordered)).toBe('/performers?sort=cup&dir=asc');
+    expect(indexPath(indexRoute({ ...ordered, sort: 'n', dir: 'desc' }))).toBe('/performers');
+    expect(indexRoute({ ...ordered, sort: 'bogus' })).toMatchObject({ sort: 'n', dir: 'desc' });
+    expect(indexRoute({ ...ordered, dir: 'sideways' })).toMatchObject({ sort: 'cup', dir: 'asc' });
+    expect(indexUrl('performers', '', 'all', 120, 0, 'cup', 'asc')).toContain('sort=cup&dir=asc');
+    expect(indexUrl('performers', '', 'all', 120, 0)).not.toContain('sort=');
+  });
+
+  it('排序键只在本地艺人名册出现', async () => {
+    seed(indexKey('creators', ''), [person('卖家')]);
+    const host = await open(props({ kind: 'creators' }));
+    expect(host.querySelector('[data-index-sorts]')).toBeNull();
+  });
+});
+
+describe('五十音', () => {
+  it('行切换写回地址并按新行重取；「全部」清除', async () => {
+    seed(indexKey('performers', ''), [person('甲')]);
+    const fetcher = serve(() => ({ items: [person('甲', { kana: 'かおり' })], has_more: false }));
+    const given = props();
+    const host = await open(given);
+    expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('false');
+    await click(host.querySelector('[data-kana-row="k"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: 'k' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('kana=k');
+    expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('true');
+    await click(host.querySelector('[data-kana-row="all"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: '' }), { replace: false });
+    expect(host.querySelector('[data-kana-row="all"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('筛「其他」时缺读音明说「读音未取得」，不混进假名行', async () => {
+    const rows = [person('甲', { kana: null }), person('乙', { entity_id: 2, kana: 'alice' })];
+    seed(indexKey('performers', '', 'all', 'n', 'desc', 'other'), rows);
+    const host = await open(props({ kana: 'other' }));
+    const found = [...host.querySelectorAll('[data-index-cell]')].map((cell) => cell.textContent || '');
+    expect(found[0]).toContain('读音未取得');
+    expect(found[1]).toContain('读音 alice');
+    expect(host.querySelector('[data-kana-row="other"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('[data-kana-row="a"]')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('五十音按钮显示当前分类下的行数，零行弱化但仍可点', async () => {
+    seed(indexKey('performers', ''), [person('甲', { kana: 'あい' })], false,
+      { japanese_av: 1 }, { a: 2, k: 0, s: 1, other: 1 });
+    const given = props();
+    const host = await open(given);
+    expect(host.querySelector('[data-kana-row="a"]')?.textContent).toContain('2');
+    expect(host.querySelector('[data-kana-row="all"]')?.textContent).toContain('4');
+    const zero = host.querySelector<HTMLButtonElement>('[data-kana-row="k"]')!;
+    expect(zero.textContent).toContain('0');
+    expect(zero.getAttribute('data-kana-empty')).toBe('');
+    expect(zero.getAttribute('aria-pressed')).toBe('false');
+    await click(zero);
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: 'k' }), { replace: false });
+  });
+
+  it('五十音行只在本地艺人名册出现', async () => {
+    seed(indexKey('creators', ''), [person('卖家')]);
+    const host = await open(props({ kind: 'creators' }));
+    expect(host.querySelector('[data-kana-row]')).toBeNull();
+  });
+
+  it('地址与查询键上的五十音参数归一：只认艺人、错值回空', () => {
+    const route = indexRoute({
+      kind: 'performers', q: '', scope: 'local', view: 'alphabet', category: 'all', kana: 'k',
+    });
+    expect(route.kana).toBe('k');
+    expect(indexPath(route)).toBe('/performers?kana=k');
+    expect(indexKey('performers', '', 'all', 'n', 'desc', 'k')).toEqual(['index', 'performers', '', 'k']);
+    expect(indexUrl('performers', '', 'all', 120, 0, 'n', 'desc', 'k')).toContain('kana=k');
+    expect(indexRoute({ ...route, kana: 'bogus' }).kana).toBe('');
+    expect(indexRoute({ ...route, kind: 'creators' }).kana).toBe('');
+    expect(indexKey('creators', '', 'all', 'n', 'desc', 'k')).toEqual(['index', 'creators', '']);
+    expect(indexUrl('creators', '', 'all', 120, 0, 'n', 'desc', 'k')).not.toContain('kana=');
+  });
+});
+
 describe('过滤框', () => {
   it('停手 300ms 才查，一路改写地址；新结果到手前留着上一份，输入框不被换掉', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -474,5 +597,168 @@ describe('标签', () => {
     expect(given.showTags).not.toHaveBeenCalled();
     // 多选是本地目录语义：在线那一套不给操作条。
     expect(host.querySelector('[aria-label="所选标签操作"]')).toBeNull();
+  });
+});
+
+describe('人物收藏', () => {
+  const performer = (name: string, entityId: number) => person(name, { entity_id: entityId, favorite: false });
+  /** 名册首屏已在缓存里；假服务端只回这一批，别在重取时把种子换掉。 */
+  const servePeople = (row: ReturnType<typeof person>, answer: () => Promise<Shortcuts> | Shortcuts, writes: Record<string, unknown>[]) =>
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [row], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      return { ok: true, status: 200, json: async () => await answer() };
+    }));
+
+  it('名册星标先翻状态再等回执，点星标不触发整卡', async () => {
+    const row = performer('甲', 11);
+    seed(indexKey('performers', ''), [row]);
+    const answer = pending<Shortcuts>();
+    const writes: Record<string, unknown>[] = [];
+    servePeople(row, () => answer.answer, writes);
+    const given = props();
+    const host = await open(given); await settle();
+    const star = host.querySelector<HTMLButtonElement>('[data-index-favorite]')!;
+    expect(star.tagName).toBe('BUTTON');
+    expect(star.getAttribute('aria-label')).toBe('收藏甲');
+    // 星标是整卡按钮的兄弟节点：既不会继承整卡点击，也不会形成嵌套按钮。
+    expect(star.closest('[data-index-cell]')).toBeNull();
+    await click(star);
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    expect(given.openEntity).not.toHaveBeenCalled();
+    expect(writes[0]).toMatchObject({ action: 'favorite', entity_id: 11, kind: 'performer', on: true });
+    await answer.release({ favorites: [{ key: 'entity:11', entity_id: 11, kind: 'performer', name: '甲' }], filters: [] });
+    await settle();
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    expect(star.getAttribute('aria-label')).toBe('取消收藏甲');
+    await click(host.querySelector('[data-index-cell]'));
+    expect(given.openEntity).toHaveBeenCalledWith('performer', '甲');
+  });
+
+  it('收藏失败退回原状态并给通知回执', async () => {
+    const row = performer('乙', 12);
+    seed(indexKey('performers', ''), [row]);
+    const writes: Record<string, unknown>[] = [];
+    const failure = pending<unknown>();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [row], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      await failure.answer;
+      return { ok: false, status: 500, json: async () => ({ error: '收藏没写上' }) };
+    }));
+    const host = await open(props()); await settle();
+    const star = host.querySelector<HTMLButtonElement>('[data-index-favorite]')!;
+    await click(star);
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    await failure.release(null);
+    await settle();
+    expect(star.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[0]).toMatchObject({ action: 'favorite', entity_id: 12, on: true });
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ alert: true }));
+  });
+
+  it('只给女优名册加星标，厂牌格保持原样', async () => {
+    const row = person('厂牌甲', { entity_id: 3, entity_kind: 'studio' });
+    seed(indexKey('studios', ''), [row]);
+    const host = await open(props({ kind: 'studios' })); await settle();
+    expect(host.querySelector('[data-index-cell]')).not.toBeNull();
+    expect(host.querySelector('[data-index-favorite]')).toBeNull();
+  });
+
+  it('资料页名册没有随行收藏状态，不摆索引页的星标', async () => {
+    const host = await mount(<QueryClientProvider client={queryClient}>
+      <PeopleGrid kind="performers" items={[performer('丙', 13)]} layout="big"
+        props={{ personAvatar: () => ({ html: '<span class="ini">C</span>', face: '' }), openEntity: vi.fn() }} />
+    </QueryClientProvider>);
+    await settle();
+    expect(host.querySelector('[data-index-cell]')).not.toBeNull();
+    expect(host.querySelector('[data-index-favorite]')).toBeNull();
+  });
+});
+
+describe('人物订阅', () => {
+  const row = (name: string, entityId: number, following = false, available = true) =>
+    person(name, { entity_id: entityId, following, feed: { following, available } });
+  const reply = (entityId: number, following: boolean) => ({ ok: true, entity_id: entityId, following, sources: [] });
+  const serveFollow = (seedRow: ReturnType<typeof person>, replies: (() => Promise<unknown> | unknown)[], writes: Record<string, unknown>[]) => {
+    let at = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      const next = replies[Math.min(at, replies.length - 1)];
+      at += 1;
+      return { ok: true, status: 200, json: async () => await next() };
+    }));
+  };
+
+  it('RSS 角标可订阅与退订，先翻状态且不误触整卡', async () => {
+    const seedRow = row('甲', 21);
+    seed(indexKey('performers', ''), [seedRow]);
+    const first = pending<unknown>();
+    const second = pending<unknown>();
+    const writes: Record<string, unknown>[] = [];
+    serveFollow(seedRow, [() => first.answer, () => second.answer], writes);
+    const given = props();
+    const host = await open(given); await settle();
+    const button = host.querySelector<HTMLButtonElement>('[data-index-follow]')!;
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('订阅甲的新作');
+    expect(button.closest('[data-index-cell]')).toBeNull();
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(given.openEntity).not.toHaveBeenCalled();
+    expect(writes[0]).toEqual({ action: 'follow', entity_id: 21, enabled: true });
+    await first.release(reply(21, true));
+    await settle();
+    expect(button.getAttribute('aria-label')).toBe('取消订阅甲的新作');
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[1]).toEqual({ action: 'follow', entity_id: 21, enabled: false });
+    await second.release(reply(21, false));
+    await settle();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('订阅失败退回并给通知回执', async () => {
+    const seedRow = row('乙', 22);
+    seed(indexKey('performers', ''), [seedRow]);
+    const writes: Record<string, unknown>[] = [];
+    const failure = pending<unknown>();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      await failure.answer;
+      return { ok: false, status: 500, json: async () => ({ error: '订阅没写上' }) };
+    }));
+    const host = await open(props()); await settle();
+    const button = host.querySelector<HTMLButtonElement>('[data-index-follow]')!;
+    await click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    await failure.release(null);
+    await settle();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[0]).toEqual({ action: 'follow', entity_id: 22, enabled: true });
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ alert: true }));
+  });
+
+  it('没有可订阅来源时不发请求，给去补来源的入口', async () => {
+    const seedRow = row('丙', 23, false, false);
+    seed(indexKey('performers', ''), [seedRow]);
+    const posts: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.body) posts.push(JSON.parse(String(init.body)));
+      return { ok: true, status: 200, json: async () => ({ items: [seedRow], has_more: false }) };
+    }));
+    const given = props();
+    const host = await open(given); await settle();
+    const link = host.querySelector<HTMLAnchorElement>('[data-index-follow-unavailable]')!;
+    expect(link.getAttribute('href')).toBe('/subscriptions?tab=add');
+    expect(link.textContent).toContain('暂无可订阅来源');
+    expect(link.getAttribute('aria-label')).toContain('去添加订阅来源');
+    expect(host.querySelector('button[data-index-follow]')).toBeNull();
+    expect(posts).toHaveLength(0);
+    await click(host.querySelector('[data-index-cell]'));
+    expect(given.openEntity).toHaveBeenCalledWith('performer', '丙');
   });
 });

@@ -21,7 +21,12 @@ _PAGE_HEAD = ('<head><meta charset="utf-8">'
               '<meta name="viewport" content="width=device-width,initial-scale=1">'
               '<meta name="color-scheme" content="light dark">'
               '<meta name="robots" content="noindex, nofollow">'
-              '<link rel="icon" href="/favicon.ico" type="image/x-icon">')
+              '<link rel="icon" href="/favicon.ico" type="image/x-icon">'
+              '<link rel="manifest" href="/manifest.webmanifest">'
+              '<meta name="mobile-web-app-capable" content="yes">'
+              '<meta name="apple-mobile-web-app-capable" content="yes">'
+              '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+              '<link rel="apple-touch-icon" href="/apple-touch-icon.png">')
 
 #: 手动选的深浅压过系统偏好，必须在第一次绘制前定下来，所以排在任何样式之前：`dark` 类给
 #: BoardUI 的色板，`data-theme` 记手动那一档，判据同 `web/index.html` 的预读脚本。

@@ -4,6 +4,7 @@ import { realDuration } from '@peach/legacy/core';
 import type { PlayerItem } from './types';
 
 const KEY = 'peach.playback-position.v1';
+const EXTERNAL_KEY = 'peach.external-playback.v1';
 const tracking = new WeakMap<HTMLVideoElement, () => void>();
 
 export function stopPlaybackPosition(video: HTMLVideoElement): void {
@@ -16,18 +17,53 @@ export function playbackKey(kind: 'item' | 'follow', item: PlayerItem, media: nu
   return follow ? `follow:${follow}:${media ?? 'main'}` : `item:${item.id}`;
 }
 
-function storedPosition(key: string): number | null {
+interface StoredPosition { time: number; at: number }
+
+function storedPosition(key: string): StoredPosition | null {
   try {
     const raw = localStorage.getItem(`${KEY}:${key}`);
-    const time = raw === null || !raw.trim() ? NaN : Number(raw);
-    return Number.isFinite(time) && time >= 0 ? time : null;
+    if (raw === null || !raw.trim()) return null;
+    try {
+      const parsed = JSON.parse(raw) as { time?: unknown; at?: unknown };
+      const time = Number(parsed?.time), at = Number(parsed?.at);
+      if (Number.isFinite(time) && time >= 0) return { time, at: Number.isFinite(at) && at > 0 ? at : 0 };
+      return null;
+    } catch { /* 旧记录是纯数字。 */ }
+    const legacy = Number(raw);
+    return Number.isFinite(legacy) && legacy >= 0 ? { time: legacy, at: 0 } : null;
   } catch { return null }
+}
+
+function epochSeconds(value: unknown): number {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(String(value ?? '').replace(' ', 'T'));
+  return Number.isFinite(parsed) ? parsed / 1000 : 0;
+}
+
+function externalLaunchAt(key: string): number {
+  try {
+    const at = Number(localStorage.getItem(`${EXTERNAL_KEY}:${key}`));
+    return Number.isFinite(at) && at > 0 ? at : 0;
+  } catch { return 0 }
+}
+
+/** 外部播放器确实接上进度回传时记一笔：下次网页续播要认它写进 ledger 的关闭点。 */
+export function markExternalPlayback(key: string): void {
+  try { localStorage.setItem(`${EXTERNAL_KEY}:${key}`, String(Date.now() / 1000)) } catch { /* 存储不可用不阻断播放。 */ }
 }
 
 export function playbackPosition(key: string, item: PlayerItem): number {
   const stored = storedPosition(key);
-  if (stored !== null) return stored;
   const ratio = Number(item.leave_ratio);
+  const fromRatio = ratio > 0 && ratio < 1 ? ratio * realDuration(item.duration) : 0;
+  if (stored && externalLaunchAt(key)) {
+    const serverAt = epochSeconds(item.last_played);
+    if (serverAt > Math.max(externalLaunchAt(key), stored.at)) {
+      return ratio >= 1 ? 0 : fromRatio;
+    }
+  }
+  if (stored !== null) return stored.time;
   return ratio > 0 && ratio < 1 ? ratio * realDuration(item.duration) : 0;
 }
 
@@ -39,7 +75,7 @@ export function trackPlaybackPosition(key: string, video: HTMLVideoElement): voi
     if (!ready || !Number.isFinite(video.currentTime)) return;
     const time = video.ended ? 0 : Math.max(0, video.currentTime);
     try {
-      localStorage.setItem(`${KEY}:${key}`, String(time));
+      localStorage.setItem(`${KEY}:${key}`, JSON.stringify({ time, at: Date.now() / 1000 }));
     } catch { /* 存储不可用不阻断播放。 */ }
   };
   const loaded = () => { ready = true };

@@ -1,7 +1,7 @@
 /* 进度条上方那块预览：指着哪一秒，就显示那一秒的画面和时间。详情、小窗与沉浸三处共用。
  *
  * 只认「宿主元素 + 进度比例」，不认事件：Video.js 的进度条和沉浸自绘的那条各自把指针换成比例
- * 交进来。时间轴采集铺好了接触印相就按它取格；取不到、且有快照时退回九宫格那九格，没有可用图就收起预览。
+ * 交进来。时间轴采集铺好了接触印相就按它取格；取不到、且有快照时退回九宫格那九格，没有可用图就只显示时间。
  * 这里只读已经铺好的图，`/timeline` 不现抽，`/poster` 只从已有快照裁格、不读视频。 */
 import { api, fmtClock } from '@peach/legacy/core';
 
@@ -68,8 +68,11 @@ export function createSeekPreview(host: HTMLElement, item: SeekPreviewItem | nul
   let sheets: TimelineSheets | null = null, shown = '', indexedImage = false, cell = -1, primed = false, disposed = false;
   let active = false, pointer = 0, span = 0;
   const paint = () => {
-    preview.hidden = disposed || !active || !frame || frame.hidden || !image?.complete || !image.naturalWidth;
+    preview.hidden = disposed || !active;
     if (preview.hidden) return;
+    /* 没有图时只显示时间：浮层不能因为图没取到就一起消失。 */
+    const ready = !!frame && !frame.hidden && !!image?.complete && !!image.naturalWidth;
+    if (frame) frame.style.display = ready ? '' : 'none';
     const track = host.getBoundingClientRect().width;
     preview.style.left = `${previewCenter(pointer * track, track, preview.offsetWidth, options.inset)}px`;
   };

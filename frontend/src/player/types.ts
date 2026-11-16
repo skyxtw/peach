@@ -67,6 +67,8 @@ export interface PlayerItem {
   height?: number | null;
   size?: number | null;
   follow_item_id?: number | null;
+  leave_ratio?: number | null;
+  last_played?: number | string | null;
   media_type?: string;
   thumb_url?: string;
   [field: string]: unknown;

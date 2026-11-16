@@ -18,12 +18,22 @@ from peach.interface_text import dev as t  # noqa: E402
 #: 密度挑一张，1024 那张原图只留给 README、托盘与打包。
 SMALL_LOGO_SIZES = (64, 128)
 
+#: 主屏幕 Web App 的图标：iOS 用 apple-touch-icon（180），Android/桌面 manifest 用 192 与 512。
+PWA_LOGO_SIZES = ((180, "apple-touch-icon"), (192, "peach-pwa-192"), (512, "peach-pwa-512"))
+
 
 def save_small_logos(logo: Image.Image, output_dir: Path) -> None:
     """从方形原图缩出 `peach-logo-64.png` 与 `peach-logo-128.png`。"""
     for size in SMALL_LOGO_SIZES:
         logo.resize((size, size), Image.Resampling.LANCZOS).save(
             output_dir / f"peach-logo-{size}.png", optimize=True)
+
+
+def save_pwa_logos(logo: Image.Image, output_dir: Path) -> None:
+    """从方形原图缩出主屏幕 Web App 的三枚图标。"""
+    for size, name in PWA_LOGO_SIZES:
+        logo.resize((size, size), Image.Resampling.LANCZOS).save(
+            output_dir / f"{name}.png", optimize=True)
 
 
 def generate(source: Path, output_dir: Path) -> None:
@@ -51,6 +61,7 @@ def generate(source: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     logo.save(output_dir / "peach-logo.png", optimize=True)
     save_small_logos(logo, output_dir)
+    save_pwa_logos(logo, output_dir)
     logo.save(
         output_dir / "peach.ico",
         format="ICO",

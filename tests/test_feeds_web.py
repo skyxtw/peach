@@ -58,7 +58,7 @@ class FakeTransport:
 DMM_ENDPOINT = "https://api.video.dmm.co.jp/graphql"
 
 
-def dmm_catalogue(rows, codes):
+def dmm_catalogue(rows, codes, *, maker_id="1", maker_name="エスワン"):
     """DMM GraphQL 的假答复：片单一页 `rows`（cid, 发售日, 预购, 出演人数），官方番号按 `codes`。"""
     def answer(request):
         payload = json.loads(request.body)
@@ -68,13 +68,15 @@ def dmm_catalogue(rows, codes):
                          "actresses": [{"id": "1051912", "name": "涼森れむ"},
                                        *({"id": str(index), "name": f"女優{index}"}
                                          for index in range(cast - 1))],
-                         "maker": {"id": "1", "name": "エスワン"}}
+                         "maker": {"id": maker_id, "name": maker_name}}
                         for cid, date, pre_order, cast in rows]
             data = {"legacySearchPPV": {"result": {
                 "pageInfo": {"totalCount": len(rows), "hasNext": False}, "contents": contents}}}
         else:
             cids = re.findall(r'ppvContent\(id: "([^"]+)"\)', payload["query"])
-            data = {f"a{index}": {"id": cid, "makerContentId": codes[cid]} for index, cid in enumerate(cids)}
+            # 没答官方番号的 cid 照接口答 null（`maker_codes` 跳过它）。
+            data = {f"a{index}": ({"id": cid, "makerContentId": codes[cid]} if cid in codes else None)
+                    for index, cid in enumerate(cids)}
         return HttpResponse(200, {}, json.dumps({"data": data}, ensure_ascii=False).encode(), request.url)
     return answer
 
@@ -413,7 +415,9 @@ class FeedWebTest(FeedWebFixture):
         [source] = dispatch_api_get(self.contract, "/api/feeds", {})["sources"]
         self.assertEqual((source["name"], source["entity_id"], source["entity_name"]),
                          ("凉森玲梦", entity_id, "凉森玲梦"))
+        self.assertEqual(source["entity_kind"], "performer")
         self.assertFalse(source["has_image"])
+        self.assertNotIn("has_logo", source)
 
     def test_the_source_endpoint_takes_no_address_from_the_page(self):
         # 订阅只从人物页进，地址由服务端现拼（ADR-0047）；页面送来的地址一律不收。
@@ -1699,6 +1703,214 @@ class PerformerPageFollowTest(FeedFollowByNameFixture):
         self.assertEqual(self._page_follow(self.MISSAV)["entity_id"], held)
         self.assertTrue(all(request.url != self.search for request in self.transport.requests))
         self._settled()
+
+
+class StudioFeedSwitchTest(PerformerFeedFixture):
+    """片商/厂牌页的订阅开关：编号来自显式映射；官方番号按页批量补，缺一条不丢整页。"""
+
+    def setUp(self):
+        super().setUp()
+        self.studio = self._studio("無名のスタジオ")
+
+    def _studio(self, name, *, label_of=None):
+        with self.contract.database.write_transaction() as connection:
+            entity_id = int(connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('studio',?,peach_normalize(?),?,?)",
+                (name, name, feeds.stamp(), feeds.stamp())).lastrowid)
+            if label_of is not None:
+                connection.execute(
+                    "INSERT INTO label_maker(label_id,maker_id,source,checked_at) VALUES(?,?,'test',?)",
+                    (entity_id, int(label_of), feeds.stamp()))
+        return entity_id
+
+    def _bind(self, entity_id, external_kind, value):
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+                " VALUES(?,'dmm',?,?)", (int(entity_id), external_kind, value))
+
+    def _profile(self, name):
+        return dispatch_api_get(self.contract, "/api/entity", {"kind": "studio", "name": name})
+
+    def _add_studio_source(self):
+        with self.contract.database.write_transaction() as connection:
+            return feeds.add_source(connection, url=feeds.dmm_maker_url("3152"),
+                                    entity_id=self.studio)
+
+    def test_studio_source_rows_carry_logo_fields_instead_of_performer_image(self):
+        """片商/厂牌行走自己的 logo，不再向 /entity-image 要人物图；无标识时字段仍完整。"""
+        self._bind(self.studio, "maker", "3152")
+        self._add_studio_source()
+        with patch.object(self.contract, "has_logo", return_value=True), \
+                patch.object(self.contract, "logo_version", return_value="logo7"):
+            [source] = self._sources()
+        self.assertEqual((source["entity_kind"], source["has_logo"], source["logo_version"]),
+                         ("studio", True, "logo7"))
+        for key in ("has_image", "image_version", "avatar_focus"):
+            self.assertNotIn(key, source)
+        with patch.object(self.contract, "has_logo", return_value=False), \
+                patch.object(self.contract, "logo_version", return_value=""):
+            [source] = self._sources()
+        self.assertEqual((source["has_logo"], source["logo_version"]), (False, ""))
+        self.assertNotIn("has_image", source)
+
+    def _asked_cids(self):
+        """这一套件发出的官方番号别名查询里问过的 cid，按请求顺序。"""
+        asked = []
+        for request in self.transport.requests:
+            query = json.loads(request.body)["query"]
+            if "ppvContent(id:" in query:
+                asked.extend(re.findall(r'ppvContent\(id: "([^"]+)"\)', query))
+        return asked
+
+    def test_a_maker_page_subscribes_its_dmm_maker_catalogue(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133", "pbd00528": "PBD-528"},
+            maker_id="3152", maker_name="エスワン ナンバーワンスタイル")
+        result = self._switch(True, self.studio)
+        self.assertTrue(result["following"])
+        state = self._settled()
+        [source] = self._sources()
+        self.assertEqual(
+            (source["kind"], source["url"], source["kind_label"], source["name"], source["page_name"]),
+            (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), "JAV 订阅 · DMM 片商",
+             "無名のスタジオ", "エスワン ナンバーワンスタイル"))
+        report = state["results"][0]
+        self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"]),
+                         (True, 2, 0, 2))
+        self.assertEqual(sorted(report["codes"]), ["MIKR-133", "PBD-528"])
+        self.assertEqual(sorted(item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]), ["MIKR-133", "PBD-528"])
+
+    def test_a_label_page_subscribes_its_dmm_label_catalogue(self):
+        label = self._studio("S1 NO.1 STYLE", label_of=self.studio)
+        self._bind(label, "label", "3474")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("ssis00057", "2021-05-07", False, 1)], {"ssis00057": "SSIS-057"})
+        self._switch(True, label)
+        state = self._settled()
+        [source] = self._sources()
+        self.assertEqual((source["kind"], source["url"], source["kind_label"]),
+                         (feeds.KIND_DMM_LABEL, feeds.dmm_label_url("3474"), "JAV 订阅 · DMM 厂牌"))
+        report = state["results"][0]
+        self.assertEqual((report["ok"], report["without_code"], report["added"]), (True, 0, 1))
+        self.assertEqual([item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]], ["SSIS-057"])
+
+    def test_a_cid_without_an_official_code_is_counted_but_not_shelled(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133"}, maker_id="3152", maker_name="エスワン ナンバーワンスタイル")
+        self._switch(True, self.studio)
+        report = self._settled()["results"][0]
+        self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"]),
+                         (True, 2, 1, 1))
+        self.assertEqual([item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]], ["MIKR-133"])
+
+    def test_only_unseen_cids_are_asked_for_official_codes(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133", "pbd00528": "PBD-528"}, maker_id="3152")
+        self._switch(True, self.studio)
+        self._settled()
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("new001", "2026-11-20", False, 1)],
+            {"new001": "NEW-001"}, maker_id="3152")
+        self._check()
+        self.assertEqual(self._asked_cids(), ["mikr00133", "pbd00528", "new001"])
+        # 第一轮那两部的壳还在，第二轮只多出新的这一部。
+        self.assertEqual(sorted(item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]), ["MIKR-133", "NEW-001", "PBD-528"])
+
+    def test_official_codes_are_asked_in_batches_of_one_page(self):
+        self._bind(self.studio, "maker", "3152")
+        rows = [(f"cid{index:05d}", "2026-10-01", False, 1) for index in range(150)]
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            rows, {cid: f"TEST-{index:03d}" for index, (cid, *_rest) in enumerate(rows)}, maker_id="3152")
+        self._switch(True, self.studio)
+        self.assertTrue(self._settled()["results"][0]["ok"])
+        queries = [json.loads(request.body)["query"] for request in self.transport.requests]
+        batches = [re.findall(r'ppvContent\(id: "([^"]+)"\)', query)
+                   for query in queries if "ppvContent(id:" in query]
+        self.assertEqual([len(batch) for batch in batches], [100, 50])
+
+    def test_switching_off_and_on_reuses_the_same_source(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue([], {})
+        self._switch(True, self.studio)
+        self._settled()
+        [created] = self._sources()
+        self._switch(False, self.studio)
+        [paused] = self._sources()
+        self.assertFalse(paused["enabled"])
+        self._switch(True, self.studio)
+        self._settled()
+        [again] = self._sources()
+        self.assertEqual((again["id"], again["enabled"]), (created["id"], True))
+
+    def test_a_studio_without_a_bound_id_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self._switch(True, self.studio)
+        self.assertEqual(getattr(caught.exception, "code", None), "api.feeds.noStudioIds")
+        self.assertEqual(self._sources(), [])
+
+    def test_the_profile_carries_the_switch_only_when_a_dmm_id_is_bound(self):
+        self.assertNotIn("feed", self._profile("無名のスタジオ"))
+        self._bind(self.studio, "maker", "3152")
+        self.assertEqual(self._profile("無名のスタジオ")["feed"], {"following": False})
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue([], {})
+        self._switch(True, self.studio)
+        self._settled()
+        self.assertEqual(self._profile("無名のスタジオ")["feed"], {"following": True})
+
+    def test_a_seeded_studio_shows_the_switch_and_subscribing_writes_the_binding(self):
+        seeded = self._studio("S1 NO.1 STYLE")
+        self.assertEqual(self._profile("S1 NO.1 STYLE")["feed"], {"following": False})
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1)], {"mikr00133": "MIKR-133"}, maker_id="3152")
+        self._switch(True, seeded)
+        self._settled()
+        [source] = self._sources()
+        self.assertEqual((source["kind"], source["url"], source["entity_id"]),
+                         (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), seeded))
+        with self.contract.database.read_connection() as connection:
+            refs = connection.execute(
+                "SELECT provider,external_kind,external_id FROM entity_external_ref"
+                " WHERE entity_id=?", (seeded,)).fetchall()
+        self.assertEqual([tuple(row) for row in refs], [("dmm", "maker", "3152")])
+        self.assertEqual(self._profile("S1 NO.1 STYLE")["feed"], {"following": True})
+        self._switch(False, seeded)
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref WHERE entity_id=?", (seeded,)).fetchone()[0], 1)
+
+    def test_bind_studio_endpoint_is_idempotent_and_validates_input(self):
+        result = dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+            "entity_id": self.studio, "kind": "maker", "id": "3152"})
+        self.assertEqual(result, {"ok": True, "entity_id": self.studio, "kind": "maker", "id": "3152"})
+        dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+            "entity_id": self.studio, "kind": "maker", "id": 3152})
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref WHERE provider='dmm'").fetchone()[0], 1)
+        with self.assertRaises(ValueError):
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": self.studio, "kind": "maker", "id": "S1"})
+        with self.assertRaises(ValueError) as refused:
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": self.performer, "kind": "maker", "id": "3152"})
+        self.assertEqual(refused.exception.code, "api.feeds.studioOnly")
+        other = self._studio("別のスタジオ")
+        with self.assertRaises(ValueError) as taken:
+            dispatch_api_post(self.contract, "/api/feeds/bind-studio", {
+                "entity_id": other, "kind": "maker", "id": "3152"})
+        self.assertEqual(taken.exception.code, "api.feeds.dmmIdTaken")
 
 
 class JavDiscoveryTest(FeedWebFixture):

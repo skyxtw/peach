@@ -489,6 +489,13 @@ def w_library_processing(contract, body, *, resume=False):
         previous['retryable_asset_ids'] = _remaining_retry_ids(contract, previous)
     config, library_id, retry_ids, asset_ids, stage = _scoped_processing_request(
         contract, config, previous, body, resume)
+    skip_local = (body or {}).get('skip_local', False)
+    if type(skip_local) is not bool:
+        raise UserValueError('api.libraryProcessing.incrementalNotBoolean')
+    if skip_local and stage != METADATA_STAGE:
+        raise UserValueError('api.libraryProcessing.stageInvalid')
+    if skip_local and asset_ids is None:
+        raise UserValueError('api.libraryProcessing.selectionInvalid')
     incremental = (body or {}).get('incremental', False)
     allow_metered = _metered_grant(body, stage, asset_ids)
     if (body or {}).get('scope') == 'new':
@@ -503,6 +510,7 @@ def w_library_processing(contract, body, *, resume=False):
         try:
             result = process_library(config, contract.db_path, contract.candidate_root, contract.cover_root,
                 job_id=job_id, retry_ids=retry_ids, stage=stage, asset_ids=asset_ids, incremental=incremental, library_id=library_id,
+                skip_local=skip_local,
                 allow_metered=allow_metered,
                 # 自动落库与页面写的是同一个 `LedgerDatabase`：进程内写锁在实例上，
                 # 另建一个就是在同一个进程里开第二条写入路径。

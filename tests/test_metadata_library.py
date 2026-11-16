@@ -4477,6 +4477,17 @@ class LocalEvidenceReuseTests(unittest.TestCase):
         return _LocalEvidenceCache(self.config, self.db, self.root / 'covers',
                                    _DirectoryIndex(), state, state_path(self.config))
 
+    def _items_dir(self):
+        path = state_path(self.config)
+        return path.parent / (path.stem + '-items')
+
+    def _cache_file(self, digest, record):
+        folder = self._items_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / f"1-{digest}.json"
+        target.write_text(json.dumps(record, ensure_ascii=False), encoding='utf-8')
+        return target
+
     def test_unchanged_video_reuses_memo_and_skips_local_read(self):
         from peach.library_processing import _file_fingerprint
         row = self._row()
@@ -4510,6 +4521,73 @@ class LocalEvidenceReuseTests(unittest.TestCase):
         self.assertEqual(local[0], 'ABW-358')
         refreshed = json.loads(Path(state['local_metadata'][key]).read_text(encoding='utf-8'))
         self.assertEqual(refreshed['fingerprint'], _file_fingerprint(Path(row['path'])))
+
+    def test_new_task_reuses_matching_disk_cache(self):
+        from peach.library_processing import _file_fingerprint
+        row = self._row()
+        poster = self.media / 'ABW-358.jpg'
+        target = self.root / 'covers' / 'ABW-358.jpg'
+        cached = self._cache_file('a' * 64, {
+            'local': ['ABW-358', True, {'title': '本地标题'}, []],
+            'posters': [(str(poster), 'ABW-358', str(target))],
+            'fingerprint': _file_fingerprint(Path(row['path'])),
+        })
+        state = {'local_metadata': {}, 'issue_count': 0}
+        poster_jobs = []
+        with patch('peach.library_processing._read_local_metadata',
+                   side_effect=AssertionError('磁盘上有对得上的证据不应重读')):
+            local = self._cache(state).read(row, Mock(), Mock(), poster_jobs)
+        self.assertEqual(local, ('ABW-358', True, {'title': '本地标题'}, []))
+        self.assertEqual(state['local_metadata'], {f"1:{row['path']}": str(cached)})
+        self.assertEqual([(str(job[1]), job[2], job[3]) for job in poster_jobs],
+                         [(str(poster), 'ABW-358', target)])
+
+    def test_disk_cache_with_mismatched_fingerprint_rereads(self):
+        from peach.library_processing import _file_fingerprint
+        row = self._row()
+        cached = self._cache_file('a' * 64, {
+            'local': ['WRONG', False, None, []], 'posters': [], 'fingerprint': [0, 0]})
+        state = {'local_metadata': {}, 'issue_count': 0}
+        with patch('peach.library_processing._read_local_metadata',
+                   return_value=('ABW-358', False, None, [])) as local_read:
+            local = self._cache(state).read(row, Mock(), Mock(), [])
+        self.assertEqual(local[0], 'ABW-358')
+        self.assertEqual(local_read.call_count, 1)
+        refreshed = Path(state['local_metadata'][f"1:{row['path']}"])
+        self.assertNotEqual(refreshed, cached)
+        self.assertEqual(json.loads(refreshed.read_text(encoding='utf-8'))['fingerprint'],
+                         _file_fingerprint(Path(row['path'])))
+
+    def test_disk_cache_without_fingerprint_is_not_reused(self):
+        row = self._row()
+        cached = self._cache_file('a' * 64, {'local': ['ABW-358', False, None, []], 'posters': []})
+        state = {'local_metadata': {}, 'issue_count': 0}
+        with patch('peach.library_processing._read_local_metadata',
+                   return_value=('ABW-358', False, None, [])) as local_read:
+            local = self._cache(state).read(row, Mock(), Mock(), [])
+        self.assertEqual(local[0], 'ABW-358')
+        self.assertEqual(local_read.call_count, 1)
+        self.assertNotEqual(Path(state['local_metadata'][f"1:{row['path']}"]), cached)
+
+    def test_disk_index_skips_corrupt_records_and_uses_the_matching_one(self):
+        from peach.library_processing import _file_fingerprint
+        row = self._row()
+        fingerprint = _file_fingerprint(Path(row['path']))
+        self._cache_file('a' * 64, {
+            'local': ['STALE', False, None, []], 'posters': [], 'fingerprint': [0, 0]})
+        folder = self._items_dir()
+        (folder / f"1-{'b' * 64}.json").write_text('{not json', encoding='utf-8')
+        (folder / '1-not-a-digest.json').write_text(json.dumps({
+            'local': ['MISNAMED', False, None, []], 'posters': [], 'fingerprint': fingerprint}),
+            encoding='utf-8')
+        matching = self._cache_file('c' * 64, {
+            'local': ['ABW-358', True, None, []], 'posters': [], 'fingerprint': fingerprint})
+        state = {'local_metadata': {}, 'issue_count': 0}
+        with patch('peach.library_processing._read_local_metadata',
+                   side_effect=AssertionError('指纹匹配的磁盘证据应直接复用')):
+            local = self._cache(state).read(row, Mock(), Mock(), [])
+        self.assertEqual(local[0], 'ABW-358')
+        self.assertEqual(Path(state['local_metadata'][f"1:{row['path']}"]), matching)
 
     def test_retry_local_state_carries_only_the_local_index(self):
         from peach.library_processing import retry_local_state

@@ -26,6 +26,12 @@ r18.dev 的 `name_ja` 是同一套词。
 排在最前。列表那一型没有 `makerContentId`（2026-11-04 实测问它回 422 `GRAPHQL_VALIDATION_FAILED`），
 官方番号要再用别名批量问一次 `ppvContent`。不用 cid 推：分卷 `h_1454mcsr64002` 推出来是
 `MCSR-64002`，官方写 `MCSR-640-02`；`13dsvr01234` 的数字头会被当成发行目录吃掉，推成另一个厂牌的 `DSVR`。
+
+同一个接口还给片商与厂牌订阅列片单（2026-11-15 实测）：`legacySearchPPV` 的 `filter.makerIds` 与
+`filter.labelIds` 只认 `{"ids": [{"id": "3152"}]}` 这种嵌套形状，传数组或裸编号回 422；多编号是
+AND 语义，两个 maker 一起传回零条，所以一次只问一个。列表型有 `maker{id,name}` 但没有 `label`
+字段，也没有 `makerContentId`：这一层只交 cid、标题、发售日与预购标记，官方番号由 Feed 层按
+cid 用 `maker_codes` 批量补。
 """
 from __future__ import annotations
 
@@ -67,17 +73,26 @@ UNRECOGNISED = "errors.dmm.unrecognizedCode"
 MISSING = "errors.dmm.notFound"
 NOT_JSON = "errors.dmm.notWorkJson"
 
-#: 按女优编号列片单。列表型 `PPVContentSearchContent` 没有 `makerContentId` 与 `makerReleasedAt`。
-ACTRESS_WORKS_QUERY = (
-    "query PeachActressWorks($limit: Int!, $offset: Int!, $sort: ContentSearchPPVSort!,"
-    " $filter: ContentSearchPPVFilterInput) { legacySearchPPV(limit: $limit, offset: $offset,"
-    " sort: $sort, filter: $filter) { result { pageInfo { totalCount hasNext } contents { id title"
-    " deliveryStartAt releaseStatus actresses { id name } maker { id name } } } } }"
-)
-#: 一页多少条：接口单页上限 100，官方番号的别名批量也按这个数一次问完。
-ACTRESS_PAGE = 100
-#: 女优编号的写法。只认纯数字，拼进查询变量之前就挡住别的东西。
-ACTRESS_ID = re.compile(r"^\d{1,10}$")
+#: 片单查询的正文：女优、片商、厂牌共用同一组列表字段与分页参数。
+#: 列表型 `PPVContentSearchContent` 没有 `makerContentId` 与 `makerReleasedAt`，也没有 `label`
+#: 字段（2026-11-15 实测）。
+def _works_query(operation: str) -> str:
+    return (
+        f"query {operation}($limit: Int!, $offset: Int!, $sort: ContentSearchPPVSort!,"
+        " $filter: ContentSearchPPVFilterInput) { legacySearchPPV(limit: $limit, offset: $offset,"
+        " sort: $sort, filter: $filter) { result { pageInfo { totalCount hasNext } contents { id title"
+        " deliveryStartAt releaseStatus actresses { id name } maker { id name } } } } }"
+    )
+
+
+#: 按女优编号列片单。
+ACTRESS_WORKS_QUERY = _works_query("PeachActressWorks")
+#: 按片商或厂牌编号列片单。
+MAKER_WORKS_QUERY = _works_query("PeachMakerWorks")
+#: 片单每页多少条：接口单页上限 100，官方番号的别名批量也按这个数一次问完。
+WORKS_PAGE = 100
+#: 女优、片商、厂牌的编号写法。只认 ASCII 数字，拼进查询变量之前就挡住别的东西。
+DIGITS_ID = re.compile(r"^[0-9]{1,10}$")
 PRE_ORDER = "PRE_ORDER"
 
 
@@ -98,6 +113,23 @@ class ListedWork:
 class ActressWorks:
     """一位女优的片单。`name` 是她在 DMM 上这个编号挂的名字，`total` 是接口自报的总部数。"""
 
+    name: str
+    total: int
+    works: tuple[ListedWork, ...]
+
+
+@dataclass(frozen=True)
+class CatalogueWorks:
+    """一个片商（`maker`）或厂牌（`label`）的片单。
+
+    `kind` 是过滤维度，`id` 是这次查询的 DMM 编号；`name` 是接口在一页里回过的 maker 名，label
+    片单留空——列表型没有 `label` 字段（2026-11-15 实测），展示名由调用方按本地实体给。`total`
+    是接口自报的总部数。行沿用 `ListedWork`：`maker_code` 一律为空，列表型没有 `makerContentId`，
+    官方番号由 Feed 层按 cid 用 `maker_codes` 批量补。
+    """
+
+    kind: str
+    id: str
     name: str
     total: int
     works: tuple[ListedWork, ...]
@@ -202,6 +234,12 @@ def actress_name(rows, actress_id: str) -> str:
                  if str(item.get("id") or "") == actress_id), "")
 
 
+def maker_name(rows, maker_id: str) -> str:
+    """这个片商编号在片单里挂的名字；label 片单不取（列表型没有 label 字段）。"""
+    return next((str((row.get("maker") or {}).get("name") or "") for row in rows
+                 if str((row.get("maker") or {}).get("id") or "") == maker_id), "")
+
+
 class DmmSource(SiteSource):
     DEFAULT = DMM
 
@@ -272,20 +310,20 @@ class DmmSource(SiteSource):
         return found
 
     def actress_works(self, actress_id: str, *, session: Session, known=frozenset(),
-                      limit: int = 2 * ACTRESS_PAGE) -> ActressWorks:
+                      limit: int = 2 * WORKS_PAGE) -> ActressWorks:
         """按女优编号列片单，新的在前，预购最前。
 
         一页 100 条，见过的 cid（`known`）只列不问官方番号。翻页只在这一页全是没见过的时候继续：
         片单按发售日倒序，一页里出现见过的那部，再往后就都是上一轮列过的了；首轮最多翻到 `limit`。
         一个人的片单动辄上千条（篠田ゆう 2066 部），每六小时全翻一遍只是花配额。
         """
-        if not ACTRESS_ID.match(str(actress_id or "")):
+        if not DIGITS_ID.match(str(actress_id or "")):
             raise SourceFailure(FailureReason.NOT_FOUND, "errors.feeds.dmmActressIdDigits")
         name, total, works = "", 0, []
         offset = 0
         while offset < limit:
             data = self.graphql(ACTRESS_WORKS_QUERY, {
-                "limit": ACTRESS_PAGE, "offset": offset, "sort": "RELEASE_DATE",
+                "limit": WORKS_PAGE, "offset": offset, "sort": "RELEASE_DATE",
                 "filter": {"actressIds": {"ids": [{"id": str(actress_id)}]}}}, session=session)
             rows, total, has_next = listed_page(data)
             rows = rows[:limit - offset]
@@ -297,6 +335,44 @@ class DmmSource(SiteSource):
             if not has_next or not rows or len(fresh) < len(rows):
                 break
         return ActressWorks(name=name, total=total, works=tuple(works))
+
+    def maker_works(self, maker_id: str, *, session: Session, known=frozenset(),
+                    limit: int = 2 * WORKS_PAGE) -> CatalogueWorks:
+        """按片商编号列片单，新的在前，预购最前；翻页与 `actress_works` 同一套规则。
+
+        一次只问一个编号：接口的 `makerIds` 是 AND 语义，两个 maker 一起传回零条。
+        """
+        return self._catalogue_works("maker", maker_id, "makerIds", "errors.feeds.dmmMakerIdDigits",
+                                     session=session, known=known, limit=limit)
+
+    def label_works(self, label_id: str, *, session: Session, known=frozenset(),
+                    limit: int = 2 * WORKS_PAGE) -> CatalogueWorks:
+        """按厂牌编号列片单；分页、排序与 `maker_works` 相同。"""
+        return self._catalogue_works("label", label_id, "labelIds", "errors.feeds.dmmLabelIdDigits",
+                                     session=session, known=known, limit=limit)
+
+    def _catalogue_works(self, kind: str, value: str, field: str, invalid_code: str, *,
+                         session: Session, known, limit: int) -> CatalogueWorks:
+        """按一个纯数字的片商或厂牌编号翻片单；`kind` 只决定过滤字段与结果里的名字。"""
+        value = str(value or "")
+        if not DIGITS_ID.match(value):
+            raise SourceFailure(FailureReason.NOT_FOUND, invalid_code)
+        name, total, works = "", 0, []
+        offset = 0
+        while offset < limit:
+            data = self.graphql(MAKER_WORKS_QUERY, {
+                "limit": WORKS_PAGE, "offset": offset, "sort": "RELEASE_DATE",
+                "filter": {field: {"ids": [{"id": value}]}}}, session=session)
+            rows, total, has_next = listed_page(data)
+            rows = rows[:limit - offset]
+            fresh = [str(row["id"]) for row in rows if str(row["id"]) not in known]
+            works.extend(listed_work(row, "") for row in rows)
+            if kind == "maker":
+                name = name or maker_name(rows, value)
+            offset += len(rows)
+            if not has_next or not rows or len(fresh) < len(rows):
+                break
+        return CatalogueWorks(kind=kind, id=value, name=name, total=total, works=tuple(works))
 
     def fetch(self, code: str, *, session: Session) -> Page:
         if not code_parts(code):

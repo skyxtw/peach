@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import { VisuallyHidden } from 'react-aria-components';
 import { attachOverlayScrollbar, revealTexts, spinnerHtml, wireHorizontalScroller } from '@peach/legacy/ui';
 import { Button, ButtonLink } from '@/components/base/buttons/button';
@@ -18,6 +18,8 @@ import { NavigationDropLine, NavigationOrderMenu, useNavigationOrder } from '../
 import { useSidebarReorder } from '../sidebar/use-sidebar-reorder';
 import { busyProps } from '../settings/busy-props';
 import { favoriteHref, isFavorite, useShortcuts, useShortcutWrite, type Favorite } from './library-shortcuts';
+import { EntityActionButton } from './favorite-star';
+export { EntityActionButton } from './favorite-star';
 import { t } from '../../i18n';
 import { codedText } from '../../core/server-text';
 import './shortcuts.css';
@@ -30,11 +32,6 @@ const LABELS: Record<string, string> = { performer: t('settings:favoritesPanel.p
 const KIND_LABELS: Record<string, string> = { performer: t('settings:favoriteKinds.performer'), creator: t('settings:favoriteKinds.creator'), studio: t('settings:favoriteKinds.studio'), series: t('settings:favoriteKinds.series'), agency: t('settings:favoriteKinds.agency'), tag: t('settings:favoriteKinds.tag') };
 const GLYPHS = { all: spriteGlyph('star'), performer: spriteGlyph('user-round'), creator: spriteGlyph('user-round'), studio: spriteGlyph('clapperboard'), series: spriteGlyph('film'), agency: spriteGlyph('briefcase'), tag: spriteGlyph('tags'), filters: spriteGlyph('list-filter') };
 const SCOPES = [['all', t('settings:shared.all')], ...Object.entries(LABELS), ['filters', t('settings:favoritesPanel.savedFilters')]];
-
-/** 实体行内的图标动作，共用收藏按钮的尺寸、悬停与焦点反馈。 */
-export function EntityActionButton({ label, children, ...props }: ComponentProps<'button'> & { label: string }) {
-  return <button type="button" {...props} data-entity-action="" aria-label={label} title={props.title || label}>{children}</button>;
-}
 
 export function FavoriteButton({ item }: { item: Favorite }) {
   return <FavoriteChoice key={`${item.scope || 'local'}:${item.kind}:${item.tag_id || item.entity_id}:${item.name}`} item={item} />;

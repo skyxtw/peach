@@ -12,6 +12,7 @@ from unittest import mock
 
 from peach import catalog_rules, interface_text, jav_poster_crop, web_batch, web_catalog, web_entity, web_playlists, web_search, web_stats
 from peach import web_contract as rm_web
+from peach.kana import kana_row
 from peach.previews import entity_image_key, logo_key
 from peach.web_catalog import q_editions, q_items, q_parts
 from support.ledger import fresh_ledger
@@ -472,6 +473,131 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(next(row["n"] for row in index["items"] if row["k"] == "Canonical Alice"), 2)
         self.assertEqual([(row["k"], row["n"]) for row in facets["tagperformers"]], [("Canonical Alice", 2)])
 
+    def test_performer_index_sorts_profile_columns_with_nulls_last_and_stable_pages(self):
+        """艺人名册按资料排序：空值排最后、罩杯按 A→Z 位次、同值用 id 兜底，翻页不重不漏。"""
+        profiles = {
+            21: ("2020-01-01", None, "C", 80, 150, "1990-01-01", "あ"),
+            22: ("2021-01-01", None, "A", 90, 160, "1991-01-01", "い"),
+            23: (None, None, None, None, None, None, None),
+            24: (None, 2015, "Z", None, None, None, "う"),
+            25: ("2019-01-01", None, "b", 85, 155, "1989-01-01", "え"),
+            26: ("2020-01-01", None, "D", 85, 155, "1992-01-01", "お"),
+        }
+        with closing(sqlite3.connect(self.db_path)) as con, con:
+            for eid in profiles:
+                con.execute(
+                    "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(?, 'performer', ?, ?, '2026-01-01', '2026-01-01')",
+                    (eid, f"Person {eid}", f"person {eid}"))
+                con.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(1,?,'performer','test',1.0)", (eid,))
+            # 22 名下两部作品：作品数排序要能看出方向，其余人是同值的 id 兜底。
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(2,22,'performer','test',1.0)")
+            for eid, (debut_date, debut_year, cup, bust, height, birth, kana) in profiles.items():
+                con.execute(
+                    "INSERT INTO performer_profile(entity_id,debut_date,debut_year,cup,bust_cm,height_cm,"
+                    "birth_date,kana,source,source_url,fetched_at) VALUES(?,?,?,?,?,?,?,?,'test','','2026-01-01')",
+                    (eid, debut_date, debut_year, cup, bust, height, birth, kana))
+
+        def ids(**args):
+            rows = rm_web.q_index(self.contract, "performers", **args)["items"]
+            return [row["entity_id"] for row in rows]
+
+        # 出厂排序就是作品数降序，同值按 id 升序；夹具里的 11、12 与新增的 21…26 都在名册里。
+        self.assertEqual(ids(), [12, 22, 11, 21, 23, 24, 25, 26])
+        # 缺资料的永远在最后：22 有两部片，但资料排序不看作品数。
+        self.assertEqual(ids(sort="debut", direction="asc"), [24, 25, 21, 26, 22, 11, 12, 23])
+        self.assertEqual(ids(sort="cup", direction="asc"), [22, 25, 21, 26, 24, 11, 12, 23])
+        self.assertEqual(ids(sort="bust", direction="desc"), [22, 25, 26, 21, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="height", direction="asc"), [21, 25, 26, 22, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="birth", direction="desc"), [26, 22, 21, 25, 11, 12, 23, 24])
+        self.assertEqual(ids(sort="kana", direction="asc"), [21, 22, 24, 25, 26, 11, 12, 23])
+        # 只缺日期的出道年不算缺资料，排在同一年确有日期的前面。
+        self.assertEqual(ids(sort="debut", direction="desc"), [22, 21, 26, 25, 24, 11, 12, 23])
+        row = next(row for row in rm_web.q_index(self.contract, "performers", sort="cup")["items"]
+                   if row["entity_id"] == 21)
+        self.assertEqual((row["cup"], row["bust_cm"], row["height_cm"], row["birth_date"], row["kana"]),
+                         ("C", 80, 150, "1990-01-01", "あ"))
+        missing = next(row for row in rm_web.q_index(self.contract, "performers")["items"]
+                       if row["entity_id"] == 23)
+        self.assertIsNone(missing["cup"])
+
+        # 翻页按同一份排序：逐页拼起来和一次取齐一致，没有重复也没有丢失。
+        expected = ids(sort="cup", direction="asc")
+        pages = [id for offset in range(0, len(expected) + 1, 2)
+                 for id in ids(sort="cup", direction="asc", limit=2, offset=offset)]
+        self.assertEqual(pages, expected)
+        self.assertEqual(len(set(pages)), len(expected))
+        # 认不出的键与方向安全回退：列回作品数、方向回该列默认，不报错。
+        self.assertEqual(ids(sort="不存在"), ids())
+        self.assertEqual(ids(sort="cup", direction="sideways"), ids(sort="cup", direction="asc"))
+        # 缓存键带上解析后的排序，换一列就是另一份答案。
+        self.contract.cache.clear()
+        self.assertNotEqual(ids(sort="cup", direction="asc"), ids(sort="debut", direction="asc"))
+        ids()
+        unique = {key for key in self.contract.cache if key.startswith("('index'")}
+        self.assertEqual(len(unique), 3)
+
+    def test_kana_row_normalizes_scripts_and_falls_back_to_other(self):
+        """五十音行：平假名、片假名、半角、浊音与空格都归行；空值和罗马字进 other。"""
+        cases = {
+            "あい": "a", "カオリ": "k", "ｻｸﾗ": "s", "\u3000ﾀﾅｶ\u3000": "t",
+            "がっこう": "k", "ヴァイオリン": "a", "ヷ": "w", "ん": "w",
+            None: "other", "": "other", "alice": "other", "漢字": "other",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(kana_row(value), expected)
+
+    def test_performer_index_kana_rows_filter_with_sort_and_stable_pages(self):
+        """艺人名册按五十音行筛选：空值／罗马字归 other，行内仍按 sort/dir 排，翻页不重不漏。"""
+        readings = {31: "あい", 32: "カオリ", 33: "さくら", 34: "\u3000ﾀﾅｶ\u3000",
+                    35: None, 36: "alice", 37: "ん", 38: "ヴァイオリン", 39: "がっこう"}
+        cups = {31: "E", 32: "C", 33: "B", 34: "D", 39: "A"}
+        with closing(sqlite3.connect(self.db_path)) as con, con:
+            for eid, reading in readings.items():
+                con.execute(
+                    "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(?, 'performer', ?, ?, '2026-01-01', '2026-01-01')",
+                    (eid, f"Kana {eid}", f"kana {eid}"))
+                con.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(1,?,'performer','test',1.0)", (eid,))
+                con.execute(
+                    "INSERT INTO performer_profile(entity_id,cup,kana,source,source_url,fetched_at) "
+                    "VALUES(?,?,?,'test','','2026-01-01')", (eid, cups.get(eid), reading))
+
+        def ids(**args):
+            return [row["entity_id"] for row in rm_web.q_index(self.contract, "performers", **args)["items"]]
+
+        self.assertEqual(set(ids(kana="a")), {31, 38})
+        self.assertEqual(set(ids(kana="k")), {32, 39})
+        self.assertEqual(set(ids(kana="s")), {33})
+        self.assertEqual(set(ids(kana="t")), {34})
+        self.assertEqual(set(ids(kana="w")), {37})
+        # 夹具里的 11、12 没有资料行，和空值、罗马字一起落在 other，不混进任何假名行。
+        self.assertEqual(set(ids(kana="other")), {11, 12, 35, 36})
+        self.assertEqual(set(ids()), {11, 12, *readings})
+        # 行内的排序照常生效：k 行里 39 的罩杯 A 排在 32 的 C 前面。
+        self.assertEqual(ids(kana="k", sort="cup", direction="asc"), [39, 32])
+        # 翻页与一次取齐一致，没有重复。
+        pages = [eid for offset in range(0, len(readings) + 1)
+                 for eid in ids(kana="k", sort="cup", direction="asc", limit=1, offset=offset)]
+        self.assertEqual(pages, [39, 32])
+        # 认不出的行回退成不过滤，不报错；其他名册忽略该参数。
+        self.assertEqual(ids(kana="bogus"), ids())
+        self.assertEqual(ids(kana="all"), ids())
+        self.assertEqual(rm_web.q_index(self.contract, "creators", kana="a"),
+                         rm_web.q_index(self.contract, "creators"))
+        # 缓存键带上解析后的行。
+        self.contract.cache.clear()
+        self.assertNotEqual(ids(kana="a"), ids(kana="k"))
+        ids()
+        unique = {key for key in self.contract.cache if key.startswith("('index'")}
+        self.assertEqual(len(unique), 3)
+
     def test_creator_card_and_detail_share_available_entity_image(self):
         (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
         row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
@@ -507,7 +633,9 @@ class WebDataTests(unittest.TestCase):
             feeds.add_source(con, url='https://javdb.com/actors/Other', name='Canonical Creator')
             con.commit()
         people = rm_web.q_index(self.contract, 'performers')['items']
-        self.assertTrue(next(row for row in people if row['entity_id'] == 11)['following'])
+        alice = next(row for row in people if row['entity_id'] == 11)
+        self.assertTrue(alice['following'])
+        self.assertTrue(alice['feed']['following'])
         self.assertFalse(next(row for row in people if row['entity_id'] == 12)['following'])
         filtered = rm_web.q_index(self.contract, 'performers', q='Alice', limit=1)['items']
         self.assertEqual(len(filtered), 1)
@@ -517,6 +645,26 @@ class WebDataTests(unittest.TestCase):
             feeds.set_enabled(con, active, False)
             con.commit()
         self.assertFalse(rm_web.q_index(self.contract, 'performers', q='Alice')['items'][0]['following'])
+
+    def test_people_index_marks_whether_a_performer_can_be_subscribed(self):
+        """名册卡要知道能不能订：有 JavDB 演员页或 DMM 女优编号才显示开关。"""
+        people = {row["entity_id"]: row for row in
+                  rm_web.q_index(self.contract, 'performers', limit=50)['items']}
+        self.assertEqual(people[11]['feed'], {'following': False, 'available': False})
+        with closing(sqlite3.connect(self.db_path)) as con:
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                        "VALUES(14,'performer','Canonical Dmm','canonical dmm','2026-01-01','2026-01-01')")
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(2,14,'performer','test',1.0)")
+            con.execute("INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+                        "VALUES(11,'javdb','performer','AlicePage')")
+            con.execute("INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+                        "VALUES(14,'dmm','performer','1051912')")
+            con.commit()
+        people = {row["entity_id"]: row for row in
+                  rm_web.q_index(self.contract, 'performers', limit=50)['items']}
+        self.assertEqual(people[11]['feed'], {'following': False, 'available': True})
+        self.assertEqual(people[14]['feed'], {'following': False, 'available': True})
 
     def test_people_index_marks_enabled_follow_sources_by_confirmed_identity(self):
         from peach.entity_classification import write_claim
@@ -1775,7 +1923,7 @@ class WebDataTests(unittest.TestCase):
             "/api/taste/refresh", "/api/taste/source", "/api/settings",
             "/api/entity-name", "/api/entity-alias",
             "/api/organize/preview", "/api/organize/apply", "/api/organize/rollback",
-            "/api/feeds/check", "/api/feeds/source", "/api/feeds/discovery",
+            "/api/feeds/check", "/api/feeds/source", "/api/feeds/bind-studio", "/api/feeds/discovery",
             "/api/wants", "/api/face-models",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
@@ -1874,6 +2022,15 @@ class WebDataTests(unittest.TestCase):
                 (asset_id, f"/x/{name}", name, code),
             )
         con.commit(); con.close()
+
+    def test_a_single_file_still_gets_its_badge_without_an_edition_group(self):
+        """单份文件不进版本组；版次徽章仍由同一份判据给出，内部快照也保留字段。"""
+        self._seed_editions([(9101, "CJOD-175-C.mp4", "CJOD-175")])
+        rows = {row['id']: row for row in web_catalog._catalog_group_rows(self.contract)}
+        self.assertIn('edition', rows[9101])
+        self.assertEqual(rm_web._edition_groups(self.contract, ["CJOD-175"]), {})
+        self.assertEqual(rm_web.jav_display_metadata("CJOD-175-C.mp4", "CJOD-175")["edition_badges"],
+                         ['chinese-subtitles'])
 
     def test_a_censored_and_an_uncensored_release_share_one_card(self):
         """同一番号的有码与无码是两个版次，不该占两个格子。
@@ -2921,13 +3078,14 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in biggest["items"]], [2, 1])
 
     def test_items_pagination_is_bounded_and_seed_collisions_have_a_unique_order(self):
+        # 乘数模 2147483647，相隔一个周期的两个 id 仍会撞在同一排序值上，靠 a.id 收敛。
         with self.contract.write_transaction() as connection:
             connection.execute(
-                "INSERT INTO asset(id,location,path,name,medium) VALUES(99992,'local','collision.mp4','collision.mp4','video')")
+                "INSERT INTO asset(id,location,path,name,medium) VALUES(2147483648,'local','collision.mp4','collision.mp4','video')")
         args = {"seed": "1", "limit": "1"}
         first = rm_web.q_items(self.contract, args)
         second = rm_web.q_items(self.contract, {**args, "offset": "1"})
-        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]], [1, 99992])
+        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]], [1, 2147483648])
         bounded = rm_web.q_items(self.contract, {"limit": "-1", "offset": "-2", "seed": "1"})
         self.assertEqual([item["id"] for item in bounded["items"]], [1])
 

@@ -625,22 +625,23 @@ describe('设计决定：关注详情、作品详情、播放器与侧栏', () =
     }
   });
 
-  it('播放器的设置面板与右键菜单：同一档黑、浮层圆角、48px 的行；右键菜单悬停抬一层白', { timeout: 60_000 }, async () => {
+  it('播放器偏好抽屉与右键菜单：同一档黑、浮层圆角、48px 的行；右键菜单悬停抬一层白', { timeout: 60_000 }, async () => {
     const opened = await openItemPage(browser, `/assets/${ITEM.plain}`, DESKTOP);
     try {
       const page = opened.page;
       await page.locator('#stage #playerStatsBtn').waitFor();
+      const drawer = '#stage .vjs-peach-settings-drawer';
       const menu = '#stage .vjs-peach-settings-menu';
       /* 关闭态不能是 display:none：它没有可过渡的中间态，面板只会瞬间消失。 */
       assert.deepEqual(await styleOf(page, menu, ['display', 'opacity', 'visibility']),
         { display: 'block', opacity: '0', visibility: 'hidden' });
       await page.locator('#stage .vjs-peach-settings-toggle').dispatchEvent('click');
-      const floating = await tokenOf(page, menu, '--floating-radius');
-      const settings = (await styleOf(page, menu, ['background-color', 'border-top-left-radius', 'width', 'backdrop-filter']))!;
-      assert.equal(settings['background-color'], PLAYER_BLACK);
-      assert.equal(settings['backdrop-filter'], 'blur(16px)', '设置面板的毛玻璃没生效');
-      assert.equal(settings['border-top-left-radius'], floating);
-      assert.ok(parseFloat(settings.width!) <= 274, `设置面板宽 ${settings.width}`);
+      const settings = (await styleOf(page, drawer, ['background-color', 'border-top-left-radius', 'width', 'backdrop-filter']))!;
+      assert.equal(settings['background-color'], 'rgba(18, 18, 20, 0.9)');
+      assert.equal(settings['backdrop-filter'], 'blur(22px) saturate(1.2)', '偏好抽屉的毛玻璃没生效');
+      assert.equal(settings['border-top-left-radius'], '18px');
+      assert.ok(parseFloat(settings.width!) <= 340, `偏好抽屉宽 ${settings.width}`);
+      assert.deepEqual(await page.locator(`${drawer} [role="tab"]`).allTextContents(), ['播放', '快捷键']);
       assert.equal((await styleOf(page, `${menu} .vjs-peach-menu-row`, ['min-height']))!['min-height'], '48px');
       await page.locator('#stage .vjs-peach-settings-toggle').dispatchEvent('click');
 

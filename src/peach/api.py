@@ -331,9 +331,12 @@ def _restore_task_center(contract) -> None:
 
 #: 开机在后台先算一遍的聚合：口味、复核、垃圾复核、关注的全部条目与筛选项各要几秒到
 #: 十几秒，都按账本版本号缓存（`WebContract.cached_until_changed`），算好一次就一直用到
-#: 账本或文件真的变了。排在前面的是每页都碰到的几份：形状名单、作品分组快照（目录、
-#: 索引、筛选项都建在它上面）、统计与搜索推荐池，重启后第一个打开页面的人不再等它们一起冷算。
-WARM_AGGREGATES = (("/api/entity/shapes", {}), ("/api/items", {"limit": "60"}), ("/api/stats", {}),
+#: 账本或文件真的变了。人物索引排第一：它是名册首屏最贵的一段（limit 120 对齐前端
+#: `PAGE_SIZE.people`，键不同就命中不了），先算它，首个名册请求
+#: 与它共用同一份缓存；后面的推荐池、广告预热要十几秒，不再挡在它前面。其余每页都碰到的
+#: 几份（形状名单、作品分组快照、统计）排在后面，重启后第一个打开页面的人不再等它们一起冷算。
+WARM_AGGREGATES = (("/api/index", {"kind": "performers", "limit": "120"}),
+                   ("/api/entity/shapes", {}), ("/api/items", {"limit": "60"}), ("/api/stats", {}),
                    ("/api/search/recommendations", {}),
                    ("/api/taste", {"window": "all"}), ("/api/review", {}), ("/api/ads", {}),
                    ("/api/follow", {}))

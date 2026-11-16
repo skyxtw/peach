@@ -9,8 +9,8 @@ from peach.jav_cover_fetch import Unavailable
 from peach.library_processing import LibraryMetadataProvider
 from peach.scraping_access import SourcePaused
 from peach.sources import DMM, DmmSource, FailureReason, Page, Session, SourceFailure
-from peach.sources.dmm import (ACTRESS_WORKS_QUERY, DETAIL_ATTEMPTS, DETAIL_QUERY, SEARCH_LIMIT, SEARCH_QUERY, code_parts,
-                               code_from_cid, guessed_cid, matching_cids, release_date)
+from peach.sources.dmm import (ACTRESS_WORKS_QUERY, DETAIL_ATTEMPTS, DETAIL_QUERY, MAKER_WORKS_QUERY, SEARCH_LIMIT,
+                               SEARCH_QUERY, code_parts, code_from_cid, guessed_cid, matching_cids, release_date)
 from peach.metadata import relayed
 
 ENDPOINT = "https://api.video.dmm.co.jp/graphql"
@@ -246,11 +246,12 @@ class DmmSourceTests(unittest.TestCase):
             DmmSource().query("SSIS-057", session=Session(graphql(items={"ssis00057": SourcePaused("errors.scrapingAccess.coolingDown")})))
 
 
-def listed(cid, *, status=None, date="2026-10-30T00:00:00+09:00", cast=("森日向子",), maker="ムーディーズ"):
-    """片单里的一行，形状照 2026-11-04 `legacySearchPPV(filter: {actressIds})` 的实测响应写。"""
+def listed(cid, *, status=None, date="2026-10-30T00:00:00+09:00", cast=("森日向子",), maker="ムーディーズ",
+           maker_id="1"):
+    """片单里的一行，形状照 `legacySearchPPV` 的实测响应写（女优 2026-11-04、片商 2026-11-15）。"""
     return {"id": cid, "title": f"{cid} の作品", "deliveryStartAt": date, "releaseStatus": status,
             "actresses": [{"id": "1061586" if name == "森日向子" else "9", "name": name} for name in cast],
-            "maker": {"id": "1", "name": maker}}
+            "maker": {"id": maker_id, "name": maker}}
 
 
 def catalogue(pages, maker_codes):
@@ -271,6 +272,23 @@ def catalogue(pages, maker_codes):
             body = {"data": {f"a{index}": ({"id": cid, "makerContentId": maker_codes[cid]}
                                            if cid in maker_codes else None)
                              for index, cid in enumerate(cids)}}
+        return HttpResponse(200, {}, json.dumps(body, ensure_ascii=False).encode(), request.url)
+
+    call.calls = calls
+    return call
+
+
+def maker_catalogue(pages):
+    """假接口：maker/label 片单按 offset 答 `pages` 里的那一页，并记下每条查询与变量。"""
+    calls = []
+
+    def call(request, timeout, limit):
+        payload = json.loads(request.body)
+        variables = payload["variables"]
+        calls.append((payload["query"], variables))
+        rows, has_next, total = pages[variables["offset"]]
+        body = {"data": {"legacySearchPPV": {"result": {
+            "pageInfo": {"totalCount": total, "hasNext": has_next}, "contents": rows}}}}
         return HttpResponse(200, {}, json.dumps(body, ensure_ascii=False).encode(), request.url)
 
     call.calls = calls
@@ -346,6 +364,66 @@ class ActressWorksTests(unittest.TestCase):
             site.actress_works("1061586", session=session)
         self.assertEqual(caught.exception.reason, FailureReason.RATE_LIMITED)
         self.assertEqual(transport.held, [("dmm", "rate_limited")])
+
+
+class MakerWorksTests(unittest.TestCase):
+    """按片商或厂牌编号列片单：嵌套 ids、offset 翻页、预购排序与编号校验（阶段 3 ⑧ 的数据层）。"""
+
+    def test_the_maker_filter_is_a_nested_ids_list_and_pages_by_offset(self):
+        first = [listed("sone00570", status="PRE_ORDER", date="2026-11-27T00:00:00+09:00",
+                        maker="エスワン ナンバーワンスタイル", maker_id="3152"),
+                 *[listed(f"sone{index:05d}", maker="エスワン ナンバーワンスタイル", maker_id="3152")
+                   for index in range(99)]]
+        second = [listed("sone00001", maker="エスワン ナンバーワンスタイル", maker_id="3152")]
+        transport = maker_catalogue({0: (first, True, 101), 100: (second, False, 101)})
+        works = DmmSource().maker_works("3152", session=Session(transport))
+        # 一页 100 条、按发售日倒序；第二轮 offset 100。两条查询都是列表查询，没有补官方番号的第二步。
+        self.assertEqual([(query, variables["offset"], variables["filter"]) for query, variables in transport.calls],
+                         [(MAKER_WORKS_QUERY, 0, {"makerIds": {"ids": [{"id": "3152"}]}}),
+                          (MAKER_WORKS_QUERY, 100, {"makerIds": {"ids": [{"id": "3152"}]}})])
+        self.assertEqual({variables["limit"] for _, variables in transport.calls}, {100})
+        self.assertEqual({variables["sort"] for _, variables in transport.calls}, {"RELEASE_DATE"})
+        self.assertEqual((works.kind, works.id, works.name, works.total, len(works.works)),
+                         ("maker", "3152", "エスワン ナンバーワンスタイル", 101, 101))
+        head, tail = works.works[0], works.works[-1]
+        self.assertEqual((head.cid, head.title, head.maker_code, head.pre_order, head.release_date),
+                         ("sone00570", "sone00570 の作品", "", True, "2026-11-27"))
+        self.assertEqual((tail.cid, tail.release_date, tail.studio),
+                         ("sone00001", "2026-10-30", "エスワン ナンバーワンスタイル"))
+
+    def test_a_page_with_a_seen_work_stops_paging(self):
+        page = [listed("sone00570", maker="S1", maker_id="3152"), listed("sone00001", maker="S1", maker_id="3152")]
+        transport = maker_catalogue({0: (page, True, 500)})
+        works = DmmSource().maker_works("3152", session=Session(transport), known={"sone00001"})
+        self.assertEqual([variables["offset"] for _, variables in transport.calls], [0])
+        self.assertEqual([work.cid for work in works.works], ["sone00570", "sone00001"])
+
+    def test_label_filter_uses_label_ids_and_leaves_the_label_name_to_the_caller(self):
+        # 列表型只有 maker、没有 label：厂牌名由调用方按本地实体给，不从这一页取。
+        transport = maker_catalogue({0: ([listed("ssis00057", maker="エスワン ナンバーワンスタイル",
+                                                 maker_id="3152", cast=("三宮つばき",))], False, 1)})
+        works = DmmSource().label_works("3474", session=Session(transport))
+        self.assertEqual(transport.calls[0][1]["filter"], {"labelIds": {"ids": [{"id": "3474"}]}})
+        self.assertEqual((works.kind, works.id, works.name, works.total), ("label", "3474", "", 1))
+        self.assertEqual((works.works[0].cid, works.works[0].pre_order), ("ssis00057", False))
+
+    def test_malformed_maker_and_label_ids_are_rejected_before_any_request(self):
+        site, silent = DmmSource(), Mock()
+        for method, value, message in ((site.maker_works, "S1", "DMM 片商编号只认数字"),
+                                       (site.label_works, "s1", "DMM 厂牌编号只认数字"),
+                                       (site.maker_works, "", "DMM 片商编号只认数字"),
+                                       (site.maker_works, None, "DMM 片商编号只认数字"),
+                                       (site.label_works, "３４７４", "DMM 厂牌编号只认数字")):
+            with self.subTest(value=value), self.assertRaises(SourceFailure) as caught:
+                method(value, session=Session(silent))
+            self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, message))
+        silent.assert_not_called()
+
+    def test_an_empty_catalogue_is_zero_works_not_a_failure(self):
+        for method, value in ((DmmSource().maker_works, "1509"), (DmmSource().label_works, "4325")):
+            with self.subTest(value=value):
+                works = method(value, session=Session(maker_catalogue({0: ([], False, 0)})))
+                self.assertEqual((works.total, works.works, works.name), (0, (), ""))
 
 
 if __name__ == "__main__":

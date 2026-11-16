@@ -1224,6 +1224,19 @@ def _censored_release(code: str | None) -> bool:
     return bool(_CENSORED_RELEASE.fullmatch(value)) and not is_uncensored_label_code(value)
 
 
+@lru_cache(maxsize=16384)
+def _code_suffix_pattern(code: str | None) -> re.Pattern[str] | None:
+    """番号之后那一段的正则：只随番号变，按番号记住编译结果。
+
+    整库分组快照冷启动时会对几万份文件判版次；同一个番号的多份文件（版次、分卷）
+    共用这一条正则，按行现编译会在冷启动里堆出几万次正则编译。
+    """
+    code_pattern = _jav_code_pattern(code)
+    if not code_pattern:
+        return None
+    return re.compile(rf"(?:^|[^A-Z0-9]){code_pattern}((?:{_GLUED_EDITION})?(?:[^A-Z0-9].*)?)$", re.I)
+
+
 def _edition_evidence(name: str | None, code: str | None,
                       tags: tuple[str, ...] | list[str] = ()) -> tuple[bool, str, bool]:
     """一段名字（加标签）给出的版次证据：(中字, 无码档, 无码档是否只凭泛泛的无码标记)。
@@ -1238,14 +1251,8 @@ def _edition_evidence(name: str | None, code: str | None,
     """
     text = _MEDIA_EXTENSION.sub("", str(name or ""))
     tag_set = {str(tag).strip().casefold() for tag in tags if str(tag).strip()}
-    code_pattern = _jav_code_pattern(code)
-    after_code = (
-        re.search(
-            rf"(?:^|[^A-Z0-9]){code_pattern}((?:{_GLUED_EDITION})?(?:[^A-Z0-9].*)?)$",
-            text, re.I,
-        )
-        if code_pattern else None
-    )
+    suffix_pattern = _code_suffix_pattern(code)
+    after_code = suffix_pattern.search(text) if suffix_pattern else None
     suffix = after_code.group(1) if after_code and after_code.group(1) else ""
     # `-C-U` 整个是破解标记，不是「中字 + 无码」（mdcz `b3b1ef79` 先剪掉它再判字幕）。
     cracked_cu = re.compile(r"(?:^|[-_.\s\[])c[-_.\s]u(?=$|[-_.\s\]])", re.I)

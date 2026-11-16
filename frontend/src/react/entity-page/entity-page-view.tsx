@@ -248,6 +248,11 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
     mutationFn: (key: string) => api('/api/follow/creator',
       { method: 'POST', body: JSON.stringify({ entity_id: entityId, key }) }),
   });
+  const bindStudio = useMutation({
+    mutationFn: ({ kind: dimension, id }: { kind: 'maker' | 'label'; id: string }) => api('/api/feeds/bind-studio',
+      { method: 'POST', body: JSON.stringify({ entity_id: entityId, kind: dimension, id }) }),
+    onSuccess: () => refreshEntity(),
+  });
 
   const heroActions = useMemo<EntityHeroActions>(() => ({
     openEntity: actions.openEntity,
@@ -272,6 +277,10 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
       });
     },
     addAlias: () => { void helpers.aliasForm(entity.user_aliases || [], (payload) => alias.mutateAsync(payload)) },
+    bindStudio: async (dimension, id) => {
+      await bindStudio.mutateAsync({ kind: dimension, id });
+      helpers.receipt(t('catalog:entityPage.dmmBound', { id }));
+    },
     follow: async (on) => {
       try {
         await follow.mutateAsync(on);
@@ -319,7 +328,7 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
       helpers.receipt(t('catalog:entityPage.followedCreatorLinked', { author, name: entity.canonical_name }));
       await refreshEntity();
     },
-  }), [actions, alias, bindFollow, entity, entityId, filters, follow, followKey, helpers, kind, name, refreshEntity, rename]);
+  }), [actions, alias, bindFollow, bindStudio, entity, entityId, filters, follow, followKey, helpers, kind, name, refreshEntity, rename]);
   const heroHelpers = useMemo<EntityHeroHelpers>(() => ({
     portraitImg: () => helpers.portraitImg(kind, entity),
     wireScroller: helpers.wireDrag,

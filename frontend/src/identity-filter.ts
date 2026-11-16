@@ -10,8 +10,22 @@ export const IDENTITY_CATEGORIES: readonly (readonly [string, string])[] = [
   ['all', t('catalog:shared.all')], ['japanese_av', t('catalog:shared.actresses')], ['amateur', t('catalog:identityFilter.amateur')], ['western', t('catalog:identityFilter.western')], ['blogger', t('catalog:identityFilter.influencers')], ['animation', t('catalog:identityFilter.animators')],
 ];
 
+/** 五十音行：键与后端 `peach.kana.KANA_ROWS` 一致；`all` 只在前端表示不筛选。 */
+export const KANA_ROWS: readonly (readonly [string, string])[] = [
+  ['all', t('catalog:shared.all')], ['a', t('catalog:peopleIndex.kanaA')], ['k', t('catalog:peopleIndex.kanaK')],
+  ['s', t('catalog:peopleIndex.kanaS')], ['t', t('catalog:peopleIndex.kanaT')], ['n', t('catalog:peopleIndex.kanaN')],
+  ['h', t('catalog:peopleIndex.kanaH')], ['m', t('catalog:peopleIndex.kanaM')], ['y', t('catalog:peopleIndex.kanaY')],
+  ['r', t('catalog:peopleIndex.kanaR')], ['w', t('catalog:peopleIndex.kanaW')], ['other', t('catalog:peopleIndex.kanaOther')],
+];
+
 /** 页面那一行的容器类，骨架与页面同一串。 */
 export const IDENTITY_ROW_CLASS = 'mb-4 flex flex-wrap gap-2';
+
+/** 本地艺人名册的五十音行：其他名册、在线名册与认不出的值都回空（不筛选）。 */
+export function normalizeKanaRow(kind: string, scope: string, kana: unknown): string {
+  if (kind !== 'performers' || scope !== 'local' || typeof kana !== 'string') return '';
+  return kana !== 'all' && KANA_ROWS.some(([key]) => key === kana) ? kana : '';
+}
 
 export function identityFilterSkeletonHtml(category: string): string {
   const known = IDENTITY_CATEGORIES.some(([key]) => key === category) ? category : 'all';
@@ -19,4 +33,17 @@ export function identityFilterSkeletonHtml(category: string): string {
     variant: key === known ? 'primary' : 'secondary', size: 'small', label, attrs: `aria-pressed="${key === known}"`,
   })).join('');
   return `<div class="peach-react"><div aria-label="${t('catalog:peopleIndex.identityCategory')}" class="${IDENTITY_ROW_CLASS}">${buttons}</div></div>`;
+}
+
+/** 五十音那一行的骨架：键与最终长相一致，选中态照地址；不接线，只占位。 */
+export function kanaFilterSkeletonHtml(kana: string): string {
+  const known = KANA_ROWS.some(([key]) => key === kana) ? kana : 'all';
+  const buttons = KANA_ROWS.map(([key, label]) => {
+    const count = '<span class="ml-1 inline-block h-2.5 w-5 align-middle rounded-sm skeleton-sheen" data-kana-count-skeleton aria-hidden="true"></span>';
+    return islandButton({
+      variant: key === known ? 'primary' : 'secondary', size: 'small', label: label + count,
+      attrs: `data-kana-row="${key}" aria-pressed="${key === known}"`,
+    });
+  }).join('');
+  return `<div class="peach-react"><div aria-label="${t('catalog:peopleIndex.kanaRow')}" class="${IDENTITY_ROW_CLASS}">${buttons}</div></div>`;
 }

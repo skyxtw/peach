@@ -14,6 +14,7 @@ import random
 import re
 import sqlite3
 import time
+from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
 
@@ -473,7 +474,9 @@ def _catalog_order(args):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。
             seed = int(time.strftime("%Y%m%d")) % 9973 or 7
-            order = f"((a.id * {seed}) % 99991), a.id"
+            # 旧式 `(a.id * seed) % 99991` 会让所有 99991 的倍数（例如 id=99991）
+            # 恒排第一；换成 32 位混合常数并让日期种子参与加法，避开这个零点。
+            order = f"((a.id * 2654435761 + {seed * 40503}) % 2147483647), a.id"
         else:
             order = "a.id DESC"
     return order
@@ -808,11 +811,19 @@ def _read_group_rows(contract: WebContract) -> list[dict]:
     for row in rows:
         row['raw_code'] = row['code']
         row['code'] = row['code'] or _filename_fc2_code(row['name'])
-        if not row['code']:
-            continue
-        row["edition"] = _edition_label(row, tuple(tags.get(int(row["id"]), ())),
-                                        sources.get(int(row["id"]), ()))
-        coded.append(row)
+        if row['code']:
+            coded.append(row)
+    # 版次只在同一规范番号至少两份时才可能被版本判据读到：单份不进任何版本组。
+    # 冷启动一次判四万多份文件，这里只给会进版本组的那批算版次，省掉大部分逐文件
+    # 证据扫描；单份仍留默认值，行的形状不变。
+    code_keys = {int(row['id']): normalise_code_key(row['code']) for row in coded}
+    counts = Counter(code_keys.values())
+    for row in coded:
+        if counts[code_keys[int(row['id'])]] > 1:
+            row["edition"] = _edition_label(row, tuple(tags.get(int(row["id"]), ())),
+                                            sources.get(int(row["id"]), ()))
+        else:
+            row["edition"] = CENSORED
     return coded
 
 
@@ -1127,7 +1138,7 @@ def q_item(contract: WebContract, aid):
         r = c.execute(
             "SELECT id,location,path,name,medium,catalog_title,original_title,creator,studio,code,"
             "release_date,size,duration,width,height,field_owners,mutation_revision,"
-            "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,disposal_reason,"
+            "ctx_length,ctx_orient,snapshot_path,play_count,last_played,leave_ratio,feedback,disposal,disposal_reason,"
             "rating,o_count,play_seconds,max_reached,seek_count,region,"
             f"{effective_region_sql('asset')} AS effective_region,"
             "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "

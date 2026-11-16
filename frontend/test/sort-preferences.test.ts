@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 
 import {
-  defaultSortDir, JAV_RELEASE_SORT, nextSortState, preferredDirection, SORT_ALIASES, SORT_KEYS, sortDirWord, SORTS,
+  catalogSortPage, defaultSortDir, JAV_RELEASE_SORT, nextSortState, normalizePageSort, normalizePageSorts,
+  pageSortPreference, preferredDirection, SORT_ALIASES, SORT_KEYS, sortDirWord, SORTS,
 } from '../src/sort-preferences';
 
 it('随机无方向，首页偏好与其他排序分别解析', () => {
@@ -23,6 +24,33 @@ it('可翻转的列从 desc 起，随机没有方向；发行时间只在 JAV �
 
 it('地址栏与书签里把方向写进键名的旧键照旧认', () => {
   expect(SORT_ALIASES).toEqual({ big: ['size', 'desc'], short: ['dur', 'asc'], long: ['dur', 'desc'] });
+});
+
+it('页面身份按目录地址算：首页的 JAV 馆藏另算一页，其余目录页跟首页', () => {
+  expect([
+    catalogSortPage('/', '?jav=1'), catalogSortPage('/', ''), catalogSortPage('/unseen', '?jav=1'), catalogSortPage('/wall', ''),
+  ]).toEqual(['jav', 'home', 'home', 'home']);
+});
+
+it('存过的页取自己那份，没存过的页回全局默认；随机没有方向', () => {
+  const preferences = {
+    defaultSort: 'new', defaultSortDirection: 'asc',
+    pageSorts: { home: { sort: 'rating', dir: 'desc' }, jav: { sort: 'release', dir: 'asc' } },
+  };
+  expect([pageSortPreference(preferences, 'home'), pageSortPreference(preferences, 'jav')])
+    .toEqual([{ sort: 'rating', dir: 'desc' }, { sort: 'release', dir: 'asc' }]);
+  expect(pageSortPreference({ defaultSort: 'new', defaultSortDirection: 'asc' }, 'home')).toEqual({ sort: 'new', dir: 'asc' });
+  expect(pageSortPreference({ defaultSort: 'seed' }, 'jav')).toEqual({ sort: 'seed', dir: '' });
+});
+
+it('pageSorts 只留已知页面与合法列，方向按列归一', () => {
+  const raw = {
+    home: { sort: 'rating', dir: 'sideways' }, jav: { sort: 'seed', dir: 'asc' },
+    people: { sort: 'rating', dir: 'desc' }, wall: { sort: 'size', dir: 'desc' }, trash: 'rating',
+  };
+  expect(normalizePageSorts(raw)).toEqual({ home: { sort: 'rating', dir: 'desc' }, jav: { sort: 'seed', dir: '' } });
+  expect(normalizePageSort('unknown')).toBeNull();
+  expect(normalizePageSorts(['home'])).toEqual({});
 });
 
 it('点未选中项换列取默认方向，点选中项翻方向，随机重复点什么都不做', () => {

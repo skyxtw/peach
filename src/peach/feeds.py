@@ -4,9 +4,12 @@ Feed 只回答一个问题——最近出了哪些番号。一次拉取的全部
 的记录和一条「这个番号还没入库」的记录；不下载种子、不下载 enclosure、不建目录、
 不碰任何媒体文件。
 
-订阅有两类，都按人：JavDB 演员页当伪 Feed 抓，由人物页的「订阅新作」开关或订阅源页签按名字
+订阅有三类，都挂在实体上：JavDB 演员页当伪 Feed 抓，由人物页的「订阅新作」开关或订阅源页签按名字
 勾选的演员卡，按这位的 JavDB 身份现拼地址（ADR-0047、ADR-0083）；DMM 按女优编号列的片单，
-编号取账本里已刮到的 DMM 证据（ADR-0135）。页面不送地址，所以这里没有「任意地址」这条入口。
+编号取账本里已刮到的 DMM 证据（ADR-0135）；DMM 按片商/厂牌编号列的片单（`dmm-maker` /
+`dmm-label`），编号优先取 `entity_external_ref` 里 provider `dmm`、external_kind `maker` / `label`
+的显式绑定；没有绑定时按内置 `KNOWN_DMM_STUDIOS` 的名称唯一匹配兜底（只读），用户打开订阅时
+才把种子编号写回绑定，不按片商名猜编号。页面不送地址，所以这里没有「任意地址」这条入口。
 
 **解析只吃已下载的字节**，地址由调用方自己取（`peach.http` 的 transport 加主机限流）。
 把地址交给一个会自己发 HTTP 的解析器，等于绕过项目的代理、限流、超时与预算闸门。
@@ -22,24 +25,60 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from .catalog_rules import normalise_code_key, release_code_from_text
 from .coded_text import Said, coded, columns, restored
 from .content_words import COMPILATION_TITLE, DMM_HOURS, DMM_MINUTES, JAVDB_WORK_COUNT
-from .entities import normalize_entity_name
+from .entities import normalize_entity_name, studio_name_key
 from .user_messages import UserValueError
 
 #: JavDB 演员页当伪 Feed 抓。它按发行日排在前面，所以「还没发行的作品」会先出现。
 KIND_JAVDB_ACTOR = "javdb-actor"
 #: DMM 按女优编号列的片单（GraphQL）。预购排在最前，番号是官方 `makerContentId`。
 KIND_DMM_ACTRESS = "dmm-actress"
+#: DMM 按片商（maker）编号列的片单。列表型没有 `makerContentId`，番号由 Feed 批量补。
+KIND_DMM_MAKER = "dmm-maker"
+#: DMM 按厂牌（label）编号列的片单。与 maker 同一个列表型。
+KIND_DMM_LABEL = "dmm-label"
 
-KIND_LABELS = {KIND_JAVDB_ACTOR: "labels.feeds.kind.javdbActor", KIND_DMM_ACTRESS: "labels.feeds.kind.dmmActress"}
+KIND_LABELS = {KIND_JAVDB_ACTOR: "labels.feeds.kind.javdbActor", KIND_DMM_ACTRESS: "labels.feeds.kind.dmmActress",
+               KIND_DMM_MAKER: "labels.feeds.kind.dmmMaker", KIND_DMM_LABEL: "labels.feeds.kind.dmmLabel"}
+#: DMM 的三类片单源，拉取时都不 GET 订阅地址。
+DMM_KINDS = frozenset({KIND_DMM_ACTRESS, KIND_DMM_MAKER, KIND_DMM_LABEL})
+#: maker/label 过滤维度 → `feed_source.kind`。
+DMM_CATALOGUE_KINDS = {"maker": KIND_DMM_MAKER, "label": KIND_DMM_LABEL}
 
 #: DMM 片单那一类的订阅地址：用户点得开的女优片单页，同时是 `feed_source.url` 的去重键。
 #: 拉取不 GET 它，而是按地址里的编号问 GraphQL。
 DMM_ACTRESS_PAGE = "https://video.dmm.co.jp/av/list/?actress={id}"
+#: 片商/厂牌片单页：同样是去重键与展示链接，拉取不 GET 它。页址照 DMM 片单页的查询串写，
+#: 在浏览器里能否直接打开未取得核实。
+DMM_MAKER_PAGE = "https://video.dmm.co.jp/av/list/?maker={id}"
+DMM_LABEL_PAGE = "https://video.dmm.co.jp/av/list/?label={id}"
+DMM_CATALOGUE_PAGES = {"maker": DMM_MAKER_PAGE, "label": DMM_LABEL_PAGE}
 #: 片单条目指向的商品页，与 `sources.dmm.CONTENT_PAGE` 同一个。
 DMM_CONTENT_PAGE = "https://video.dmm.co.jp/av/content/?id={cid}"
 #: 哪些外部编号是 DMM 的女优编号：DMM 自己的详情，和 r18.dev（DMM 目录的镜像，同一套 id）。
 DMM_ACTRESS_PROVIDERS = ("dmm", "r18dev")
-_DMM_ACTRESS_ID = re.compile(r"^\d{1,10}$")
+#: DMM 编号只认 ASCII 数字，拼进地址与 GraphQL 变量之前就挡住别的东西。
+_DMM_ID = re.compile(r"^[0-9]{1,10}$")
+#: 片商实体在 `entity_external_ref` 里的写法：provider 固定 `dmm`，maker 编号记 `maker`、
+#: label 编号记 `label`。用户订阅或手工绑定时写，页面读的时候不改账本。
+DMM_CATALOGUE_PROVIDER = "dmm"
+
+#: 内置的 DMM 片商 maker 编号与常见品牌写法。2026-11-16 用现有 GraphQL 客户端逐家实测，
+#: `ppvContent.maker.id` 与 `legacySearchPPV(filter.makerIds)` 双重复核（S1/MOODYZ/IdeaPocket/
+#: Madonna/FALENO/PREMIUM/kawaii/E-BODY/OPPAI/SOD，另附 MUTEKI）。只作没有显式绑定时的名称兜底；
+#: 用户打开订阅时才把命中的编号写进 `entity_external_ref`，读路径不写账本。
+KNOWN_DMM_STUDIOS: dict[str, tuple[str, ...]] = {
+    "3152": ("エスワン ナンバーワンスタイル", "エスワン", "S1", "S1 NO.1 STYLE"),
+    "1509": ("ムーディーズ", "MOODYZ"),
+    "1219": ("アイデアポケット", "IdeaPocket", "IDEA POCKET", "アイポケ"),
+    "2661": ("マドンナ", "Madonna"),
+    "40488": ("FALENO", "ファレノ"),
+    "3890": ("プレミアム", "PREMIUM"),
+    "4469": ("kawaii", "kawaii*", "カワイイ"),
+    "5032": ("E-BODY", "E BODY", "イーボディ"),
+    "5238": ("OPPAI", "オッパイ"),
+    "45276": ("SODクリエイト", "SOD", "SOD Create", "ソッド"),
+    "5456": ("MUTEKI", "ミューテキ"),
+}
 
 #: 拉取间隔。JavDB 按出口 IP 计配额，一张一天才更新几条的页面拉得再密也只是花配额。
 DEFAULT_INTERVAL_MINUTES = 360
@@ -252,17 +291,86 @@ def parse_dmm_actress(works) -> ParsedFeed:
 
 
 def dmm_actress_url(actress_id: str) -> str:
-    if not _DMM_ACTRESS_ID.match(str(actress_id or "")):
+    if not _DMM_ID.match(str(actress_id or "")):
         raise UserValueError("errors.feeds.dmmActressIdDigits")
     return DMM_ACTRESS_PAGE.format(id=actress_id)
 
 
-def dmm_actress_id(url: str) -> str:
-    """订阅地址里的女优编号；地址不是 DMM 片单那一种时交空串。"""
-    prefix = DMM_ACTRESS_PAGE.split("{id}")[0]
+def dmm_catalogue_url(kind: str, value: str) -> str:
+    """maker/label 编号拼订阅地址；编号只认 ASCII 数字。"""
+    pattern = DMM_CATALOGUE_PAGES.get(str(kind or ""))
+    if pattern is None:
+        raise ValueError(f"unknown DMM catalogue kind: {kind}")
+    if not _DMM_ID.match(str(value or "")):
+        raise UserValueError("errors.feeds.dmmMakerIdDigits" if kind == "maker"
+                             else "errors.feeds.dmmLabelIdDigits")
+    return pattern.format(id=value)
+
+
+def dmm_maker_url(maker_id: str) -> str:
+    return dmm_catalogue_url("maker", maker_id)
+
+
+def dmm_label_url(label_id: str) -> str:
+    return dmm_catalogue_url("label", label_id)
+
+
+def _dmm_page_id(url: str, pattern: str) -> str:
+    prefix = pattern.split("{id}")[0]
     text = str(url or "")
     found = text[len(prefix):] if text.startswith(prefix) else ""
-    return found if _DMM_ACTRESS_ID.match(found) else ""
+    return found if _DMM_ID.match(found) else ""
+
+
+def dmm_actress_id(url: str) -> str:
+    """订阅地址里的女优编号；地址不是 DMM 片单那一种时交空串。"""
+    return _dmm_page_id(url, DMM_ACTRESS_PAGE)
+
+
+def dmm_maker_id(url: str) -> str:
+    """订阅地址里的 maker 编号；不是 maker 片单地址时交空串。"""
+    return _dmm_page_id(url, DMM_MAKER_PAGE)
+
+
+def dmm_label_id(url: str) -> str:
+    """订阅地址里的 label 编号；不是 label 片单地址时交空串。"""
+    return _dmm_page_id(url, DMM_LABEL_PAGE)
+
+
+def dmm_catalogue_of(url: str) -> tuple[str, str]:
+    """订阅地址是 maker 还是 label、编号多少；两类都不是时交 `("", "")`。"""
+    for kind, pattern in DMM_CATALOGUE_PAGES.items():
+        found = _dmm_page_id(url, pattern)
+        if found:
+            return kind, found
+    return "", ""
+
+
+def dmm_catalogue_id(url: str) -> str:
+    """订阅地址里的 maker/label 编号（两种地址都认）；不是这两类时交空串。"""
+    return dmm_catalogue_of(url)[1]
+
+
+def parse_dmm_catalogue(works, codes: dict[str, str] | None = None) -> ParsedFeed:
+    """DMM 片商/厂牌片单（`sources.dmm.CatalogueWorks`）→ 条目。条目身份是 cid。
+
+    `codes` 是 cid → 官方 `makerContentId`（`DmmSource.maker_codes` 批量问回来的）。列表型自己不带
+    番号：问到的那几条照 `parse_dmm_actress` 的写法过 `catalog_rules` 并写进标题前缀，问不到的
+    `product_code` 留空串，`feeds.poll` 不为它建壳、按 `without_code` 计数。条目链接照旧指向商品页，
+    出演与厂牌列表里就带着，合集判据不用等取资料。
+    """
+    codes = codes or {}
+    rows: list[FeedEntry] = []
+    for work in list(works.works)[:MAX_ENTRIES]:
+        official = str(codes.get(work.cid) or "").strip()
+        code = scan_code(official, product=True) if official else None
+        title = f"{code} {work.title}".strip() if code else work.title
+        rows.append(FeedEntry(
+            work.cid, title, DMM_CONTENT_PAGE.format(cid=work.cid),
+            _published(work.release_date) if work.release_date else None,
+            product_code=official, performers="、".join(work.performers),
+            studio=work.studio or None))
+    return ParsedFeed(works.name or None, tuple(rows))
 
 
 def solo_works_url(url: str) -> str:
@@ -294,8 +402,11 @@ def normalize_url(value: object) -> str:
 
 
 def kind_of(url: str) -> str:
-    """订阅地址是哪一类：DMM 片单页按地址认，其余都是 JavDB 演员页。"""
-    return KIND_DMM_ACTRESS if dmm_actress_id(url) else KIND_JAVDB_ACTOR
+    """订阅地址是哪一类：DMM 三种片单页按地址认，其余都是 JavDB 演员页。"""
+    if dmm_actress_id(url):
+        return KIND_DMM_ACTRESS
+    kind, _value = dmm_catalogue_of(url)
+    return DMM_CATALOGUE_KINDS.get(kind, KIND_JAVDB_ACTOR)
 
 
 def add_source(connection: sqlite3.Connection, *, url: str, name: str = "",
@@ -322,26 +433,134 @@ def dmm_actress_ids(connection: sqlite3.Connection, entity_id: int) -> list[str]
     return [str(row[0]) for row in connection.execute(
         "SELECT DISTINCT external_id FROM entity_external_ref WHERE entity_id=?"
         f" AND external_kind='performer' AND provider IN ({marks}) ORDER BY external_id",
-        (int(entity_id), *DMM_ACTRESS_PROVIDERS)) if _DMM_ACTRESS_ID.match(str(row[0] or ""))]
+        (int(entity_id), *DMM_ACTRESS_PROVIDERS)) if _DMM_ID.match(str(row[0] or ""))]
 
 
 def dmm_actress_pages(connection: sqlite3.Connection, entity_id: int) -> list[str]:
     return [dmm_actress_url(value) for value in dmm_actress_ids(connection, entity_id)]
 
 
-def sync_dmm_sources(connection: sqlite3.Connection) -> list[int]:
-    """给已在订阅的人补上 DMM 片单源，返回新建的源 id。
+def dmm_actress_ids_from_refs(refs) -> list[str]:
+    """已取出的引用行里的 DMM 女优编号；索引页一次取整批引用时复用，不按人再查一遍。"""
+    values = {str(ref.get("external_id") or "") for ref in refs or ()
+              if str(ref.get("external_kind") or "") == "performer"
+              and str(ref.get("provider") or "") in DMM_ACTRESS_PROVIDERS}
+    return sorted(value for value in values if _DMM_ID.match(value))
 
-    订阅是按人开的（人物页那枚开关），DMM 编号却常常是开关打开之后才由刮削写进账本的，所以每轮
-    拉取前对一遍。只补地址还没登记过的：用户在设置页单独停掉的那一条不会被重新打开，没有 DMM
-    编号的人一条也不建，也就不为她发请求。
+
+def dmm_catalogue_refs(connection: sqlite3.Connection, entity_id: int) -> list[tuple[str, str]]:
+    """这家片商显式绑过的 DMM maker/label 编号（`entity_external_ref`）。
+
+    provider `dmm`、external_kind `maker` / `label`；用户订阅种子命中的实体或手工绑定时写一条。
+    读不到就是没有，不按片商名或作品页里的名字猜编号。
+    """
+    rows = connection.execute(
+        "SELECT external_kind,external_id FROM entity_external_ref WHERE entity_id=?"
+        " AND provider=? AND external_kind IN ('maker','label')"
+        " ORDER BY external_kind,external_id", (int(entity_id), DMM_CATALOGUE_PROVIDER))
+    return [(str(row[0]), str(row[1])) for row in rows if _DMM_ID.match(str(row[1] or ""))]
+
+
+def _is_label_entity(connection: sqlite3.Connection, entity_id: int) -> bool:
+    """这个 studio 实体在 `label_maker` 里是不是某个 maker 旗下的 label。"""
+    return connection.execute("SELECT 1 FROM label_maker WHERE label_id=?",
+                              (int(entity_id),)).fetchone() is not None
+
+
+def bind_dmm_studio(connection: sqlite3.Connection, entity_id: int, kind: str, value: str) -> None:
+    """把一个 DMM maker/label 编号显式绑到 studio 实体；幂等，只由用户动作调用。
+
+    编号只认 ASCII 数字；实体必须是 studio。同一编号已经属于另一家片商时拒绝，不抢别人的绑定。
+    """
+    kind = str(kind or "")
+    if kind not in DMM_CATALOGUE_PAGES:
+        raise ValueError("kind must be maker or label")
+    value = str(value or "")
+    dmm_catalogue_url(kind, value)
+    row = connection.execute("SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
+    if row is None or row["kind"] != "studio":
+        raise UserValueError("api.feeds.studioOnly")
+    held = connection.execute(
+        "SELECT entity_id FROM entity_external_ref WHERE provider=? AND external_kind=? AND external_id=?",
+        (DMM_CATALOGUE_PROVIDER, kind, value)).fetchone()
+    if held is not None and int(held[0]) != int(entity_id):
+        raise UserValueError("api.feeds.dmmIdTaken")
+    connection.execute(
+        "INSERT OR IGNORE INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+        " VALUES(?,?,?,?)", (int(entity_id), DMM_CATALOGUE_PROVIDER, kind, value))
+
+
+def _studio_name_owners(connection: sqlite3.Connection) -> dict[int, list[str]]:
+    """studio 实体 → 唯一命中它的内置种子编号。
+
+    一个种子命中多个实体、或一个实体同时命中多个种子时都不算，留给调用方报缺口，不猜。
+    """
+    rows = connection.execute(
+        "SELECT id,canonical_name AS name FROM entity WHERE kind='studio'"
+        " UNION ALL SELECT a.entity_id,a.alias FROM entity_alias a"
+        " JOIN entity e ON e.id=a.entity_id WHERE e.kind='studio'")
+    by_key: dict[str, set[int]] = {}
+    for entity_id, name in rows:
+        key = studio_name_key(str(name or ""))
+        if key:
+            by_key.setdefault(key, set()).add(int(entity_id))
+    owners: dict[int, list[str]] = {}
+    for maker_id, names in KNOWN_DMM_STUDIOS.items():
+        found: set[int] = set()
+        for name in names:
+            found |= by_key.get(studio_name_key(name), set())
+        if len(found) == 1:
+            owners.setdefault(found.pop(), []).append(maker_id)
+    return owners
+
+
+def known_dmm_studio(connection: sqlite3.Connection, entity_id: int) -> str:
+    """名称唯一命中内置种子的 studio 的 maker 编号；零个、多个或不是 studio 都交空串。只读。"""
+    found = _studio_name_owners(connection).get(int(entity_id), [])
+    return found[0] if len(found) == 1 else ""
+
+
+def _dmm_catalogue_choice(connection: sqlite3.Connection, entity_id: int, *,
+                          resolve_seed: bool) -> tuple[list[tuple[str, str]], str]:
+    """(编号列表, 用到的种子编号)。显式绑定优先；有绑定但与实体位置不符时不回落种子。"""
+    refs = dmm_catalogue_refs(connection, entity_id)
+    if refs:
+        wanted = "label" if _is_label_entity(connection, entity_id) else "maker"
+        return [ref for ref in refs if ref[0] == wanted], ""
+    seed = known_dmm_studio(connection, entity_id) if resolve_seed else ""
+    return ([("maker", seed)] if seed else []), seed
+
+
+def dmm_catalogue_ids(connection: sqlite3.Connection, entity_id: int, *,
+                      resolve_seed: bool = True) -> list[tuple[str, str]]:
+    """这家片商该订的 DMM 编号：label 实体用 label 编号，其余用 maker 编号。
+
+    显式绑定优先；没有绑定时按 `KNOWN_DMM_STUDIOS` 的名称唯一匹配兜底（只读，不写账本）。
+    maker 片单已经含旗下 label 的作品，两边一起订只会让同一部片出现两次。
+    """
+    return _dmm_catalogue_choice(connection, entity_id, resolve_seed=resolve_seed)[0]
+
+
+def dmm_catalogue_pages(connection: sqlite3.Connection, entity_id: int, *,
+                        resolve_seed: bool = True) -> list[str]:
+    return [dmm_catalogue_url(kind, value)
+            for kind, value in dmm_catalogue_ids(connection, entity_id, resolve_seed=resolve_seed)]
+
+
+def sync_dmm_sources(connection: sqlite3.Connection) -> list[int]:
+    """给已在订阅的实体补上 DMM 片单源，返回新建的源 id。
+
+    订阅开关先打开、DMM 编号后由刮削或显式绑定写进账本，所以每轮拉取前对一遍。人和片商都查：
+    女优编号与片商/厂牌编号各按自己的映射读。只补地址还没登记过的：用户在设置页单独停掉的那
+    一条不会被重新打开，没有编号的实体一条也不建，也就不为它发请求。
     """
     created: list[int] = []
     followed = [int(row[0]) for row in connection.execute(
         "SELECT DISTINCT entity_id FROM feed_source WHERE enabled=1 AND entity_id IS NOT NULL"
         " ORDER BY entity_id")]
     for entity_id in followed:
-        for url in dmm_actress_pages(connection, entity_id):
+        for url in [*dmm_actress_pages(connection, entity_id),
+                    *dmm_catalogue_pages(connection, entity_id, resolve_seed=False)]:
             if connection.execute("SELECT 1 FROM feed_source WHERE url=?", (url,)).fetchone():
                 continue
             created.append(add_source(connection, url=url, entity_id=entity_id))
@@ -371,8 +590,24 @@ def follow_entity(connection: sqlite3.Connection, entity_id: int, urls) -> list[
 
 
 def unfollow_entity(connection: sqlite3.Connection, entity_id: int) -> None:
-    """开关关掉：两类源一起只停用不删除，再打开时这几条的去重记忆接着用。"""
+    """开关关掉：同一个实体的源一起只停用不删除，再打开时这几条的去重记忆接着用。"""
     connection.execute("UPDATE feed_source SET enabled=0 WHERE entity_id=?", (int(entity_id),))
+
+
+def subscribe_studio(connection: sqlite3.Connection, entity_id: int) -> list[int]:
+    """片商/厂牌页的订阅：显式绑定优先，没有绑定时用内置种子兜底并写回绑定。
+
+    种子只有在用户明确打开订阅时才落成 `entity_external_ref`，读路径不写账本。没有编号就不发
+    请求，也不建一条永远为空的源：拒绝比订一条空源更容易解释。同一个地址再订一次原地启用，
+    不另建一条；退订只停用来源，绑定留着。
+    """
+    ids, seed = _dmm_catalogue_choice(connection, entity_id, resolve_seed=True)
+    if seed:
+        bind_dmm_studio(connection, entity_id, "maker", seed)
+    if not ids:
+        raise UserValueError("api.feeds.noStudioIds")
+    return follow_entity(connection, entity_id,
+                         [dmm_catalogue_url(kind, value) for kind, value in ids])
 
 
 def entity_following(connection: sqlite3.Connection, entity_id: int) -> bool:
@@ -406,7 +641,7 @@ def sources(connection: sqlite3.Connection) -> list[dict]:
     同一个人的两页在表里名字一样，只有它说得出哪一行是旧艺名那页。排序按人物走，
     同一个人的几页挨在一起，不被页名或类型拆开；同一个人里 JavDB 演员页在前、DMM 片单在后。"""
     rows = connection.execute(
-        "SELECT s.*, e.canonical_name AS entity_name,"
+        "SELECT s.*, e.canonical_name AS entity_name, e.kind AS entity_kind,"
         " (SELECT count(*) FROM feed_item i WHERE i.source_id=s.id) AS seen"
         " FROM feed_source s LEFT JOIN entity e ON e.id=s.entity_id"
         " ORDER BY coalesce(e.canonical_name, s.name), s.kind<>?, s.id",
@@ -420,6 +655,7 @@ def sources(connection: sqlite3.Connection) -> list[dict]:
         "url": row["url"],
         "entity_id": row["entity_id"],
         "entity_name": row["entity_name"],
+        "entity_kind": row["entity_kind"],
         "enabled": bool(row["enabled"]),
         "interval_minutes": int(row["interval_minutes"]),
         "last_fetched_at": row["last_fetched_at"],

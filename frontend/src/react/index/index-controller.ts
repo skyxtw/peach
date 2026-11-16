@@ -4,8 +4,10 @@ import type { OnlineAuthor } from '../follow/online-vocab';
 import type { FollowView } from '../follow-feed/follow-feed';
 import { followAuthorView, followTagView, followViewPath } from '../follow-feed/follow-view';
 import type { IndexPerson, IndexProps, IndexRoute, PersonAvatar } from './index-data';
+import { normalizeKanaRow } from '../../identity-filter';
+import { isDefaultPeopleSort, normalizePeopleSort } from '../../people-sort';
 
-export function indexPath({ kind, q, scope, view, category }: IndexRoute): string {
+export function indexPath({ kind, q, scope, view, category, sort, dir, kana }: IndexRoute): string {
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (kind === 'tags') {
@@ -14,7 +16,16 @@ export function indexPath({ kind, q, scope, view, category }: IndexRoute): strin
     if (category !== 'all') params.set('category', category);
   }
   if (kind === 'performers' && scope === 'online') params.set('scope', scope);
-  if (kind === 'performers' && scope !== 'online' && category !== 'all') params.set('category', category);
+  if (kind === 'performers' && scope !== 'online') {
+    const ordered = normalizePeopleSort(kind, sort, dir);
+    if (category !== 'all') params.set('category', category);
+    const row = normalizeKanaRow(kind, scope, kana);
+    if (row) params.set('kana', row);
+    if (!isDefaultPeopleSort(ordered.sort, ordered.dir)) {
+      params.set('sort', ordered.sort);
+      params.set('dir', ordered.dir);
+    }
+  }
   return `/${kind}` + (params.size ? `?${params}` : '');
 }
 

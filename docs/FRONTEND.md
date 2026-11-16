@@ -86,11 +86,13 @@ Peach 按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 接入 React +
 
 `/performers`、`/creators`、`/studios`、`/agencies`、`/tags` 五张索引页整个是 React（`frontend/src/react/index/`，入口 `index-page.tsx`），由路由树画进 `#index`。
 
-- 地址栏是唯一真相。索引元素从地址读出 `q`、`scope`、`view`、`category`，经 `openManagedRoute` 作初值交给页面；页面换档只改自己的状态，经 `ShellActions.routeIndex` 交壳，由 `shellNavigate` 写回地址并认领，不重挂。后退前进到另一份 search 时领新的页面打开序号，按地址重开。从侧栏进来一律回到本地、字母表、全部类型。
+- 地址栏是唯一真相。索引元素从地址读出 `q`、`scope`、`view`、`category`、`sort`、`dir`、`kana`，经 `openManagedRoute` 作初值交给页面；页面换档只改自己的状态，经 `ShellActions.routeIndex` 交壳，由 `shellNavigate` 写回地址并认领，不重挂。后退前进到另一份 search 时领新的页面打开序号，按地址重开。从侧栏进来一律回到本地、字母表、全部类型。
 - 本地名册与词表读 `/api/index`，在线那一档读 `/api/follow/authors` 与 `/api/follow/tags`，键建在 `frontend/src/react/follow/online-vocab.ts`，归关注那一侧。四份都是 `useInfiniteQuery`，「载入更多」取下一页；打字过滤时新结果到手前留着上一份，不铺骨架。
+- 本地艺人名册的排序键与方向也在地址上（`sort`、`dir`）。词表与归一在 `frontend/src/people-sort.ts`，后端白名单是 `web_entity.INDEX_PERSON_SORTS`；换列就换查询键并重取，缺资料的由后端排最后。格子读数在按资料排序时先报这一列的值，没有就写「资料未取得」，不补零。
+- 本地艺人名册的五十音行在地址的 `kana` 上（`a/k/s/t/n/h/m/y/r/w/other`）。行表与归一在 `frontend/src/identity-filter.ts`，后端 `peach_kana_row` 把 NFKC／片假名转平假名后的首字归行；空值与罗马字归 `other`，不会混进某个假名行。行与身份分类、`sort`／`dir` 同时生效，换行也换查询键。
 - 圆框里那段 HTML 由 `card-art/markup.ts` 的 `avatarInner` 拼，经壳的 `personAvatar` 递进来；原尺寸摆图、补底与首字母收起的规则在 `web/css/01-base.css` 的 `[data-person-ring]`，量图的是 `installCardArt()` 挂在文档上的 `load` 监听。
 - 顶栏选择键归壳，选择模式记在 `@peach/shell` 的 store 里：索引元素订阅它，推给画着的本地标签页；关掉时页面清空所选。所选标签的操作条三颗键都不写账本，「显示结果」回目录按所选标签筛选。
-- 数据回来之前的骨架由索引元素写进 `#index`，模板在 `frontend/src/index-skeleton.ts`（正文那段是 `ui-kit/skeleton.ts` 的 `indexSkeletonHtml`），页头骨架与页面同一组文字。本地艺人那一排身份分类在骨架里就是最终长相，词表与骨架都在 `frontend/src/identity-filter.ts`，页面与骨架模板共用。
+- 数据回来之前的骨架由索引元素写进 `#index`，模板在 `frontend/src/index-skeleton.ts`（正文那段是 `ui-kit/skeleton.ts` 的 `indexSkeletonHtml`），页头骨架与页面同一组文字。本地艺人那一排身份分类与五十音行在骨架里就是最终长相，词表与骨架都在 `frontend/src/identity-filter.ts`，页面与骨架模板共用。
 
 ### 资料页
 

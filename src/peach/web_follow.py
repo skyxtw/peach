@@ -2205,7 +2205,7 @@ def w_follow_image_dims(contract, body) -> dict:
 def w_follow_play(contract, body) -> dict:
     """记录一次关注页直接播放；候选无需先保存成 asset。"""
     item_id = int(body["item"])
-    contract.cache_bust()
+    # 提交本身会清一次聚合缓存；起播在事务提交后统一失效，不再在写前多清一遍。
     with contract.database.write_transaction() as connection:
         status = _store(contract, connection).record_playback(item_id)
     from .capacity_history import record_playback
@@ -2216,8 +2216,9 @@ def w_follow_play(contract, body) -> dict:
 def w_follow_activity(contract, body) -> dict:
     """累计关注页在线播放的真实时长与最远到达位置。"""
     item_id = int(body["item"])
-    contract.cache_bust()
-    with contract.database.write_transaction() as connection:
+    # 十秒一次的心跳只改观看进度：不清缓存，触发器也不推 follow_playback 的版本
+    # （migration 0058），否则看片期间统计页每十秒整份重算一轮。
+    with contract.database.write_transaction(notify=False) as connection:
         result = _store(contract, connection).record_playback_activity(
             item_id,
             position=body.get("position", 0), duration=body.get("duration", 0),

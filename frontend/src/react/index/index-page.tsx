@@ -16,6 +16,8 @@ import { indexSkeletonHtml, spinnerHtml } from '@peach/legacy/ui';
 
 import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { IndexSearch } from './index-search';
+import { SortKeys } from '../entity-filter/entity-filter-page';
+import type { EntitySortKey } from '../entity-filter/entity-filter';
 import { DataTableFooter } from '../components/table-controls';
 import { tagSkeletonHtml, TAG_PAGE_SIZE, TAG_PAGE_SIZES } from '../../tag-skeleton';
 import { INDEX_NOUNS } from '../../index-skeleton';
@@ -41,6 +43,8 @@ import {
 import { OnlineAuthors, PeopleGrid } from './index-people';
 import { TagAlphabet, TagCloud, TagDock, TagFilters, type TagEntry } from './index-tags';
 import { TagManager } from './tag-manager';
+import { PEOPLE_SORTS, nextPeopleSort, normalizePeopleSort, peopleSortAria } from '../../people-sort';
+import { KANA_ROWS, normalizeKanaRow } from '../../identity-filter';
 import { t } from '../../i18n';
 
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人。所以这个开关切的
@@ -93,9 +97,10 @@ type Item = IndexPerson | IndexTag | OnlineAuthor | OnlineTag;
 export function IndexPage(props: IndexProps) {
   const [managing, setManaging] = useState(false);
   const [route, setRoute] = useState<IndexRoute>(() => indexRoute(
-    { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category },
+    { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category,
+      sort: props.sort, dir: props.dir, kana: props.kana },
   ));
-  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category]);
+  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category, props.sort, props.dir, props.kana]);
   const [previousIncoming, setPreviousIncoming] = useState(incoming);
   if (incoming !== previousIncoming) {
     setPreviousIncoming(incoming);
@@ -105,7 +110,9 @@ export function IndexPage(props: IndexProps) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [match, setMatch] = useState<'any' | 'all'>('any');
   const root = useRef<HTMLDivElement>(null);
-  const { kind, q, scope, view, category } = route;
+  const { kind, q, scope, view, category, sort, dir, kana } = route;
+  const orderedSort = normalizePeopleSort(kind, sort, dir);
+  const activeKana = normalizeKanaRow(kind, scope, kana);
   const title = INDEX_TITLES[kind], noun = INDEX_NOUNS[kind];
   const onlineTags = kind === 'tags' && scope === 'online';
   const onlineAuthors = kind === 'performers' && scope === 'online';
@@ -130,6 +137,17 @@ export function IndexPage(props: IndexProps) {
     const next = { ...route, ...patch };
     setRoute(next);
     props.route(next, { replace });
+  };
+
+  /* 一排排序键：按下态与资料页那排共用一套绘制与方向箭头，换列重取由查询键带着走。 */
+  const peopleSorts: EntitySortKey[] = PEOPLE_SORTS.map((option) => ({
+    key: option.key, label: option.label, pressed: option.key === orderedSort.sort,
+    dir: option.key === orderedSort.sort ? orderedSort.dir : '',
+    ariaLabel: peopleSortAria(option.key, orderedSort.sort, orderedSort.dir),
+  }));
+  const changeSort = (key: string) => {
+    const next = nextPeopleSort(key, orderedSort.sort, orderedSort.dir);
+    go({ sort: next.sort, dir: next.dir });
   };
 
   const { pagination, onChange: changePage } = useTagPagination(JSON.stringify(route));
@@ -159,13 +177,21 @@ export function IndexPage(props: IndexProps) {
   /* 分类计数只随名册、词表和过滤词变，与选中哪一类无关。换分类时新一页还没到，沿用同一份
      名册上一次拿到的计数：分类按钮行不先塌成「全部」加当前项、等数据回来再弹开。头一回
      还没有计数时整排都摆出来，同壳铺的骨架那一排，计数到了再收掉空的那几类。 */
-  const countsKey = `${kind}:${scope}:${q}`;
+  const countsKey = `${kind}:${scope}:${q}:${activeKana}`;
   const lastCounts = useRef<{ key: string; counts: Record<string, number> } | null>(null);
   const pageCounts = result.data?.pages[0]?.categories;
   if (pageCounts && !result.isPlaceholderData) lastCounts.current = { key: countsKey, counts: pageCounts };
-  const categoryCounts = pageCounts ?? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined);
+  const categoryCounts = result.isPlaceholderData
+    ? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined)
+    : pageCounts ?? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined);
   const waiting = result.isPending && !categoryCounts;
   const hasEntries = ([key]: readonly [string, string]) => key === 'all' || waiting || Number(categoryCounts?.[key] || 0) > 0;
+  /* 五十音计数只认当前这一页的响应：换分类时旧计数已经不对，先收起来等新的一份；
+     求和给「全部」，不另向后端要一个 all 键。 */
+  const kanaCounts = result.isPlaceholderData ? undefined : result.data?.pages[0]?.kana_counts;
+  const kanaCount = (key: string) => key === 'all'
+    ? (kanaCounts ? Object.values(kanaCounts).reduce((sum, count) => sum + count, 0) : undefined)
+    : kanaCounts?.[key];
 
   /* 框换了大小，「这张图要不要补底」和人脸放大都得重算：图早加载完了，不会再自己发一次 load。
      赶在绘制之前，否则换版式那一帧是按旧框算的几何。 */
@@ -218,10 +244,12 @@ export function IndexPage(props: IndexProps) {
         </EmptyState>
       );
     }
-    if (!items.length) return <IndexEmpty kind={kind} filtered={!!q || category !== 'all'}
-      online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all' })} />;
+    if (!items.length) return <IndexEmpty kind={kind} filtered={!!q || category !== 'all' || !!activeKana}
+      online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all', kana: '' })} />;
     if (onlineAuthors) return <OnlineAuthors items={items as OnlineAuthor[]} layout={layout} props={props} />;
-    if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props} />;
+    if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props}
+      actions sort={kind === 'performers' ? orderedSort.sort : 'n'}
+      kana={kind === 'performers' ? activeKana : ''} />;
     const actions = { online: onlineTags, picked, press: pressTag };
     return view === 'alphabet' ? <TagAlphabet groups={groups} actions={actions} /> : <TagCloud tags={tags} actions={actions} />;
   };
@@ -259,12 +287,37 @@ export function IndexPage(props: IndexProps) {
         onCategory={next => go({ category: next })} onView={next => go({ view: next })}
         onJump={at => root.current?.querySelector(`[data-alpha-group="${at}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })} /> : <>
       {kind === 'performers' && scope === 'local' ? (
-        <div aria-label={t('catalog:peopleIndex.identityCategory')} className={IDENTITY_ROW_CLASS}>
-          {IDENTITY_CATEGORIES.filter((entry) => entry[0] === category || hasEntries(entry)).map(([key, label]) => (
-            <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
-              aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
-          ))}
-        </div>
+        <>
+          <div aria-label={t('catalog:peopleIndex.identityCategory')} className={IDENTITY_ROW_CLASS}>
+            {IDENTITY_CATEGORIES.filter((entry) => entry[0] === category || hasEntries(entry)).map(([key, label]) => (
+              <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
+                aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
+            ))}
+          </div>
+          <div aria-label={t('catalog:peopleIndex.kanaRow')} className={IDENTITY_ROW_CLASS}>
+            {KANA_ROWS.map(([key, label]) => {
+              const selected = key === 'all' ? !activeKana : activeKana === key;
+              const count = kanaCount(key);
+              const empty = count === 0;
+              return (
+                <span key={key} className={`inline-flex${empty ? ' opacity-50' : ''}`}>
+                  <Button variant={selected ? 'primary' : 'secondary'} size="small" data-kana-row={key}
+                    data-kana-empty={empty ? '' : undefined}
+                    aria-pressed={selected} onClick={() => go({ kana: key === 'all' ? '' : key })}>
+                    {label}
+                    {count === undefined ? (pending
+                      ? <span data-kana-count-skeleton={key} aria-hidden className="ml-1 inline-block h-2.5 w-5 align-middle rounded-sm skeleton-sheen" />
+                      : null) : <span data-kana-count={key} className="ml-1 text-caption-2-regular tabular-nums opacity-70">{count.toLocaleString()}</span>}
+                  </Button>
+                </span>
+              );
+            })}
+          </div>
+          <div data-index-sorts="" role="group" aria-label={t('catalog:peopleIndex.sortLabel')}
+            className="mb-4 flex min-w-0 flex-wrap items-center gap-1">
+            <SortKeys sorts={peopleSorts} onSort={changeSort} />
+          </div>
+        </>
       ) : null}
       {kind === 'tags' ? (
         <TagFilters categories={categories} category={category} online={onlineTags} readout={readout}

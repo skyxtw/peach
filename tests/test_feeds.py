@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from peach import feeds  # noqa: E402
 from peach.migrations import upgrade  # noqa: E402
 from peach.repository import LedgerDatabase  # noqa: E402
-from peach.sources.dmm import ActressWorks, ListedWork  # noqa: E402
+from peach.sources.dmm import ActressWorks, CatalogueWorks, ListedWork  # noqa: E402
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 
@@ -349,6 +349,15 @@ def dmm_works(*rows) -> ActressWorks:
         for cid, code, date, pre_order, cast in rows))
 
 
+def dmm_catalogue_works(*rows) -> CatalogueWorks:
+    """DMM 片商/厂牌片单：每行（cid, 标题, 发售日, 预购, 出演, 厂牌）。"""
+    return CatalogueWorks(kind="maker", id="3152", name="エスワン ナンバーワンスタイル",
+                          total=len(rows), works=tuple(
+        ListedWork(cid=cid, title=title, maker_code="", release_date=date,
+                   pre_order=pre_order, performers=tuple(cast), studio=studio)
+        for cid, title, date, pre_order, cast, studio in rows))
+
+
 #: 2026-11-04 实测片单里的几种：预购的单体作品、和 JavDB 同一部、分卷、几十人的合集。
 DMM_WORKS = dmm_works(
     ("mikr00133", "MIKR-133", "2026-11-13", True, ["森日向子"]),
@@ -462,6 +471,275 @@ class DmmActressFeedTest(unittest.TestCase):
             self.assertFalse(feeds.entity_following(connection, self.performer))
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM feed_source WHERE enabled=1").fetchone()[0], 1)
+
+
+class DmmCatalogueFeedTest(unittest.TestCase):
+    """DMM 片商/厂牌片单接进 Feed：解析、编号映射、订阅与「先不建壳」的边界。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.database = _database(Path(self._tmp.name))
+        with self.database.write_transaction() as connection:
+            self.studio = self._studio(connection, "無名のスタジオ")
+
+    @staticmethod
+    def _studio(connection, name, *, label_of=None) -> int:
+        entity_id = int(connection.execute(
+            "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES('studio',?,peach_normalize(?),?,?)",
+            (name, name, feeds.stamp(), feeds.stamp())).lastrowid)
+        if label_of is not None:
+            connection.execute(
+                "INSERT INTO label_maker(label_id,maker_id,source,checked_at) VALUES(?,?,'test',?)",
+                (entity_id, int(label_of), feeds.stamp()))
+        return entity_id
+
+    @staticmethod
+    def _bind(connection, entity_id, external_kind, value):
+        connection.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+            " VALUES(?,'dmm',?,?)", (int(entity_id), external_kind, value))
+
+    def test_catalogue_entries_without_codes_keep_cid_and_stay_unshelled(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR-133 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("pbd00528", "PBD-528 作品", "2026-10-20", False, ["森日向子", "共演者"], "エスワン ナンバーワンスタイル"))
+        parsed = feeds.parse_dmm_catalogue(works)
+        self.assertEqual(parsed.title, "エスワン ナンバーワンスタイル")
+        head, tail = parsed.entries
+        self.assertEqual((head.item_key, head.link, head.published_at[:10]),
+                         ("mikr00133", "https://video.dmm.co.jp/av/content/?id=mikr00133", "2026-11-13"))
+        # 列表型没有 makerContentId：批量番号一条都没问到，product_code 留空串，不回退从标题猜。
+        self.assertEqual((head.product_code, head.code, head.title), ("", None, "MIKR-133 作品"))
+        self.assertEqual((head.performers, head.studio), ("森日向子", "エスワン ナンバーワンスタイル"))
+        self.assertTrue(works.works[0].pre_order)
+        self.assertIsNone(tail.code)
+
+    def test_catalogue_entries_take_the_batch_codes_and_normalise_them_like_javdb(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("mxdlp00343", "MXDLP 作品", "2026-10-20", False, ["森日向子"], "ムーディーズ"))
+        parsed = feeds.parse_dmm_catalogue(works, codes={"mikr00133": "MIKR-133",
+                                                         "mxdlp00343": "MXDLP-0343"})
+        first, second = parsed.entries
+        self.assertEqual((first.product_code, first.code, first.title),
+                         ("MIKR-133", "MIKR-133", "MIKR-133 MIKR 作品"))
+        # 和演员片单同一种归一化：MXDLP-0343 → MXDLP-343。
+        self.assertEqual((second.product_code, second.code, second.title),
+                         ("MXDLP-0343", "MXDLP-343", "MXDLP-343 MXDLP 作品"))
+
+    def test_catalogue_entries_leave_only_the_cids_the_batch_missed_empty(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("pbd00528", "PBD 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
+        parsed = feeds.parse_dmm_catalogue(works, codes={"mikr00133": "MIKR-133"})
+        self.assertEqual([entry.code for entry in parsed.entries], ["MIKR-133", None])
+        self.assertEqual((parsed.entries[1].product_code, parsed.entries[1].title), ("", "PBD 作品"))
+
+    def test_maker_and_label_urls_round_trip_and_other_urls_stay_javdb(self):
+        self.assertEqual((feeds.dmm_catalogue_of(feeds.dmm_maker_url("3152")), feeds.dmm_maker_id(
+            feeds.dmm_maker_url("3152")), feeds.kind_of(feeds.dmm_maker_url("3152"))),
+                         (("maker", "3152"), "3152", feeds.KIND_DMM_MAKER))
+        self.assertEqual((feeds.dmm_catalogue_of(feeds.dmm_label_url("3474")), feeds.dmm_label_id(
+            feeds.dmm_label_url("3474")), feeds.kind_of(feeds.dmm_label_url("3474"))),
+                         (("label", "3474"), "3474", feeds.KIND_DMM_LABEL))
+        self.assertEqual(feeds.kind_of("https://javdb.com/actors/pRMq"), feeds.KIND_JAVDB_ACTOR)
+        self.assertEqual(feeds.kind_of("https://video.dmm.co.jp/av/list/?maker=S1"), feeds.KIND_JAVDB_ACTOR)
+        for bad in ("3152&x=1", "", None, "３１５２"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                feeds.dmm_maker_url(bad)
+
+    def test_a_studio_subscribes_its_bound_maker_id_only_once(self):
+        with self.database.write_transaction() as connection:
+            self._bind(connection, self.studio, "maker", "3152")
+            first = feeds.subscribe_studio(connection, self.studio)
+            second = feeds.subscribe_studio(connection, self.studio)
+            rows = connection.execute("SELECT kind,url,entity_id FROM feed_source ORDER BY id").fetchall()
+        self.assertEqual(first, second)
+        self.assertEqual([tuple(row) for row in rows],
+                         [(feeds.KIND_DMM_MAKER, "https://video.dmm.co.jp/av/list/?maker=3152", self.studio)])
+
+    def test_a_label_entity_uses_its_label_id_not_a_misplaced_maker_id(self):
+        with self.database.write_transaction() as connection:
+            label = self._studio(connection, "S1 NO.1 STYLE", label_of=self.studio)
+            self._bind(connection, label, "maker", "3152")
+            with self.assertRaises(ValueError) as caught:
+                feeds.subscribe_studio(connection, label)
+            self.assertEqual(caught.exception.code, "api.feeds.noStudioIds")
+            self._bind(connection, label, "label", "3474")
+            feeds.subscribe_studio(connection, label)
+            row = connection.execute("SELECT kind,url FROM feed_source").fetchone()
+        self.assertEqual(tuple(row), (feeds.KIND_DMM_LABEL, "https://video.dmm.co.jp/av/list/?label=3474"))
+
+    def test_a_studio_without_a_bound_id_is_refused_and_writes_nothing(self):
+        with self.database.write_transaction() as connection:
+            with self.assertRaises(ValueError) as caught:
+                feeds.subscribe_studio(connection, self.studio)
+            self.assertEqual(caught.exception.code, "api.feeds.noStudioIds")
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_source").fetchone()[0], 0)
+
+    def test_sync_adds_a_catalogue_source_for_a_followed_studio(self):
+        with self.database.write_transaction() as connection:
+            feeds.add_source(connection, url="https://example.test/marker", entity_id=self.studio)
+            self._bind(connection, self.studio, "maker", "3152")
+            created = feeds.sync_dmm_sources(connection)
+            rows = connection.execute(
+                "SELECT kind,url FROM feed_source WHERE id IN (%s)" % ",".join("?" * len(created)),
+                created).fetchall()
+        self.assertEqual([tuple(row) for row in rows],
+                         [(feeds.KIND_DMM_MAKER, "https://video.dmm.co.jp/av/list/?maker=3152")])
+        with self.database.write_transaction() as connection:
+            self.assertEqual(feeds.sync_dmm_sources(connection), [])
+
+    def test_a_catalogue_poll_without_codes_records_items_but_builds_no_shells(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR-133 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("pbd00528", "PBD-528 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
+        with self.database.write_transaction() as connection:
+            source_id = feeds.add_source(connection, url=feeds.dmm_maker_url("3152"), entity_id=self.studio)
+            source = connection.execute("SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone()
+            outcome = feeds.poll(connection, source, feeds.parse_dmm_catalogue(works))
+            self.assertEqual((outcome["seen"], outcome["fresh"], outcome["without_code"], outcome["created"]),
+                             (2, 2, 2, []))
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_item").fetchone()[0], 2)
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_discovery").fetchone()[0], 0)
+
+    def test_a_catalogue_poll_with_codes_builds_the_same_kind_of_shells_as_javdb(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("mxdlp00343", "MXDLP 作品", "2026-10-20", False, ["森日向子"], "ムーディーズ"),
+            ("pbd00528", "PBD 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
+        with self.database.write_transaction() as connection:
+            source_id = feeds.add_source(connection, url=feeds.dmm_maker_url("3152"), entity_id=self.studio)
+            source = connection.execute("SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone()
+            outcome = feeds.poll(connection, source, feeds.parse_dmm_catalogue(
+                works, codes={"mikr00133": "MIKR-133", "mxdlp00343": "MXDLP-0343"}))
+            self.assertEqual([code for _id, code in outcome["created"]], ["MIKR-133", "MXDLP-343"])
+            self.assertEqual((outcome["fresh"], outcome["without_code"]), (3, 1))
+            shells = connection.execute(
+                "SELECT code,release_date,performers,studio FROM feed_discovery ORDER BY code").fetchall()
+        self.assertEqual([tuple(row) for row in shells],
+                         [("MIKR-133", "2026-11-13", "森日向子", "エスワン ナンバーワンスタイル"),
+                          ("MXDLP-343", "2026-10-20", "森日向子", "ムーディーズ")])
+
+
+class DmmStudioSeedTest(unittest.TestCase):
+    """片商订阅的内置种子：名称唯一命中才兜底，订阅时才写绑定，退订不删。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.database = _database(Path(self._tmp.name))
+
+    @staticmethod
+    def _studio(connection, name, aliases=(), kind="studio") -> int:
+        entity_id = int(connection.execute(
+            "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,peach_normalize(?),?,?)",
+            (kind, name, name, feeds.stamp(), feeds.stamp())).lastrowid)
+        for alias in aliases:
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(?,?,peach_normalize(?),'test')", (entity_id, alias, alias))
+        return entity_id
+
+    def test_seed_matches_canonical_alias_and_full_width_spelling(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "Ｓ１", aliases=("エスワン", "s1"))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "3152")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "3152")])
+
+    def test_seed_matches_an_alias_on_a_differently_named_studio(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "テスト株式会社", aliases=("MOODYZ",))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "1509")
+
+    def test_reading_a_seed_match_does_not_write_a_binding(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "3152")])
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio, resolve_seed=False), [])
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_source").fetchone()[0], 0)
+
+    def test_seed_does_not_guess_when_two_studios_match_the_same_seed(self):
+        with self.database.write_transaction() as connection:
+            first = self._studio(connection, "スタジオ甲", aliases=("S1",))
+            second = self._studio(connection, "スタジオ乙", aliases=("S1",))
+            self.assertEqual((feeds.known_dmm_studio(connection, first),
+                              feeds.known_dmm_studio(connection, second)), ("", ""))
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, first), [])
+
+    def test_seed_does_not_guess_when_one_entity_matches_two_seeds(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "合体スタジオ", aliases=("S1", "MOODYZ"))
+            self.assertEqual(feeds.known_dmm_studio(connection, studio), "")
+
+    def test_no_seed_and_no_binding_is_refused_without_writing(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "別の会社")
+            with self.assertRaises(ValueError) as caught:
+                feeds.subscribe_studio(connection, studio)
+            self.assertEqual(caught.exception.code, "api.feeds.noStudioIds")
+            self.assertEqual(connection.execute("SELECT count(*) FROM feed_source").fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
+
+    def test_an_explicit_binding_beats_the_seed(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            feeds.bind_dmm_studio(connection, studio, "maker", "999")
+            self.assertEqual(feeds.dmm_catalogue_ids(connection, studio), [("maker", "999")])
+
+    def test_subscribing_a_seeded_studio_writes_the_binding_and_unfollow_keeps_it(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            first = feeds.subscribe_studio(connection, studio)
+            second = feeds.subscribe_studio(connection, studio)
+            rows = connection.execute(
+                "SELECT kind,url,entity_id,enabled FROM feed_source ORDER BY id").fetchall()
+            refs = connection.execute(
+                "SELECT provider,external_kind,external_id FROM entity_external_ref").fetchall()
+        self.assertEqual(first, second)
+        self.assertEqual([tuple(row) for row in rows],
+                         [(feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), studio, 1)])
+        self.assertEqual([tuple(row) for row in refs], [("dmm", "maker", "3152")])
+        with self.database.write_transaction() as connection:
+            feeds.unfollow_entity(connection, studio)
+            self.assertEqual(connection.execute(
+                "SELECT enabled FROM feed_source").fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 1)
+
+    def test_sync_does_not_create_a_source_from_a_seed(self):
+        with self.database.write_transaction() as connection:
+            studio = self._studio(connection, "S1")
+            feeds.add_source(connection, url="https://example.test/marker", entity_id=studio)
+            self.assertEqual(feeds.sync_dmm_sources(connection), [])
+            feeds.bind_dmm_studio(connection, studio, "maker", "3152")
+            created = feeds.sync_dmm_sources(connection)
+            row = connection.execute("SELECT kind,url FROM feed_source WHERE id=?", (created[0],)).fetchone()
+        self.assertEqual(tuple(row), (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152")))
+
+    def test_bind_dmm_studio_is_idempotent_and_rejects_bad_input(self):
+        with self.database.write_transaction() as connection:
+            first = self._studio(connection, "スタジオ甲")
+            second = self._studio(connection, "スタジオ乙")
+            feeds.bind_dmm_studio(connection, first, "maker", "3152")
+            feeds.bind_dmm_studio(connection, first, "maker", "3152")
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_external_ref").fetchone()[0], 1)
+            with self.assertRaises(ValueError) as taken:
+                feeds.bind_dmm_studio(connection, second, "maker", "3152")
+            self.assertEqual(taken.exception.code, "api.feeds.dmmIdTaken")
+            with self.assertRaises(ValueError):
+                feeds.bind_dmm_studio(connection, first, "maker", "S1")
+            performer = self._studio(connection, "女優", kind="performer")
+            with self.assertRaises(ValueError) as refused:
+                feeds.bind_dmm_studio(connection, performer, "maker", "3152")
+            self.assertEqual(refused.exception.code, "api.feeds.studioOnly")
 
 
 class ShellBoundaryTest(unittest.TestCase):

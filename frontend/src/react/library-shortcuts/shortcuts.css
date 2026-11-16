@@ -50,6 +50,36 @@
 .peach-react [data-shortcuts-avatar] { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: var(--hover); color: var(--muted); }
 .peach-react [data-shortcuts-avatar] img { width: 100%; height: 100%; object-fit: cover; }
 .peach-react [data-shortcuts-avatar]:has(img) > svg { display: none; }
+/* 名册格星标叠在右上角；卡面本身仍是整块按钮，星标是它的兄弟节点。带星的格子把
+   RSS 标记让到左上角，两枚不挤在同一角。 */
+.peach-react [data-index-cell-slot] { position: relative; display: flex; min-width: 0; }
+.peach-react [data-index-cell-slot] > [data-index-cell] { flex: 1; width: 100%; }
+.peach-react [data-index-favorite] {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ground, var(--page)) 82%, transparent);
+  box-shadow: 0 0 0 1px var(--border-10);
+}
+/* 身份格宽 62px，星标压在头像右上角，按钮缩到 22px 并贴出色格。格被隐藏时整格一起收掉。 */
+.peach-react [data-id-favorite-slot] { position: relative; display: inline-flex; }
+.peach-react [data-id-favorite-slot][hidden] { display: none; }
+.peach-react [data-id-favorite-slot] > [data-id-favorite] {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--page);
+  box-shadow: 0 0 0 1px var(--border-10);
+}
+.peach-react [data-id-favorite-slot] > [data-id-favorite] svg { width: 12px; height: 12px; }
 @media (max-width: 760px) {
   .peach-react [data-modal-width="collections"] { width: calc(100vw - 24px); max-width: calc(100vw - 24px); }
   .peach-react [data-shortcuts-panel] { display: flex; flex-direction: column; }
