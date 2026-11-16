@@ -584,7 +584,8 @@
     "mergeBusy": "合并中…",
     "mergeClose": "收起",
     "mergeDone": "已把 {{source}} 并入 {{target}}，迁移 {{count, number}} 条作品。",
-    "mergeAuto": "自动检测并合并",
+    "mergeAuto": "自动检测现有厂牌并合并",
+    "mergeManual": "手动指定（兜底）",
     "mergeAutoBusy": "检测中…",
     "mergeAutoDone": "已自动合并 {{count, number}} 组重复厂牌。"
   },

@@ -27,9 +27,11 @@
     "newFollow": "New follow"
   },
   "javTabs": {
+    "actorSubscriptions": "Actor subscriptions",
     "collection": "Collection",
     "discover": "Discover",
     "newReleases": "New releases",
+    "studioSubscriptions": "Studio subscriptions",
     "wanted": "Wanted"
   },
   "manage": {

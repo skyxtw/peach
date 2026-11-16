@@ -1,7 +1,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "7f7a8a2b-ca30-45c7-916b-31269d396899", e._sentryDebugIdIdentifier = "sentry-dbid-7f7a8a2b-ca30-45c7-916b-31269d396899");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "a8c37b8c-e77c-49f3-8e5d-237121ca7ef2", e._sentryDebugIdIdentifier = "sentry-dbid-a8c37b8c-e77c-49f3-8e5d-237121ca7ef2");
 	} catch {}
 })();
 import { $2ec61d1d4f780267$export$a8a3e93435678ff9 as e, $542a13ca2fa5b484$export$5b6b19405a83ff9d as t, $76d00c5a4edb230a$export$76ccd210b9029917 as n, $76d00c5a4edb230a$export$816b5d811295e6bc as r, $76d00c5a4edb230a$export$b59bdbef9ce70de2 as i, $76d00c5a4edb230a$export$f6f0c3fe4ec306ea as a, $76d00c5a4edb230a$export$f850895b287ef28e as o, $ea3928288112382f$export$439d29a4e110a164 as s, $l as c, ActivityStatus as l, Button as u, ButtonLink as d, Bx as f, COLUMN_SORT as p, Checkbox as m, ChevronSortDown as h, Chip as g, CollapseChevron as _, CollapseRegion as v, DataTableFooter as y, DataTableFrame as ee, DataTableSort as b, EmptyFocusButton as x, EmptyState as te, ErrorText as S, ExternalLink as ne, FEEDS_KEY as C, FOLLOW_CHECK_KEY as w, FOLLOW_CHECK_TASK as T, FOLLOW_CREDENTIALS_KEY as E, FOLLOW_MANAGE_KEY as D, FOLLOW_MANAGE_NAV as O, FOLLOW_RESOLVE_KEY as k, FieldLabel as A, Help as j, Input as M, LAYOUTS as N, M6 as P, MENU_ITEM as F, MENU_ITEM_INTERACTIVE as I, MENU_POPOVER_SURFACE as L, ModalFrame as re, Note as R, P7 as ie, SORT_DEFAULT_DIR as ae, SORT_OPTIONS as oe, STAT_STRIP_SIX as z, Select as B, SelectItem as V, SelectionDock as se, SelectionPopover as H, SiteLabel as U, SortDirectionIcon as ce, SortableBoardTabs as le, Switch as W, Table as ue, TableColumnControls as de, TableColumnResizer as fe, TableSelectionHeader as pe, TagManager as G, TaskProgress as me, Un as he, Wt as K, Xf as ge, __toESM as _e, activityKind as ve, addAlias as ye, addSource as be, apiSend as xe, authorGroups as Se, authorName as Ce, avatarInner as we, busyProps as q, cardClass as Te, checkEvidenceGap as Ee, checkFailures as De, checkFeeds as Oe, checkReceipt as ke, checkSummary as Ae, checkedText as je, clickedBlank as Me, codedText as Ne, columnVisibilityFeature as Pe, composingKey as Fe, confirmModal as Ie, createColumnHelper as Le, credentialDone as Re, cx as ze, dZ as Be, dropSources as Ve, du as He, errorHeadline as Ue, errorMessage as J, feedIntervalText as We, fetchCheckJob as Ge, fetchCredentials as Ke, fetchFeeds as qe, fetchFollow as Je, fetchResolveJob as Ye, fetchSuggestions as Xe, flexRender as Ze, followFeedByName as Qe, followFeedEntity as $e, followSuggestKey as et, groupByAuthor as tt, isBroken as nt, isLayout as rt, jobText as it, joinList as at, keepSelected as ot, l7 as st, localTime as ct, lookupFeedActor as lt, mapLimit as ut, markAllPending as dt, pageSizeOf as ft, pageWindow as pt, patchSource as mt, pv as ht, queryClient as gt, quoted as _t, reloadFollowManage as vt, removeAlias as yt, removeFeed as bt, removeSource as xt, renameAliasGroup as St, require_jsx_runtime as Ct, require_react as wt, resolveFollowSort as Tt, rowPaginationFeature as Et, rowSelectionFeature as Dt, rowSortingFeature as Ot, selectionState as kt, serverLabel as At, setFeedEnabled as jt, setSourceEnabled as Mt, sortLabel as Nt, startCheck as Pt, startResolve as Ft, t as Y, tableFeatures as It, tableRows as Lt, toggleGroup as Rt, useAction as zt, useBackgroundJob as Bt, useMutation as Vt, useQuery as Ht, useQueryClient as Ut, useTable as Wt, useTablePreferences as Gt } from "./peach-app.js";
@@ -1818,6 +1818,25 @@ function Kn({ close: e }) {
 				children: Y("catalog:studioSubscriptions.mergeHint")
 			}),
 			/* @__PURE__ */ (0, Z.jsxs)("div", {
+				className: "flex flex-wrap gap-2",
+				children: [/* @__PURE__ */ (0, Z.jsx)("button", {
+					type: "button",
+					disabled: c,
+					className: "h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50",
+					onClick: () => void h(),
+					children: Y(c ? "catalog:studioSubscriptions.mergeAutoBusy" : "catalog:studioSubscriptions.mergeAuto")
+				}), /* @__PURE__ */ (0, Z.jsx)("button", {
+					type: "button",
+					className: "h-9 rounded-lg px-3 text-body-2-medium text-text-secondary hover:bg-control",
+					onClick: e,
+					children: Y("catalog:studioSubscriptions.mergeClose")
+				})]
+			}),
+			/* @__PURE__ */ (0, Z.jsx)("strong", {
+				className: "mt-2 text-caption-1-regular text-text-secondary",
+				children: Y("catalog:studioSubscriptions.mergeManual")
+			}),
+			/* @__PURE__ */ (0, Z.jsxs)("div", {
 				className: "flex flex-wrap items-end gap-2",
 				children: [
 					/* @__PURE__ */ (0, Z.jsxs)("label", {
@@ -1843,19 +1862,6 @@ function Kn({ close: e }) {
 						disabled: o || !n.trim() || !i.trim(),
 						className: "h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50",
 						children: Y(o ? "catalog:studioSubscriptions.mergeBusy" : "catalog:studioSubscriptions.mergeSubmit")
-					}),
-					/* @__PURE__ */ (0, Z.jsx)("button", {
-						type: "button",
-						disabled: c,
-						className: "h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50",
-						onClick: () => void h(),
-						children: Y(c ? "catalog:studioSubscriptions.mergeAutoBusy" : "catalog:studioSubscriptions.mergeAuto")
-					}),
-					/* @__PURE__ */ (0, Z.jsx)("button", {
-						type: "button",
-						className: "h-9 rounded-lg px-3 text-body-2-medium text-text-secondary hover:bg-control",
-						onClick: e,
-						children: Y("catalog:studioSubscriptions.mergeClose")
 					})
 				]
 			}),
@@ -4477,4 +4483,4 @@ function Js(e) {
 }
 export { Js as FollowManagePage };
 
-//# debugId=7f7a8a2b-ca30-45c7-916b-31269d396899
+//# debugId=a8c37b8c-e77c-49f3-8e5d-237121ca7ef2

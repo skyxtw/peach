@@ -26,9 +26,11 @@
     "newFollow": "添加关注"
   },
   "javTabs": {
+    "actorSubscriptions": "演员订阅",
     "collection": "馆藏",
     "discover": "发现",
     "newReleases": "新作",
+    "studioSubscriptions": "厂牌订阅",
     "wanted": "想要"
   },
   "manage": {

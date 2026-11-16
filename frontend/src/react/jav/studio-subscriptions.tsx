@@ -78,6 +78,12 @@ export function MergeStudiosForm({ close }: { close(): void }) {
   return <form data-studio-merge="" onSubmit={submit} className="flex flex-col gap-2 rounded-xl border border-separator-border bg-background-secondary-default p-4">
     <strong className="text-body-1-medium text-text-primary">{t('catalog:studioSubscriptions.mergeTitle')}</strong>
     <p className="text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeHint')}</p>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={autoBusy} className="h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50"
+        onClick={() => void autoMerge()}>{autoBusy ? t('catalog:studioSubscriptions.mergeAutoBusy') : t('catalog:studioSubscriptions.mergeAuto')}</button>
+      <button type="button" className="h-9 rounded-lg px-3 text-body-2-medium text-text-secondary hover:bg-control" onClick={close}>{t('catalog:studioSubscriptions.mergeClose')}</button>
+    </div>
+    <strong className="mt-2 text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeManual')}</strong>
     <div className="flex flex-wrap items-end gap-2">
       <label className="flex min-w-40 flex-col gap-1 text-caption-1-regular text-text-secondary">{t('catalog:studioSubscriptions.mergeTarget')}
         <input value={target} onChange={(event) => setTarget(event.target.value)} disabled={busy} className="h-9 rounded-lg border border-separator-border bg-surface px-2 text-body-2-regular text-text-primary" /></label>
@@ -85,9 +91,7 @@ export function MergeStudiosForm({ close }: { close(): void }) {
         <input value={source} onChange={(event) => setSource(event.target.value)} disabled={busy} className="h-9 rounded-lg border border-separator-border bg-surface px-2 text-body-2-regular text-text-primary" /></label>
       <button type="submit" disabled={busy || !target.trim() || !source.trim()} className="h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50">
         {busy ? t('catalog:studioSubscriptions.mergeBusy') : t('catalog:studioSubscriptions.mergeSubmit')}</button>
-      <button type="button" disabled={autoBusy} className="h-9 rounded-lg bg-control px-3 text-body-2-medium text-text-primary hover:bg-control-hover disabled:opacity-50"
-        onClick={() => void autoMerge()}>{autoBusy ? t('catalog:studioSubscriptions.mergeAutoBusy') : t('catalog:studioSubscriptions.mergeAuto')}</button>
-      <button type="button" className="h-9 rounded-lg px-3 text-body-2-medium text-text-secondary hover:bg-control" onClick={close}>{t('catalog:studioSubscriptions.mergeClose')}</button>
+
     </div>
     {done ? <p className="text-caption-1-regular text-text-primary">{done}</p> : null}
     {error ? <p className="text-caption-1-regular text-text-primary">{error}</p> : null}

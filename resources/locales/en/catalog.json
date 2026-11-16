@@ -625,7 +625,8 @@
     "mergeBusy": "Merging…",
     "mergeClose": "Close",
     "mergeDone": "Merged {{source}} into {{target}}; moved {{count, number}} assets.",
-    "mergeAuto": "Auto-detect and merge",
+    "mergeAuto": "Detect and merge existing studios",
+    "mergeManual": "Manual fallback",
     "mergeAutoBusy": "Detecting…",
     "mergeAutoDone": "Merged {{count, number}} duplicate studio groups."
   },
