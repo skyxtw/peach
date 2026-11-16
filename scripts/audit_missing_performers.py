@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--studio', default='')
     parser.add_argument('--prefix', default='')
     parser.add_argument('--limit', type=int, default=20)
+    parser.add_argument('--active', action='store_true', help='排除 vanished（回收站/消失）')
     parser.add_argument('--code', nargs='?', const=DEFAULT_CODE, default=None,
                         help=f'单条番号；省略值用 {DEFAULT_CODE}')
     parser.add_argument('--json', action='store_true')
@@ -43,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.code is not None:
             report = diagnose(connection, args.code)
         else:
-            report = summary(connection, studio=args.studio, prefix=args.prefix, limit=args.limit)
+            report = summary(connection, studio=args.studio, prefix=args.prefix, limit=args.limit,
+                              active_only=args.active)
     finally:
         connection.close()
     if args.json:

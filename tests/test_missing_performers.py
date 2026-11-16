@@ -27,14 +27,14 @@ class MissingPerformerDiagnosticsTests(unittest.TestCase):
 
     def asset(self, code: str | None, *, studio: str = 'Studio A',
               release_date: str | None = '2026-01-01', title: str = '',
-              owners: str | None = None) -> int:
+              owners: str | None = None, disposal: str | None = None) -> int:
         self._asset_seq += 1
         stem = code or f'unknown-{self._asset_seq}'
         asset_id = int(self.connection.execute(
             "INSERT INTO asset(location,path,name,medium,code,studio,release_date,"
-            "catalog_title,field_owners) VALUES('local',?,?, 'video',?,?,?,?,?)",
+            "catalog_title,field_owners,disposal) VALUES('local',?,?, 'video',?,?,?,?,?,?)",
             (f'R:\\Media\\{stem}.mp4', f'{stem}.mp4',
-             code, studio, release_date, title, owners)).lastrowid)
+             code, studio, release_date, title, owners, disposal)).lastrowid)
         self.connection.commit()
         return asset_id
 
@@ -69,6 +69,26 @@ class MissingPerformerDiagnosticsTests(unittest.TestCase):
         self.assertEqual([row['id'] for row in report['rows']], [first])
         filtered = missing_performers.summary(self.connection, studio='Studio A', prefix='ABC')
         self.assertEqual(filtered['counts']['filtered_missing_with_code_and_release'], 0)
+
+    def test_active_only_excludes_vanished_but_keeps_trash(self):
+        self.asset('SIVR-020', studio='Studio A')
+        self.asset('SIVR-021', studio='Studio A', disposal='vanished')
+        self.asset('ABC-022', studio='Studio B', disposal='trash')
+        report = missing_performers.summary(self.connection, active_only=True, limit=10)
+        self.assertEqual(report['counts']['missing_with_code_and_release'], 3)
+        self.assertEqual(report['counts']['missing_with_code_and_release_active'], 2)
+        self.assertEqual([row['code'] for row in report['rows']], ['SIVR-020', 'ABC-022'])
+        self.assertEqual(report['by_studio'], [{'studio': 'Studio A', 'n': 1}, {'studio': 'Studio B', 'n': 1}])
+        self.assertTrue(report['filters']['active_only'])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = audit_missing_performers.main([
+                '--db', str(self.db), '--json', '--limit', '10', '--active',
+            ])
+        self.assertEqual(code, 0)
+        payload = json.loads(output.getvalue())
+        self.assertTrue(payload['filters']['active_only'])
+        self.assertEqual([row['code'] for row in payload['rows']], ['SIVR-020', 'ABC-022'])
 
     def test_empty_code_and_release_only_count_in_all_scope(self):
         self.asset(None, release_date=None)

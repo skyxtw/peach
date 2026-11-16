@@ -25,7 +25,8 @@ def _count(connection, where: str, params=()) -> int:
         f'SELECT count(*) FROM asset a WHERE {where}', tuple(params)).fetchone()[0])
 
 
-def summary(connection, *, studio: str = '', prefix: str = '', limit: int = 20) -> dict:
+def summary(connection, *, studio: str = '', prefix: str = '', limit: int = 20,
+            active_only: bool = False) -> dict:
     """两个口径的全局计数，以及按 studio/番号前缀的分组；filters 只收窄分组与列表。"""
     if limit < 1:
         raise ValueError('limit 必须大于 0')
@@ -35,10 +36,13 @@ def summary(connection, *, studio: str = '', prefix: str = '', limit: int = 20) 
     missing_code = _count(connection, f'{VIDEO} AND {CODE} AND {NO_PERFORMER}')
     missing_code_date = _count(connection, f'{VIDEO} AND {CODE} AND {RELEASE} AND {NO_PERFORMER}')
     active = "COALESCE(a.disposal,'')<>'vanished'"
+    all_where = f'{VIDEO} AND {NO_PERFORMER}' + (f' AND {active}' if active_only else '')
     missing_all_active = _count(connection, f'{VIDEO} AND {NO_PERFORMER} AND {active}')
     missing_code_date_active = _count(connection, f'{VIDEO} AND {CODE} AND {RELEASE} AND {NO_PERFORMER} AND {active}')
 
     where = f'{VIDEO} AND {CODE} AND {RELEASE} AND {NO_PERFORMER}'
+    if active_only:
+        where += ' AND ' + active
     params: list = []
     if studio:
         where += ' AND ' + STUDIO + '=? COLLATE NOCASE'
@@ -54,7 +58,7 @@ def summary(connection, *, studio: str = '', prefix: str = '', limit: int = 20) 
         f'SELECT {PREFIX} prefix,count(*) n FROM asset a WHERE {where} '
         'GROUP BY 1 ORDER BY n DESC,prefix LIMIT ?', [*params, limit]).fetchall()
     all_by_studio = connection.execute(
-        f'SELECT {STUDIO} studio,count(*) n FROM asset a WHERE {VIDEO} AND {NO_PERFORMER} '
+        f'SELECT {STUDIO} studio,count(*) n FROM asset a WHERE {all_where} '
         'GROUP BY 1 ORDER BY n DESC,studio LIMIT ?', (limit,)).fetchall()
     rows = connection.execute(
         f'SELECT a.id,a.code,a.name,a.catalog_title,a.studio,a.release_date,{PREFIX} prefix '
@@ -72,7 +76,8 @@ def summary(connection, *, studio: str = '', prefix: str = '', limit: int = 20) 
             'missing_with_code_and_release_active': missing_code_date_active,
             'filtered_missing_with_code_and_release': filtered,
         },
-        'filters': {'studio': studio, 'prefix': prefix.upper() if prefix else '', 'limit': limit},
+        'filters': {'studio': studio, 'prefix': prefix.upper() if prefix else '', 'limit': limit,
+                    'active_only': active_only},
         'by_studio': [dict(row) for row in by_studio],
         'by_prefix': [dict(row) for row in by_prefix],
         'all_by_studio': [dict(row) for row in all_by_studio],
