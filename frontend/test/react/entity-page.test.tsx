@@ -12,7 +12,7 @@ import { entityOptions, fetchItems, itemsParams, prefetchEntityPage, type Entity
 import { PENDING_REFETCH_MS } from '../../src/react/components/pending-work';
 import { EntityPage } from '../../src/react/entity-page/entity-page-view';
 import { queryClient } from '../../src/react/query';
-import { buttonNamed, click, mountRoot, pending, settle } from './render';
+import { buttonNamed, click, mountRoot, pending, settle, submit, type } from './render';
 
 afterEach(() => { queryClient.clear() });
 notifyManager.setScheduler((notify) => notify());
@@ -57,6 +57,8 @@ interface Plan {
   entityFor?: () => Record<string, unknown>;
   /** 换头像写回落地时调一下。 */
   picked?: () => void;
+  /** 手工绑定 DMM 编号落地时调一下，下一次取资料用新状态。 */
+  bind?: () => void;
   /** `/api/feeds/check` 的回话，按次序一问一个；问完了就一直是最后那个。 */
   checks?: string[];
 }
@@ -82,6 +84,10 @@ function serve(plan: Plan = {}) {
       }
       if (url.pathname === '/api/entity-name') {
         return reply({ changed: true, canonical_name: body.canonical, previous_name: body.name });
+      }
+      if (url.pathname === '/api/feeds/bind-studio') {
+        plan.bind?.();
+        return reply({ ok: true, entity_id: body.entity_id, kind: body.kind, id: body.id });
       }
       return reply({ ok: true });
     }
@@ -573,6 +579,42 @@ describe('写操作', () => {
     await settle();
     expect(page.props.helpers.failure).toHaveBeenCalledWith('取消订阅新作', expect.any(Error));
     expect(toggle().checked).toBe(true);
+  });
+
+  it('片商页手工绑定 DMM 编号：写入后重取资料，订阅开关随后出现', async () => {
+    let bound = false;
+    const page = await open({
+      entityFor: () => entity({ kind: 'studio', canonical_name: 'S1 NO.1 STYLE', feed: bound ? { following: false } : undefined }),
+      bind: () => { bound = true },
+    }, { kind: 'studio', name: 'S1 NO.1 STYLE' });
+    expect(page.host.querySelector('input[data-entity-feed]')).toBeNull();
+    await click(page.host.querySelector('[data-studio-bind]'));
+    const dialog = document.querySelector('[data-studio-bind-dialog]')!;
+    await type(dialog.querySelector('input'), '3152');
+    await submit(dialog);
+    await settle();
+    expect(page.writes.find((one) => one.url === '/api/feeds/bind-studio')).toEqual({
+      url: '/api/feeds/bind-studio', body: { entity_id: 7001, kind: 'maker', id: '3152' },
+    });
+    expect(page.calls('/api/entity').length).toBeGreaterThan(1);
+    expect(page.host.querySelector('input[data-entity-feed]')).not.toBeNull();
+    expect(page.props.helpers.receipt).toHaveBeenCalledWith('已绑定 DMM 编号 3152');
+  });
+
+  it('绑定失败显示服务端原因，弹层留在原地', async () => {
+    const page = await open({ entity: entity({ kind: 'studio', canonical_name: 'S1 NO.1 STYLE' }) },
+      { kind: 'studio', name: 'S1 NO.1 STYLE' });
+    await click(page.host.querySelector('[data-studio-bind]'));
+    const dialog = document.querySelector('[data-studio-bind-dialog]')!;
+    page.fetcher.mockImplementationOnce(async () => ({
+      ok: false, status: 400,
+      json: async () => ({ error: '这个 DMM 编号已经绑到另一家片商', message_code: 'api.feeds.dmmIdTaken', message_params: {} }),
+    }));
+    await type(dialog.querySelector('input'), '3152');
+    await submit(dialog);
+    await settle();
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('已经绑到另一家片商');
+    expect(document.querySelector('[data-studio-bind-dialog]')).toBe(dialog);
   });
 
   it('刚订上：等服务端这一轮拉取跑完，再把新作那一行重取一遍；跑着的时候不重取', async () => {

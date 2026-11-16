@@ -122,7 +122,7 @@ def poll_source(contract, transport, source) -> dict:
     # `ok` 数失败、按 `added` 数新增，两个调度对象共用同一段结算。
     report = {"source": source_id, "name": source["name"] or source["url"],
               "ok": True, "seen": 0, "added": 0, "without_code": 0, "error": None}
-    if source["kind"] == feeds.KIND_DMM_ACTRESS:
+    if source["kind"] in feeds.DMM_KINDS:
         return _poll_dmm(contract, transport, source, report)
     try:
         response = fetch(transport, source["url"], etag=source["etag"],
@@ -172,25 +172,49 @@ def poll_source(contract, transport, source) -> dict:
     return report
 
 
+def _dmm_codes(site, cids, *, session) -> dict[str, str]:
+    """一批 cid 的官方番号，按 `WORKS_PAGE`（接口单页上限 100）分批问；没答的 cid 不在结果里。"""
+    from .sources.dmm import WORKS_PAGE
+
+    found: dict[str, str] = {}
+    cids = list(cids)
+    for start in range(0, len(cids), WORKS_PAGE):
+        found.update(site.maker_codes(cids[start:start + WORKS_PAGE], session=session))
+    return found
+
+
 def _poll_dmm(contract, transport, source, report: dict) -> dict:
-    """拉一条 DMM 片单源（ADR-0135）：按地址里的女优编号问 GraphQL，不 GET 那个地址。
+    """拉一条 DMM 片单源（ADR-0135）：女优、片商、厂牌三种，按地址里的编号问 GraphQL。
 
     请求走同一条 `SourceTransport` 与主机限流，包在 `holding` 里：验证页、封禁、地区限制与
     限流让 DMM 整站进冷却，刮削链之后的请求在同一关停下。任何失败都按原因写进这一行。
+
+    maker/label 的列表型没有 `makerContentId`：列表查完后只对没见过的新 cid 按页批量问
+    `maker_codes`；问到几条写几条，没问到的留空由 `feeds.poll` 计 `without_code`，不因一条
+    没答丢掉整页。
     """
     from .sources.base import Session, SourceFailure
     from .sources.dmm import DmmSource
 
     source_id = int(source["id"])
     interval = int(source["interval_minutes"])
+    kind = source["kind"]
     site = DmmSource()
     with contract.database.read_connection() as connection:
         known = feeds.seen_keys(connection, source_id)
     session = Session(transport)
     try:
         with site.holding(session):
-            works = site.actress_works(feeds.dmm_actress_id(source["url"]), session=session,
-                                       known=known, limit=feeds.MAX_ENTRIES)
+            if kind == feeds.KIND_DMM_ACTRESS:
+                works = site.actress_works(feeds.dmm_actress_id(source["url"]), session=session,
+                                           known=known, limit=feeds.MAX_ENTRIES)
+                codes: dict[str, str] = {}
+            else:
+                works = (site.maker_works if kind == feeds.KIND_DMM_MAKER else site.label_works)(
+                    feeds.dmm_catalogue_id(source["url"]), session=session,
+                    known=known, limit=feeds.MAX_ENTRIES)
+                fresh = [str(work.cid) for work in works.works if str(work.cid) not in known]
+                codes = _dmm_codes(site, fresh, session=session)
     except Exception as error:  # noqa: BLE001 - 原因写到源那一行上给人看
         message = from_error(error)
         report.update(ok=False, **{**_failure(error), "error": message},
@@ -203,7 +227,8 @@ def _poll_dmm(contract, transport, source, report: dict) -> dict:
             feeds.settle(connection, source_id, error=message, interval_minutes=interval,
                          retry_at=retry_at)
         return report
-    parsed = feeds.parse_dmm_actress(works)
+    parsed = (feeds.parse_dmm_actress(works) if kind == feeds.KIND_DMM_ACTRESS
+              else feeds.parse_dmm_catalogue(works, codes=codes))
     hidden = web_settings.hidden_compilations(contract.database)
     with contract.database.write_transaction() as connection:
         outcome = feeds.poll(connection, source, parsed, hidden)
@@ -497,6 +522,25 @@ def w_feed_source(contract, body) -> dict:
     raise ValueError(f"unknown feed source action: {action}")
 
 
+def w_bind_studio(contract, body) -> dict:
+    """手工把 DMM maker/label 编号绑到片商实体；幂等，供片商页 UI 调用。
+
+    `id` 只收 ASCII 数字，实体必须是 studio；只写 `entity_external_ref`，不建订阅源，也不联网。
+    """
+    entity_id = body.get("entity_id")
+    kind = str(body.get("kind") or "")
+    value = body.get("id")
+    if not isinstance(entity_id, int) or isinstance(entity_id, bool):
+        raise ValueError("entity_id must be an integer")
+    if kind not in feeds.DMM_CATALOGUE_PAGES:
+        raise ValueError("kind must be maker or label")
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("id must be an ASCII numeric DMM id")
+    with contract.database.write_transaction() as connection:
+        feeds.bind_dmm_studio(connection, entity_id, kind, str(value))
+    return {"ok": True, "entity_id": entity_id, "kind": kind, "id": str(value)}
+
+
 def subscribe_performer(connection, entity_id: int, canonical_name: str) -> list[int]:
     """这位的每个 JavDB 演员页与 DMM 片单各订一条，返回源 id。地址按账本里她的编号现拼。"""
     refs = [dict(ref) for ref in connection.execute(
@@ -523,22 +567,28 @@ def fetch_new_sources(contract, ids: list[int]) -> None:
 
 
 def _follow_entity(contract, body) -> dict:
-    """人物页「订阅新作」开关。地址按这位的 JavDB 演员页现拼，不收页面传来的地址。"""
+    """订阅开关：人物页订她的演员页与 DMM 女优片单，片商页订显式绑过的 DMM maker/label 片单。
+
+    地址都由服务端现拼，不收页面传来的地址。片商没有绑 DMM 编号时拒绝订阅，不建永远为空的源。
+    """
     entity_id, enabled = body.get("entity_id"), body.get("enabled")
     if not isinstance(entity_id, int) or not isinstance(enabled, bool):
         raise ValueError("entity_id must be an integer and enabled must be a boolean")
     with contract.database.write_transaction() as connection:
         entity_id = entities.resolve_entity_id(connection, entity_id) or entity_id
         row = connection.execute(
-            "SELECT canonical_name FROM entity WHERE id=? AND kind='performer'",
-            (entity_id,)).fetchone()
+            "SELECT canonical_name,kind FROM entity WHERE id=?", (entity_id,)).fetchone()
         if row is None:
-            raise UserValueError("api.feeds.performerMissing")
+            raise UserValueError("api.feeds.entityMissing")
+        ids: list[int] = []
         if not enabled:
             feeds.unfollow_entity(connection, entity_id)
-            ids: list[int] = []
-        else:
+        elif row["kind"] == "performer":
             ids = subscribe_performer(connection, entity_id, row["canonical_name"])
+        elif row["kind"] == "studio":
+            ids = feeds.subscribe_studio(connection, entity_id)
+        else:
+            raise UserValueError("api.feeds.entityNotSubscribable")
     fetch_new_sources(contract, ids)
     return {"ok": True, "entity_id": entity_id, "following": enabled, "sources": ids}
 

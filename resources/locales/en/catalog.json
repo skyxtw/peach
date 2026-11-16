@@ -331,6 +331,7 @@
     "browseCollection": "Browse collection",
     "changePrimaryName": "Change primary name",
     "changePrimaryNameBody": "“{{chosen}}” becomes this profile's display name and “{{current}}” is kept as an alias. Credits, search, and tags on videos update to match.",
+    "dmmBound": "Bound DMM ID {{id}}",
     "followedCreatorLinked": "Linked followed creator {{author}} to {{name}}",
     "linkFollowedCreator": "Link followed creator",
     "loadingPhotos": "Loading photos",
@@ -351,6 +352,20 @@
     "setImageCount_other": "{{title}} · {{count, number}} images",
     "unsubscribeNewReleases": "Unsubscribe from new releases",
     "viewOnline": "View online"
+  },
+  "studioBind": {
+    "current": "Currently bound: {{ids}}",
+    "dimension": "Dimension",
+    "entry": "Bind DMM ID",
+    "id": "DMM ID",
+    "idDigits": "DMM IDs must be ASCII digits",
+    "idHint": "ASCII digits only, e.g. 3152",
+    "idPlaceholder": "3152",
+    "label": "Label",
+    "maker": "Maker",
+    "submit": "Bind",
+    "submitting": "Binding…",
+    "title": "Bind a DMM ID"
   },
   "entityPageSkeleton": {
     "loading": "Loading profile"

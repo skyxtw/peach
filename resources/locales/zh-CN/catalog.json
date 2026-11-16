@@ -310,6 +310,7 @@
     "browseCollection": "浏览馆藏",
     "changePrimaryName": "更改统一名称",
     "changePrimaryNameBody": "「{{chosen}}」将成为显示名称，「{{current}}」留作别名。作品署名、搜索和标签会一并更新。",
+    "dmmBound": "已绑定 DMM 编号 {{id}}",
     "followedCreatorLinked": "已把关注里的 {{author}} 记到 {{name}} 名下",
     "linkFollowedCreator": "关联关注中的创作者",
     "loadingPhotos": "正在读取照片",
@@ -326,6 +327,20 @@
     "setImageCount": "{{title}} · {{count, number}} 张",
     "unsubscribeNewReleases": "取消订阅新作",
     "viewOnline": "查看在线作品"
+  },
+  "studioBind": {
+    "current": "当前绑定：{{ids}}",
+    "dimension": "维度",
+    "entry": "绑定 DMM 编号",
+    "id": "DMM 编号",
+    "idDigits": "DMM 编号只认 ASCII 数字",
+    "idHint": "只填 ASCII 数字，例如 3152",
+    "idPlaceholder": "3152",
+    "label": "厂牌（label）",
+    "maker": "片商（maker）",
+    "submit": "绑定",
+    "submitting": "绑定中…",
+    "title": "绑定 DMM 编号"
   },
   "entityPageSkeleton": {
     "loading": "正在读取资料"

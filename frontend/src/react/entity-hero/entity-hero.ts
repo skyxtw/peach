@@ -121,6 +121,8 @@ export interface EntityHeroActions {
   chooseName(name: string): void;
   /** 打开「添加别名」弹层。 */
   addAlias(): void;
+  /** 绑定一个 DMM maker/label 编号；成功后壳会重取资料，失败由绑定弹层显示。 */
+  bindStudio(kind: 'maker' | 'label', id: string): Promise<void>;
   /** 订阅或取消订阅新作。失败时壳已发过失败回执，这里会收到抛出的错误。 */
   follow(on: boolean): Promise<void>;
   /** 刚订上：等服务端这一轮拉取跑完，再把新作那一行重取一遍。 */
