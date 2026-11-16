@@ -501,7 +501,7 @@ class DmmCatalogueFeedTest(unittest.TestCase):
             "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
             " VALUES(?,'dmm',?,?)", (int(entity_id), external_kind, value))
 
-    def test_the_catalogue_entries_keep_cid_for_later_official_codes(self):
+    def test_catalogue_entries_without_codes_keep_cid_and_stay_unshelled(self):
         works = dmm_catalogue_works(
             ("mikr00133", "MIKR-133 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
             ("pbd00528", "PBD-528 作品", "2026-10-20", False, ["森日向子", "共演者"], "エスワン ナンバーワンスタイル"))
@@ -510,11 +510,32 @@ class DmmCatalogueFeedTest(unittest.TestCase):
         head, tail = parsed.entries
         self.assertEqual((head.item_key, head.link, head.published_at[:10]),
                          ("mikr00133", "https://video.dmm.co.jp/av/content/?id=mikr00133", "2026-11-13"))
-        # 列表型没有 makerContentId：product_code 是空串，不回退从标题猜番号。
+        # 列表型没有 makerContentId：批量番号一条都没问到，product_code 留空串，不回退从标题猜。
         self.assertEqual((head.product_code, head.code, head.title), ("", None, "MIKR-133 作品"))
         self.assertEqual((head.performers, head.studio), ("森日向子", "エスワン ナンバーワンスタイル"))
         self.assertTrue(works.works[0].pre_order)
         self.assertIsNone(tail.code)
+
+    def test_catalogue_entries_take_the_batch_codes_and_normalise_them_like_javdb(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("mxdlp00343", "MXDLP 作品", "2026-10-20", False, ["森日向子"], "ムーディーズ"))
+        parsed = feeds.parse_dmm_catalogue(works, codes={"mikr00133": "MIKR-133",
+                                                         "mxdlp00343": "MXDLP-0343"})
+        first, second = parsed.entries
+        self.assertEqual((first.product_code, first.code, first.title),
+                         ("MIKR-133", "MIKR-133", "MIKR-133 MIKR 作品"))
+        # 和演员片单同一种归一化：MXDLP-0343 → MXDLP-343。
+        self.assertEqual((second.product_code, second.code, second.title),
+                         ("MXDLP-0343", "MXDLP-343", "MXDLP-343 MXDLP 作品"))
+
+    def test_catalogue_entries_leave_only_the_cids_the_batch_missed_empty(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("pbd00528", "PBD 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
+        parsed = feeds.parse_dmm_catalogue(works, codes={"mikr00133": "MIKR-133"})
+        self.assertEqual([entry.code for entry in parsed.entries], ["MIKR-133", None])
+        self.assertEqual((parsed.entries[1].product_code, parsed.entries[1].title), ("", "PBD 作品"))
 
     def test_maker_and_label_urls_round_trip_and_other_urls_stay_javdb(self):
         self.assertEqual((feeds.dmm_catalogue_of(feeds.dmm_maker_url("3152")), feeds.dmm_maker_id(
@@ -571,7 +592,7 @@ class DmmCatalogueFeedTest(unittest.TestCase):
         with self.database.write_transaction() as connection:
             self.assertEqual(feeds.sync_dmm_sources(connection), [])
 
-    def test_a_catalogue_poll_records_items_but_builds_no_shell_until_codes_are_filled(self):
+    def test_a_catalogue_poll_without_codes_records_items_but_builds_no_shells(self):
         works = dmm_catalogue_works(
             ("mikr00133", "MIKR-133 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
             ("pbd00528", "PBD-528 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
@@ -583,6 +604,24 @@ class DmmCatalogueFeedTest(unittest.TestCase):
                              (2, 2, 2, []))
             self.assertEqual(connection.execute("SELECT count(*) FROM feed_item").fetchone()[0], 2)
             self.assertEqual(connection.execute("SELECT count(*) FROM feed_discovery").fetchone()[0], 0)
+
+    def test_a_catalogue_poll_with_codes_builds_the_same_kind_of_shells_as_javdb(self):
+        works = dmm_catalogue_works(
+            ("mikr00133", "MIKR 作品", "2026-11-13", True, ["森日向子"], "エスワン ナンバーワンスタイル"),
+            ("mxdlp00343", "MXDLP 作品", "2026-10-20", False, ["森日向子"], "ムーディーズ"),
+            ("pbd00528", "PBD 作品", "2026-10-20", False, ["森日向子"], "エスワン ナンバーワンスタイル"))
+        with self.database.write_transaction() as connection:
+            source_id = feeds.add_source(connection, url=feeds.dmm_maker_url("3152"), entity_id=self.studio)
+            source = connection.execute("SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone()
+            outcome = feeds.poll(connection, source, feeds.parse_dmm_catalogue(
+                works, codes={"mikr00133": "MIKR-133", "mxdlp00343": "MXDLP-0343"}))
+            self.assertEqual([code for _id, code in outcome["created"]], ["MIKR-133", "MXDLP-343"])
+            self.assertEqual((outcome["fresh"], outcome["without_code"]), (3, 1))
+            shells = connection.execute(
+                "SELECT code,release_date,performers,studio FROM feed_discovery ORDER BY code").fetchall()
+        self.assertEqual([tuple(row) for row in shells],
+                         [("MIKR-133", "2026-11-13", "森日向子", "エスワン ナンバーワンスタイル"),
+                          ("MXDLP-343", "2026-10-20", "森日向子", "ムーディーズ")])
 
 
 class ShellBoundaryTest(unittest.TestCase):

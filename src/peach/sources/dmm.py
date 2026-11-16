@@ -30,7 +30,7 @@ r18.dev 的 `name_ja` 是同一套词。
 同一个接口还给片商与厂牌订阅列片单（2026-11-15 实测）：`legacySearchPPV` 的 `filter.makerIds` 与
 `filter.labelIds` 只认 `{"ids": [{"id": "3152"}]}` 这种嵌套形状，传数组或裸编号回 422；多编号是
 AND 语义，两个 maker 一起传回零条，所以一次只问一个。列表型有 `maker{id,name}` 但没有 `label`
-字段，也没有 `makerContentId`：这一层先只交 cid、标题、发售日与预购标记，官方番号留空，之后按
+字段，也没有 `makerContentId`：这一层只交 cid、标题、发售日与预购标记，官方番号由 Feed 层按
 cid 用 `maker_codes` 批量补。
 """
 from __future__ import annotations
@@ -125,7 +125,7 @@ class CatalogueWorks:
     `kind` 是过滤维度，`id` 是这次查询的 DMM 编号；`name` 是接口在一页里回过的 maker 名，label
     片单留空——列表型没有 `label` 字段（2026-11-15 实测），展示名由调用方按本地实体给。`total`
     是接口自报的总部数。行沿用 `ListedWork`：`maker_code` 一律为空，列表型没有 `makerContentId`，
-    官方番号之后按 cid 用 `maker_codes` 批量补。
+    官方番号由 Feed 层按 cid 用 `maker_codes` 批量补。
     """
 
     kind: str

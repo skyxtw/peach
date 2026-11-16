@@ -172,14 +172,26 @@ def poll_source(contract, transport, source) -> dict:
     return report
 
 
+def _dmm_codes(site, cids, *, session) -> dict[str, str]:
+    """一批 cid 的官方番号，按 `WORKS_PAGE`（接口单页上限 100）分批问；没答的 cid 不在结果里。"""
+    from .sources.dmm import WORKS_PAGE
+
+    found: dict[str, str] = {}
+    cids = list(cids)
+    for start in range(0, len(cids), WORKS_PAGE):
+        found.update(site.maker_codes(cids[start:start + WORKS_PAGE], session=session))
+    return found
+
+
 def _poll_dmm(contract, transport, source, report: dict) -> dict:
     """拉一条 DMM 片单源（ADR-0135）：女优、片商、厂牌三种，按地址里的编号问 GraphQL。
 
     请求走同一条 `SourceTransport` 与主机限流，包在 `holding` 里：验证页、封禁、地区限制与
     限流让 DMM 整站进冷却，刮削链之后的请求在同一关停下。任何失败都按原因写进这一行。
 
-    maker/label 的列表型没有 `makerContentId`：这一轮只记条目、不建壳（`parse_dmm_catalogue`
-    的 `product_code` 是空串），官方番号等后续按 cid 用 `maker_codes` 批量补。
+    maker/label 的列表型没有 `makerContentId`：列表查完后只对没见过的新 cid 按页批量问
+    `maker_codes`；问到几条写几条，没问到的留空由 `feeds.poll` 计 `without_code`，不因一条
+    没答丢掉整页。
     """
     from .sources.base import Session, SourceFailure
     from .sources.dmm import DmmSource
@@ -196,12 +208,13 @@ def _poll_dmm(contract, transport, source, report: dict) -> dict:
             if kind == feeds.KIND_DMM_ACTRESS:
                 works = site.actress_works(feeds.dmm_actress_id(source["url"]), session=session,
                                            known=known, limit=feeds.MAX_ENTRIES)
-            elif kind == feeds.KIND_DMM_MAKER:
-                works = site.maker_works(feeds.dmm_catalogue_id(source["url"]), session=session,
-                                         known=known, limit=feeds.MAX_ENTRIES)
+                codes: dict[str, str] = {}
             else:
-                works = site.label_works(feeds.dmm_catalogue_id(source["url"]), session=session,
-                                         known=known, limit=feeds.MAX_ENTRIES)
+                works = (site.maker_works if kind == feeds.KIND_DMM_MAKER else site.label_works)(
+                    feeds.dmm_catalogue_id(source["url"]), session=session,
+                    known=known, limit=feeds.MAX_ENTRIES)
+                fresh = [str(work.cid) for work in works.works if str(work.cid) not in known]
+                codes = _dmm_codes(site, fresh, session=session)
     except Exception as error:  # noqa: BLE001 - 原因写到源那一行上给人看
         message = from_error(error)
         report.update(ok=False, **{**_failure(error), "error": message},
@@ -215,7 +228,7 @@ def _poll_dmm(contract, transport, source, report: dict) -> dict:
                          retry_at=retry_at)
         return report
     parsed = (feeds.parse_dmm_actress(works) if kind == feeds.KIND_DMM_ACTRESS
-              else feeds.parse_dmm_catalogue(works))
+              else feeds.parse_dmm_catalogue(works, codes=codes))
     hidden = web_settings.hidden_compilations(contract.database)
     with contract.database.write_transaction() as connection:
         outcome = feeds.poll(connection, source, parsed, hidden)

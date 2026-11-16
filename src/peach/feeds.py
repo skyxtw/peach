@@ -32,7 +32,7 @@ from .user_messages import UserValueError
 KIND_JAVDB_ACTOR = "javdb-actor"
 #: DMM 按女优编号列的片单（GraphQL）。预购排在最前，番号是官方 `makerContentId`。
 KIND_DMM_ACTRESS = "dmm-actress"
-#: DMM 按片商（maker）编号列的片单。列表型没有 `makerContentId`，番号先留空。
+#: DMM 按片商（maker）编号列的片单。列表型没有 `makerContentId`，番号由 Feed 批量补。
 KIND_DMM_MAKER = "dmm-maker"
 #: DMM 按厂牌（label）编号列的片单。与 maker 同一个列表型。
 KIND_DMM_LABEL = "dmm-label"
@@ -333,19 +333,24 @@ def dmm_catalogue_id(url: str) -> str:
     return dmm_catalogue_of(url)[1]
 
 
-def parse_dmm_catalogue(works) -> ParsedFeed:
+def parse_dmm_catalogue(works, codes: dict[str, str] | None = None) -> ParsedFeed:
     """DMM 片商/厂牌片单（`sources.dmm.CatalogueWorks`）→ 条目。条目身份是 cid。
 
-    列表型没有 `makerContentId`，这一轮先只记条目身份：`product_code` 是空串（来源没给出能认的
-    番号），`feeds.poll` 因此不为它建壳；官方番号之后按 cid 用 `DmmSource.maker_codes` 批量补。
-    条目链接照旧指向商品页，出演与厂牌列表里就带着，合集判据不用等取资料。
+    `codes` 是 cid → 官方 `makerContentId`（`DmmSource.maker_codes` 批量问回来的）。列表型自己不带
+    番号：问到的那几条照 `parse_dmm_actress` 的写法过 `catalog_rules` 并写进标题前缀，问不到的
+    `product_code` 留空串，`feeds.poll` 不为它建壳、按 `without_code` 计数。条目链接照旧指向商品页，
+    出演与厂牌列表里就带着，合集判据不用等取资料。
     """
+    codes = codes or {}
     rows: list[FeedEntry] = []
     for work in list(works.works)[:MAX_ENTRIES]:
+        official = str(codes.get(work.cid) or "").strip()
+        code = scan_code(official, product=True) if official else None
+        title = f"{code} {work.title}".strip() if code else work.title
         rows.append(FeedEntry(
-            work.cid, work.title, DMM_CONTENT_PAGE.format(cid=work.cid),
+            work.cid, title, DMM_CONTENT_PAGE.format(cid=work.cid),
             _published(work.release_date) if work.release_date else None,
-            product_code="", performers="、".join(work.performers),
+            product_code=official, performers="、".join(work.performers),
             studio=work.studio or None))
     return ParsedFeed(works.name or None, tuple(rows))
 

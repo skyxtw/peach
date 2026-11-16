@@ -74,7 +74,9 @@ def dmm_catalogue(rows, codes, *, maker_id="1", maker_name="エスワン"):
                 "pageInfo": {"totalCount": len(rows), "hasNext": False}, "contents": contents}}}
         else:
             cids = re.findall(r'ppvContent\(id: "([^"]+)"\)', payload["query"])
-            data = {f"a{index}": {"id": cid, "makerContentId": codes[cid]} for index, cid in enumerate(cids)}
+            # 没答官方番号的 cid 照接口答 null（`maker_codes` 跳过它）。
+            data = {f"a{index}": ({"id": cid, "makerContentId": codes[cid]} if cid in codes else None)
+                    for index, cid in enumerate(cids)}
         return HttpResponse(200, {}, json.dumps({"data": data}, ensure_ascii=False).encode(), request.url)
     return answer
 
@@ -1702,7 +1704,7 @@ class PerformerPageFollowTest(FeedFollowByNameFixture):
 
 
 class StudioFeedSwitchTest(PerformerFeedFixture):
-    """片商/厂牌页的订阅开关：DMM maker/label 编号来自显式映射，没有编号就拒绝。"""
+    """片商/厂牌页的订阅开关：编号来自显式映射；官方番号按页批量补，缺一条不丢整页。"""
 
     def setUp(self):
         super().setUp()
@@ -1729,10 +1731,20 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
     def _profile(self, name):
         return dispatch_api_get(self.contract, "/api/entity", {"kind": "studio", "name": name})
 
+    def _asked_cids(self):
+        """这一套件发出的官方番号别名查询里问过的 cid，按请求顺序。"""
+        asked = []
+        for request in self.transport.requests:
+            query = json.loads(request.body)["query"]
+            if "ppvContent(id:" in query:
+                asked.extend(re.findall(r'ppvContent\(id: "([^"]+)"\)', query))
+        return asked
+
     def test_a_maker_page_subscribes_its_dmm_maker_catalogue(self):
         self._bind(self.studio, "maker", "3152")
         self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
-            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)], {},
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133", "pbd00528": "PBD-528"},
             maker_id="3152", maker_name="エスワン ナンバーワンスタイル")
         result = self._switch(True, self.studio)
         self.assertTrue(result["following"])
@@ -1743,22 +1755,66 @@ class StudioFeedSwitchTest(PerformerFeedFixture):
             (feeds.KIND_DMM_MAKER, feeds.dmm_maker_url("3152"), "JAV 订阅 · DMM 片商",
              "エスワン ナンバーワンスタイル", "エスワン ナンバーワンスタイル"))
         report = state["results"][0]
-        # 列表型没有官方番号：条目照记，壳先不建。
-        self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"], report["codes"]),
-                         (True, 2, 2, 0, []))
-        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["items"], [])
+        self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"]),
+                         (True, 2, 0, 2))
+        self.assertEqual(sorted(report["codes"]), ["MIKR-133", "PBD-528"])
+        self.assertEqual(sorted(item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]), ["MIKR-133", "PBD-528"])
 
     def test_a_label_page_subscribes_its_dmm_label_catalogue(self):
         label = self._studio("S1 NO.1 STYLE", label_of=self.studio)
         self._bind(label, "label", "3474")
         self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
-            [("ssis00057", "2021-05-07", False, 1)], {})
+            [("ssis00057", "2021-05-07", False, 1)], {"ssis00057": "SSIS-057"})
         self._switch(True, label)
         state = self._settled()
         [source] = self._sources()
         self.assertEqual((source["kind"], source["url"], source["kind_label"]),
                          (feeds.KIND_DMM_LABEL, feeds.dmm_label_url("3474"), "JAV 订阅 · DMM 厂牌"))
-        self.assertTrue(state["results"][0]["ok"], state["results"][0])
+        report = state["results"][0]
+        self.assertEqual((report["ok"], report["without_code"], report["added"]), (True, 0, 1))
+        self.assertEqual([item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]], ["SSIS-057"])
+
+    def test_a_cid_without_an_official_code_is_counted_but_not_shelled(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133"}, maker_id="3152", maker_name="エスワン ナンバーワンスタイル")
+        self._switch(True, self.studio)
+        report = self._settled()["results"][0]
+        self.assertEqual((report["ok"], report["seen"], report["without_code"], report["added"]),
+                         (True, 2, 1, 1))
+        self.assertEqual([item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]], ["MIKR-133"])
+
+    def test_only_unseen_cids_are_asked_for_official_codes(self):
+        self._bind(self.studio, "maker", "3152")
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("pbd00528", "2026-10-20", False, 2)],
+            {"mikr00133": "MIKR-133", "pbd00528": "PBD-528"}, maker_id="3152")
+        self._switch(True, self.studio)
+        self._settled()
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            [("mikr00133", "2026-11-13", True, 1), ("new001", "2026-11-20", False, 1)],
+            {"new001": "NEW-001"}, maker_id="3152")
+        self._check()
+        self.assertEqual(self._asked_cids(), ["mikr00133", "pbd00528", "new001"])
+        # 第一轮那两部的壳还在，第二轮只多出新的这一部。
+        self.assertEqual(sorted(item["code"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]), ["MIKR-133", "NEW-001", "PBD-528"])
+
+    def test_official_codes_are_asked_in_batches_of_one_page(self):
+        self._bind(self.studio, "maker", "3152")
+        rows = [(f"cid{index:05d}", "2026-10-01", False, 1) for index in range(150)]
+        self.transport.responses[DMM_ENDPOINT] = dmm_catalogue(
+            rows, {cid: f"TEST-{index:03d}" for index, (cid, *_rest) in enumerate(rows)}, maker_id="3152")
+        self._switch(True, self.studio)
+        self.assertTrue(self._settled()["results"][0]["ok"])
+        queries = [json.loads(request.body)["query"] for request in self.transport.requests]
+        batches = [re.findall(r'ppvContent\(id: "([^"]+)"\)', query)
+                   for query in queries if "ppvContent(id:" in query]
+        self.assertEqual([len(batch) for batch in batches], [100, 50])
 
     def test_switching_off_and_on_reuses_the_same_source(self):
         self._bind(self.studio, "maker", "3152")
