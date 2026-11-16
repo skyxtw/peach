@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--db', type=Path, default=DATABASE_PATH)
     parser.add_argument('--batch', default=None, help='预期的批次号；默认 auto:vr-tags@dry-run')
     parser.add_argument('--chunk-size', type=int, default=200)
+    parser.add_argument('--active', action='store_true', help='排除 vanished（回收站/消失）')
     parser.add_argument('--sample', type=int, default=8)
     parser.add_argument('--json', action='store_true', help='输出完整计划')
     return parser
@@ -42,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         generated = now.isoformat()
         batch = args.batch or f"auto:vr-tags@{now.strftime('%Y%m%dT%H%M%S')}"
         report = plan(connection, batch=batch, chunk_size=args.chunk_size,
-                      generated_at=generated)
+                      generated_at=generated, active_only=args.active)
     finally:
         connection.close()
     if args.json:

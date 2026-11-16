@@ -61,25 +61,27 @@ def _title_only_text(row) -> str:
         row['name'], row['path'], row['catalog_title']) if is_vr_title(value)), '')
 
 
-def _rows(connection):
+def _rows(connection, *, active_only: bool = False):
+    where = "a.medium='video' AND a.code IS NOT NULL AND a.code<>''"
+    if active_only:
+        where += " AND COALESCE(a.disposal,'')<>'vanished'"
     return connection.execute(
         'SELECT a.id,a.code,a.name,a.path,a.catalog_title,a.studio,'
         ' EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?) AS tag_row,'
         ' EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id'
         '        WHERE ae.asset_id=a.id AND ae.role=\'tag\' AND e.canonical_name=?) AS tag_entity'
-        ' FROM asset a WHERE a.medium=\'video\' AND a.code IS NOT NULL AND a.code<>\'\''
-        ' ORDER BY a.id', (VR_TAG, VR_TAG)).fetchall()
+        f' FROM asset a WHERE {where} ORDER BY a.id', (VR_TAG, VR_TAG)).fetchall()
 
 
 def plan(connection, *, batch: str | None = None, chunk_size: int = 200,
-         generated_at: str | None = None) -> dict:
+         generated_at: str | None = None, active_only: bool = False) -> dict:
     """只读扫描并返回 dry-run 计划；调用方负责把连接设成只读。"""
     if chunk_size < 1:
         raise ValueError('chunk_size 必须大于 0')
     batch = batch or f'{VR_SOURCE}@dry-run'
     if not batch.startswith(VR_SOURCE + '@'):
         raise ValueError(f'批次号必须以 {VR_SOURCE}@ 开头')
-    rows = _rows(connection)
+    rows = _rows(connection, active_only=active_only)
     by_prefix = defaultdict(lambda: {'assets': 0, 'tagged': 0, 'missing': 0, 'title_hit': 0})
     discovered = defaultdict(lambda: {'assets': 0, 'tagged': 0, 'missing': 0, 'title_hit': 0})
     candidates = []
@@ -138,6 +140,7 @@ def plan(connection, *, batch: str | None = None, chunk_size: int = 200,
                            'asset_ids': [item['asset_id'] for item in chunk]})
     summary = {
         'scanned': len(rows),
+        'active_only': active_only,
         'prefix_assets': sum(item['assets'] for item in by_prefix.values()),
         'prefix_tagged': sum(item['tagged'] for item in by_prefix.values()),
         'prefix_missing': len(candidates),

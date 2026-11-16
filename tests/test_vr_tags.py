@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -24,12 +25,13 @@ class VrTagRuleTests(unittest.TestCase):
         self.connection.row_factory = sqlite3.Row
         self.addCleanup(self.connection.close)
 
-    def asset(self, code: str, *, name: str = '', path: str = '', title: str = '') -> int:
+    def asset(self, code: str, *, name: str = '', path: str = '', title: str = '',
+              disposal: str | None = None) -> int:
         path = path or rf'R:\\VR\\{code}\\{code}.mp4'
         asset_id = int(self.connection.execute(
-            "INSERT INTO asset(location,path,name,medium,code,catalog_title) "
-            "VALUES('local',?,?, 'video',?,?)",
-            (path, name or f'{code}.mp4', code, title)).lastrowid)
+            "INSERT INTO asset(location,path,name,medium,code,catalog_title,disposal) "
+            "VALUES('local',?,?, 'video',?,?,?)",
+            (path, name or f'{code}.mp4', code, title, disposal)).lastrowid)
         self.connection.commit()
         return asset_id
 
@@ -89,6 +91,25 @@ class VrTagRuleTests(unittest.TestCase):
             self.assertTrue(vr_tags.is_vr_title(text), text)
         for text in ('普通のVR作品', 'holiday_vr_clip.mp4', 'VR', 'my_vr.mp4'):
             self.assertFalse(vr_tags.is_vr_title(text), text)
+
+    def test_active_only_excludes_vanished(self):
+        keep = self.asset('SIVR-041')
+        gone = self.asset('SIVR-042', disposal='vanished')
+        default = self.plan()
+        self.assertIn(gone, {item['asset_id'] for item in default['candidates']})
+        report = self.plan(active_only=True)
+        ids = {item['asset_id'] for item in report['candidates']}
+        self.assertEqual(ids, {keep})
+        self.assertEqual(report['summary']['scanned'], 1)
+        self.assertTrue(report['summary']['active_only'])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = audit_vr_tags.main(['--db', str(self.db), '--json', '--active',
+                                       '--batch', 'auto:vr-tags@test-active'])
+        self.assertEqual(code, 0)
+        payload = json.loads(output.getvalue())
+        self.assertTrue(payload['summary']['active_only'])
+        self.assertEqual({item['asset_id'] for item in payload['candidates']}, {keep})
 
     def test_script_runs_read_only_and_does_not_write(self):
         self.asset('SIVR-031')
