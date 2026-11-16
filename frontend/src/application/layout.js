@@ -149,8 +149,7 @@ export function sidebarHost(){
 export function mountSidebar(){
   const scroll=$('#drawerScroll');
   const anchors=[...(scroll.querySelector('[data-sidebar-head]')?.children||[])];
-  const sidebarOrder=preferencesState.appSettings.sidebarOrder.includes('studio-subscriptions')
-    ?preferencesState.appSettings.sidebarOrder:[...preferencesState.appSettings.sidebarOrder,'studio-subscriptions'];
+  const sidebarOrder=(()=>{const order=preferencesState.appSettings.sidebarOrder;if(order.includes('studio-subscriptions'))return order;const at=order.indexOf('follow');return at<0?[...order,'studio-subscriptions']:[...order.slice(0,at+1),'studio-subscriptions',...order.slice(at+1)]})();
   scroll.innerHTML=sidebarSkeletonHtml(sidebarOrder,layoutState.NAV_CATALOG,navOn);
   scroll.querySelector('[data-sidebar-head]').append(...anchors);
   applicationEffects.listen(scroll, 'click', event=>{

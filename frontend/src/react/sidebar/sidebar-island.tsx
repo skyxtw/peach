@@ -100,7 +100,12 @@ function Sidebar({ host: at, props: view, epoch }: { host: SidebarHost; props: S
 function Navigation({ host: at, epoch, version }: { host: SidebarHost; epoch: number; version: number }) {
   const commit = useCommitNavigationOrder(at.store);
   const rawOrder = at.store.value.sidebarOrder;
-  const order = rawOrder.includes('studio-subscriptions') ? rawOrder : [...rawOrder, 'studio-subscriptions'];
+  const order = (() => {
+    if (rawOrder.includes('studio-subscriptions')) return rawOrder;
+    const atFollow = rawOrder.indexOf('follow');
+    return atFollow < 0 ? [...rawOrder, 'studio-subscriptions']
+      : [...rawOrder.slice(0, atFollow + 1), 'studio-subscriptions', ...rawOrder.slice(atFollow + 1)];
+  })();
   const byKey = new Map(at.navCatalog.map((item) => [item[0], item]));
   const items = order.map((key) => byKey.get(key)).filter((item) => item !== undefined);
   const pressed = items.map(([key]) => at.navOn(key));
