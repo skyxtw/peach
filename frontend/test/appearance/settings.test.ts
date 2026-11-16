@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_ACCENT, DEFAULT_HOME_GLOW } from '../../src/appearance/home-glow';
 import {
-  applySyncedSettings, DEFAULT_SETTINGS, normalizeAppSettings, readAppSettings, SETTINGS_KEY, type AppSettings,
+  applySyncedSettings, DEFAULT_SETTINGS, normalizeAppSettings, readAppSettings, SETTINGS_KEY, storePageSort, type AppSettings,
 } from '../../src/appearance/settings';
 import { createSettingsStore } from '../../src/settings-store';
 import { DEFAULT_SIDEBAR_ORDER } from '../../src/sidebar';
@@ -43,6 +43,22 @@ describe('启动归一化', () => {
     expect(['rotateMinutes' in settings, 'loginDays' in settings, settings.followImagesOnly]).toEqual([false, false, true]);
   });
 
+  it('每页排序只认 home/jav 与合法列；没存过这一项的旧设置当作没有覆盖', () => {
+    const { settings } = normalizeAppSettings({
+      defaultSort: 'new',
+      pageSorts: {
+        home: { sort: 'rating', dir: 'asc' }, jav: { sort: 'seed', dir: 'asc' },
+        people: { sort: 'rating', dir: 'desc' }, wall: { sort: 'size', dir: 'desc' }, trash: 'rating',
+      },
+    });
+    expect(settings.pageSorts).toEqual({ home: { sort: 'rating', dir: 'asc' }, jav: { sort: 'seed', dir: '' } });
+    /* 认不出的列整条丢，另一页的覆盖不受影响。 */
+    expect(normalizeAppSettings({ pageSorts: { jav: { sort: 'bogus', dir: 'desc' }, home: { sort: 'rating', dir: 'desc' } } })
+      .settings.pageSorts).toEqual({ home: { sort: 'rating', dir: 'desc' } });
+    expect(normalizeAppSettings({ defaultSort: 'new' }).settings.pageSorts).toEqual({});
+    expect(normalizeAppSettings({ pageSorts: null }).settings.pageSorts).toEqual({});
+  });
+
   it('旧版本存的默认排序换成现在的键，并报要落一次盘；用户主动选过的不动', () => {
     expect(normalizeAppSettings({ defaultSort: 'new', sortDefaultsVersion: 1 })).toMatchObject(
       { settings: { defaultSort: 'seed', sortDefaultsVersion: 3 }, migrated: true });
@@ -75,6 +91,21 @@ describe('整页那一份 store', () => {
     expect(appSettingsStore()).toBe(store);
     expect(store.value).toMatchObject({ defaultSort: 'dur', theme: 'dark' });
     expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toMatchObject({ defaultSort: 'dur', sortDefaultsVersion: 3 });
+  });
+});
+
+describe('每页排序落盘', () => {
+  it('某页点过排序只写该页，另一页与全局默认不动；非法值不写', () => {
+    const store = createSettingsStore(SETTINGS_KEY, normalizeAppSettings({}).settings);
+    storePageSort('jav', 'rating', 'asc', store);
+    expect(store.value.pageSorts).toEqual({ jav: { sort: 'rating', dir: 'asc' } });
+    expect(store.value.defaultSort).toBe('seed');
+    storePageSort('home', 'new', 'desc', store);
+    expect(store.value.pageSorts).toEqual({ home: { sort: 'new', dir: 'desc' }, jav: { sort: 'rating', dir: 'asc' } });
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!).pageSorts)
+      .toEqual({ home: { sort: 'new', dir: 'desc' }, jav: { sort: 'rating', dir: 'asc' } });
+    storePageSort('jav', 'bogus', 'desc', store);
+    expect(store.value.pageSorts.jav).toEqual({ sort: 'rating', dir: 'asc' });
   });
 });
 

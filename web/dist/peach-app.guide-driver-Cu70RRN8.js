@@ -1,11 +1,11 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "d3639b7a-240c-4e8f-916e-847f7a9a1e0a", e._sentryDebugIdIdentifier = "sentry-dbid-d3639b7a-240c-4e8f-916e-847f7a9a1e0a");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "e59134a5-6582-4c70-849f-d7e7beb6d97a", e._sentryDebugIdIdentifier = "sentry-dbid-e59134a5-6582-4c70-849f-d7e7beb6d97a");
 	} catch {}
 })();
 import { beginPlayerGuidePreview as e, closeDrawerAfterNav as t, disposeStage as n, peachHistory$1 as r } from "./peach-app.js";
-// node_modules/driver.js/dist/driver.js.mjs
+// ../../deepseek-player-seek/frontend/node_modules/.pnpm/driver.js@1.14.0/node_modules/driver.js/dist/driver.js.mjs
 function i(e, t, n) {
 	a(e);
 	let r = {
@@ -1811,4 +1811,4 @@ function Kr(i) {
 }
 export { Kr as createGuideSession };
 
-//# debugId=d3639b7a-240c-4e8f-916e-847f7a9a1e0a
+//# debugId=e59134a5-6582-4c70-849f-d7e7beb6d97a

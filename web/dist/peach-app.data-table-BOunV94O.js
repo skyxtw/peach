@@ -1,11 +1,11 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "a8bfba6c-21ed-4e83-b697-26a5c1900389", e._sentryDebugIdIdentifier = "sentry-dbid-a8bfba6c-21ed-4e83-b697-26a5c1900389");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "52440621-eae9-4c48-b8fd-9760b9a90b0b", e._sentryDebugIdIdentifier = "sentry-dbid-52440621-eae9-4c48-b8fd-9760b9a90b0b");
 	} catch {}
 })();
 import { $76d00c5a4edb230a$export$76ccd210b9029917 as e, $76d00c5a4edb230a$export$816b5d811295e6bc as t, $76d00c5a4edb230a$export$b59bdbef9ce70de2 as n, $76d00c5a4edb230a$export$f6f0c3fe4ec306ea as r, $76d00c5a4edb230a$export$f850895b287ef28e as i, Button as a, Checkbox as o, ChevronSortDown as s, DataTableFooter as c, DataTableFrame as l, DataTableSort as u, SelectionDock as d, Table as f, TableColumnControls as p, TableColumnResizer as m, TableSelectionHeader as h, __toESM as g, cardClass as _, columnVisibilityFeature as v, createColumnHelper as y, flexRender as b, require_jsx_runtime as x, require_react as S, rowPaginationFeature as C, rowSelectionFeature as w, rowSortingFeature as T, t as E, tableFeatures as D, useTable as O, useTablePreferences as k } from "./peach-app.js";
-import { createPaginatedRowModel as A, createSortedRowModel as j, useTableSelection as M } from "./peach-app.use-table-selection-CnuGRvGn.js";
+import { createPaginatedRowModel as A, createSortedRowModel as j, useTableSelection as M } from "./peach-app.use-table-selection-B1681jEl.js";
 // src/react/components/data-table.tsx
 var N = /* @__PURE__ */ g(S(), 1), P = x(), F = D({
 	rowSortingFeature: T,
@@ -215,4 +215,4 @@ function I({ label: g, items: v, columns: x, rowId: S, rowLabel: C, selected: w,
 }
 export { I as DataTable };
 
-//# debugId=a8bfba6c-21ed-4e83-b697-26a5c1900389
+//# debugId=52440621-eae9-4c48-b8fd-9760b9a90b0b

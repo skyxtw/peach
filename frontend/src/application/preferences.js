@@ -12,7 +12,7 @@ import { navigationState } from './navigation.js';
 import { $, LOC, esc, icon, isCatalogPath } from '../core';
 import { peachHistory, shellNavigate } from './../history/index';
 import { notifyShell, selectMode, selected, state } from './../shell/index';
-import { preferredDirection } from './../sort-preferences';
+import { catalogSortPage, pageSortPreference, preferredDirection } from './../sort-preferences';
 import { releaseHoverPreviews, setHoverState } from './../card-art/hover';
 import { reloadCurrentSurface } from './layout.js';
 import { refreshPageNavigation } from '../history/page-navigation';
@@ -194,12 +194,16 @@ preferencesState.settingsEffects = {
   glow:()=>{applyHomeGlow();applyGlassFaces()},
   batchSize:()=>{if(location.pathname==='/')loadCatalog()},
   defaultSort:()=>{
-    state.sort=preferencesState.appSettings.defaultSort;
-    state.dir=preferredDirection(state.sort,preferencesState.appSettings.defaultSort,preferencesState.appSettings.defaultSortDirection);
+    /* 这一页自己存过排序就仍用那一份：改全局默认只影响没覆盖的页。 */
+    const preferred=pageSortPreference(preferencesState.appSettings,catalogSortPage(location.pathname,location.search));
+    if(preferred.sort===state.sort&&preferred.dir===state.dir)return;
+    state.sort=preferred.sort;
+    state.dir=preferred.dir;
     notifyShell();
     if(location.pathname==='/')replaceCatalogAddress();
   },
   sortDirection:()=>{
+    if(preferencesState.appSettings.pageSorts?.[catalogSortPage(location.pathname,location.search)])return;
     state.dir=preferredDirection(state.sort,preferencesState.appSettings.defaultSort,preferencesState.appSettings.defaultSortDirection);
     notifyShell();
     if(location.pathname==='/')replaceCatalogAddress();

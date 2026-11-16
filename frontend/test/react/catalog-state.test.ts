@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  defaultCatalogLoc, homeCatalogState, homePath, initialCatalogFilters, onlineDefaultLoc,
+  catalogSort, defaultCatalogLoc, homeCatalogState, homePath, initialCatalogFilters, onlineDefaultLoc,
   resetCatalogFilters, resolveSort,
 } from '../../src/react/catalog-grid/catalog-state';
 
@@ -58,6 +58,32 @@ describe('目录地址与默认范围', () => {
     expect(defaultCatalogLoc('local,115', '?loc=', { '115': false })).toBe('local,115');
     expect(defaultCatalogLoc('', '?loc=', { '115': false })).toBe('');
     expect(defaultCatalogLoc('local,115', '?q=test', { '115': false })).toBe('local');
+  });
+
+  it('每页排序各取自己那份，没覆盖的页回退全局默认，地址里的显式排序仍优先', () => {
+    const perPage = {
+      defaultSort: 'new', defaultSortDirection: 'asc',
+      pageSorts: { home: { sort: 'rating', dir: 'desc' }, jav: { sort: 'release', dir: 'asc' } },
+    };
+    expect(initial('/')).toMatchObject({ sort: 'new', dir: 'asc' });
+    expect(initialCatalogFilters({ pathname: '/', search: '' }, perPage, seed)).toMatchObject({ sort: 'rating', dir: 'desc', jav: '' });
+    expect(initialCatalogFilters({ pathname: '/', search: '?jav=1' }, perPage, seed)).toMatchObject({ sort: 'release', dir: 'asc', jav: '1' });
+    expect(initialCatalogFilters({ pathname: '/unseen', search: '' }, perPage, seed)).toMatchObject({ sort: 'rating', dir: 'desc' });
+    expect(initialCatalogFilters({ pathname: '/', search: '?sort=size&dir=asc' }, perPage, seed)).toMatchObject({ sort: 'size', dir: 'asc' });
+    expect(catalogSort({ pathname: '/', search: '?jav=1' }, perPage)).toEqual({ sort: 'release', dir: 'asc' });
+  });
+
+  it('两页排序互不覆盖；解析排序时显式 fallback 仍压过页面覆盖', () => {
+    const perPage = {
+      defaultSort: 'new', defaultSortDirection: 'asc',
+      pageSorts: { home: { sort: 'rating', dir: 'desc' }, jav: { sort: 'release', dir: 'asc' } },
+    };
+    const home = initialCatalogFilters({ pathname: '/', search: '' }, perPage, seed);
+    const jav = initialCatalogFilters({ pathname: '/', search: '?jav=1' }, perPage, seed);
+    expect([home.sort, home.dir, jav.sort, jav.dir]).toEqual(['rating', 'desc', 'release', 'asc']);
+    expect(resolveSort(null, null, perPage, undefined, 'jav')).toEqual({ sort: 'release', dir: 'asc' });
+    expect(resolveSort('unknown', null, perPage, 'rating', 'jav')).toEqual({ sort: 'rating', dir: 'desc' });
+    expect(resetCatalogFilters(jav, perPage, seed)).toMatchObject({ sort: 'rating', dir: 'desc', jav: '' });
   });
 
   it('重置保留来源并更新种子，首页筛选条与目录状态共用对象', () => {

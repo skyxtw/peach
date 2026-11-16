@@ -13,7 +13,7 @@ import { createSettingsStore, type SettingsStore } from '../settings-store';
 import { MANAGE_MENU_SECTIONS, normalizeManageOrder } from '../application/navigation-items';
 import { DEFAULT_SIDEBAR_ORDER, normalizeSidebarOrder } from '../sidebar';
 import { normalizeNavigationOrders, type NavigationOrders } from '../navigation-order';
-import { SORT_ALIASES, SORT_KEYS } from '../sort-preferences';
+import { normalizePageSort, normalizePageSorts, SORT_ALIASES, SORT_KEYS, type PageSort, type SortPage } from '../sort-preferences';
 import { DEFAULT_ACCENT, DEFAULT_HOME_GLOW, normalizeAccent, normalizeHomeGlow, type HomeGlow } from './home-glow';
 
 export { SETTINGS_KEY };
@@ -33,6 +33,8 @@ export interface AppSettings {
   batchSize: number;
   defaultSort: string;
   defaultSortDirection?: string;
+  /** 用户在各页点过的排序；只有这些页不再跟全局默认（`defaultSort` / `defaultSortDirection`）。 */
+  pageSorts: Record<string, PageSort>;
   sortDefaultsVersion: number;
   hoverDelaySeconds: number;
   seekSeconds: number;
@@ -72,7 +74,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS = {
-  batchSize: 60, defaultSort: 'seed', sortDefaultsVersion: 3, hoverDelaySeconds: 5, seekSeconds: 10,
+  batchSize: 60, defaultSort: 'seed', pageSorts: {}, sortDefaultsVersion: 3, hoverDelaySeconds: 5, seekSeconds: 10,
   searchHistoryLimit: 10, relatedLimit: 20, feedLimit: 12, javLayout: 'big', homeLayout: 'small', javImage: 'cover',
   followLayout: 'default', peopleLayout: 'big', photoSize: 'small', ambientMode: true, miniplayer: true,
   theaterMode: false, theme: 'system', groupCollapse: true, sidebarOrder: [...DEFAULT_SIDEBAR_ORDER], manageOrder: [...MANAGE_MENU_SECTIONS],
@@ -130,6 +132,7 @@ export function normalizeAppSettings(raw: unknown): { settings: AppSettings; mig
   settings.manageOrder = normalizeManageOrder(settings.manageOrder);
   settings.navigationOrders = normalizeNavigationOrders(settings.navigationOrders);
   settings.libraryOrder = Array.isArray(settings.libraryOrder) ? [...new Set(settings.libraryOrder.filter(key => typeof key === 'string'))] : [];
+  settings.pageSorts = normalizePageSorts(settings.pageSorts);
   return { settings: settings as AppSettings, migrated };
 }
 
@@ -149,6 +152,16 @@ export function appSettingsStore(): SettingsStore<AppSettings> {
   store = createSettingsStore(SETTINGS_KEY, settings);
   if (migrated) store.save();
   return store;
+}
+
+/** 用户在某页点了排序：把这一页的选择写进 pageSorts；没点过的页继续跟全局默认。 */
+export function storePageSort(
+  page: SortPage, sort: string, dir: string, target: SettingsStore<AppSettings> = appSettingsStore(),
+): void {
+  const saved = normalizePageSort({ sort, dir });
+  if (!saved) return;
+  target.value.pageSorts = { ...target.value.pageSorts, [page]: saved };
+  target.save();
 }
 
 /** 数据库那一份要求某个壳侧效果跟着做时报的名字（同设置面板的效果名）。 */

@@ -4,7 +4,7 @@ import { completeReveal } from '../react/components/server-path-dialog';
 import { nextRating, ratingStars } from '../react/components/rating-values';
 /* catalog 域控制器：本域状态与动作，启动由 Application 的生命周期统一安装。 */
 import { censorOn, preferencesState, refreshAll, replaceCatalogAddress, sidebarFacets, wireDrag } from './preferences.js';
-import { nextSortState } from './../sort-preferences';
+import { catalogSortPage, nextSortState } from './../sort-preferences';
 import { $, STATE_ROUTES, api, esc, firstGrapheme, isCatalogPath, leadingGraphemes } from '../core';
 import { barsContext, detailReturnBarsContext, notifyShell, pageOpens, runtimeConfigurable, selectMode, selected, state, writeShell } from './../shell/index';
 import { receiptsState } from './receipts.js';
@@ -25,6 +25,7 @@ import { managedEntry, managedTaken, openManagedRoute, releaseManagedRoute, upda
 import { catalogFilterSkeletonHtml } from './../catalog-filter-skeleton';
 import { catalogContentSkeletonHtml } from '../catalog-content-skeleton';
 import { JAV_LAYOUTS, cardRatio, gridLayout, javLayout } from './../appearance/layout';
+import { storePageSort } from './../appearance/settings';
 import { entityFaceImg, facePos, logoUrl } from './../card-art/markup';
 import { sidebarHasCatalogContent } from './../sidebar';
 import { rememberRepresentatives } from './../card-art/representatives';
@@ -235,7 +236,9 @@ export function catalogFilterActions(){
     setSort:key=>{
       const next=nextSortState(key,state.sort,state.dir);
       if(!next)return;
-      state.sort=next.sort;state.dir=next.dir;notifyShell();replaceCatalogAddress();
+      state.sort=next.sort;state.dir=next.dir;
+      storePageSort(catalogSortPage(location.pathname,location.search),next.sort,next.dir);
+      notifyShell();replaceCatalogAddress();
     },
     reshuffle:()=>refreshAll(),
     setLayout:value=>{if(javActive())setJavLayout(value);else setHomeLayout(value)},
@@ -536,7 +539,8 @@ export function junkQueueProps(){
 
 export function installCatalog7() {
     catalogState.initialParams = new URLSearchParams(location.search);
-    catalogState.resolveSort = (sort,dir,fallback=preferencesState.appSettings.defaultSort)=>resolveSort(sort,dir,preferencesState.appSettings,fallback);
+    catalogState.resolveSort = (sort,dir,fallback)=>resolveSort(sort,dir,preferencesState.appSettings,fallback,
+      catalogSortPage(location.pathname,location.search));
     writeShell(homeCatalogState(initialCatalogFilters(location,preferencesState.appSettings,receiptsState.rollSeed)));
     catalogState.searchValueSnapshot={text:'',scrollLeft:0};
     catalogState.cancelSearchDissolve=()=>{};

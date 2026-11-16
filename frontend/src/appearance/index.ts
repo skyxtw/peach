@@ -3,7 +3,7 @@
  * 路由与目录的 JAV、首页判据由 application/layout.js 计算后作为参数传入。 */
 export {
   allowedSetting, appSettingsStore, applySyncedSettings, DEFAULT_SETTINGS, FEED_COMPILATION_KEYS, FOLLOW_INITIAL_DAYS,
-  normalizeAppSettings, postSearchHistoryLimit, readAppSettings, SETTINGS_KEY, THEME_CHOICES,
+  normalizeAppSettings, postSearchHistoryLimit, readAppSettings, SETTINGS_KEY, storePageSort, THEME_CHOICES,
 } from './settings';
 export type { AppSettings, SyncedEffect, SyncedSettings } from './settings';
 export { applyTheme, THEME_OPTIONS, watchSystemTheme } from './theme';
