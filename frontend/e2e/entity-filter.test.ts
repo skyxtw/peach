@@ -313,7 +313,7 @@ describe('实体页筛选浮层', () => {
         views: [...document.querySelectorAll('[data-media-view]')].map((node) => node.getAttribute('data-media-view')),
         sorts: document.querySelectorAll('[data-entity-sort]').length,
         tags: document.querySelectorAll('[data-entity-tag]').length,
-        cards: document.querySelectorAll('#index [data-entity-body] [data-index-grid] > [data-index-cell]').length,
+        cards: document.querySelectorAll('#index [data-entity-body] [data-index-grid] [data-index-cell]').length,
       }));
       assert.deepEqual(roster, { readout: '艺人 · 3', pressed: 'people', views: ['people', 'videos'], sorts: 0, tags: 0, cards: 3 });
       await page.locator('[data-media-view="videos"]').click();

@@ -14,14 +14,18 @@ import { tagLabel } from '@peach/legacy/tags';
 
 import { indexKey, indexRoute, type IndexProps, type IndexRoute } from '../../src/react/index/index-data';
 import { IndexPage } from '../../src/react/index/index-page';
+import { PeopleGrid } from '../../src/react/index/index-people';
 import { onlineAuthorsKey, onlineTagsKey } from '../../src/react/follow/online-vocab';
 import { queryClient } from '../../src/react/query';
 import { buttonNamed, click, mount, pending, settle, type } from './render';
+import { showToast } from '../../src/react/toaster';
+import type { Shortcuts } from '../../src/react/library-shortcuts/library-shortcuts';
 
 /* 重量已加载完的图走 `card-art` 那一份；量出来的几何由 `test/card-art/` 守，这里只看什么时候量。 */
 vi.mock('@peach/card-art', async (importOriginal) => ({
   ...await importOriginal<typeof import('@peach/card-art')>(), refitNativeImages: vi.fn(),
 }));
+vi.mock('../../src/react/toaster', () => ({ showToast: vi.fn() }));
 
 afterEach(() => { queryClient.clear() });
 beforeEach(() => { registerNameWritings([]); setNameLanguage('zh-CN') });
@@ -474,5 +478,81 @@ describe('标签', () => {
     expect(given.showTags).not.toHaveBeenCalled();
     // 多选是本地目录语义：在线那一套不给操作条。
     expect(host.querySelector('[aria-label="所选标签操作"]')).toBeNull();
+  });
+});
+
+describe('人物收藏', () => {
+  const performer = (name: string, entityId: number) => person(name, { entity_id: entityId, favorite: false });
+  /** 名册首屏已在缓存里；假服务端只回这一批，别在重取时把种子换掉。 */
+  const servePeople = (row: ReturnType<typeof person>, answer: () => Promise<Shortcuts> | Shortcuts, writes: Record<string, unknown>[]) =>
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [row], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      return { ok: true, status: 200, json: async () => await answer() };
+    }));
+
+  it('名册星标先翻状态再等回执，点星标不触发整卡', async () => {
+    const row = performer('甲', 11);
+    seed(indexKey('performers', ''), [row]);
+    const answer = pending<Shortcuts>();
+    const writes: Record<string, unknown>[] = [];
+    servePeople(row, () => answer.answer, writes);
+    const given = props();
+    const host = await open(given); await settle();
+    const star = host.querySelector<HTMLButtonElement>('[data-index-favorite]')!;
+    expect(star.tagName).toBe('BUTTON');
+    expect(star.getAttribute('aria-label')).toBe('收藏甲');
+    // 星标是整卡按钮的兄弟节点：既不会继承整卡点击，也不会形成嵌套按钮。
+    expect(star.closest('[data-index-cell]')).toBeNull();
+    await click(star);
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    expect(given.openEntity).not.toHaveBeenCalled();
+    expect(writes[0]).toMatchObject({ action: 'favorite', entity_id: 11, kind: 'performer', on: true });
+    await answer.release({ favorites: [{ key: 'entity:11', entity_id: 11, kind: 'performer', name: '甲' }], filters: [] });
+    await settle();
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    expect(star.getAttribute('aria-label')).toBe('取消收藏甲');
+    await click(host.querySelector('[data-index-cell]'));
+    expect(given.openEntity).toHaveBeenCalledWith('performer', '甲');
+  });
+
+  it('收藏失败退回原状态并给通知回执', async () => {
+    const row = performer('乙', 12);
+    seed(indexKey('performers', ''), [row]);
+    const writes: Record<string, unknown>[] = [];
+    const failure = pending<unknown>();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.body) return { ok: true, status: 200, json: async () => ({ items: [row], has_more: false }) };
+      writes.push(JSON.parse(String(init.body)));
+      await failure.answer;
+      return { ok: false, status: 500, json: async () => ({ error: '收藏没写上' }) };
+    }));
+    const host = await open(props()); await settle();
+    const star = host.querySelector<HTMLButtonElement>('[data-index-favorite]')!;
+    await click(star);
+    expect(star.getAttribute('aria-pressed')).toBe('true');
+    await failure.release(null);
+    await settle();
+    expect(star.getAttribute('aria-pressed')).toBe('false');
+    expect(writes[0]).toMatchObject({ action: 'favorite', entity_id: 12, on: true });
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ alert: true }));
+  });
+
+  it('只给女优名册加星标，厂牌格保持原样', async () => {
+    const row = person('厂牌甲', { entity_id: 3, entity_kind: 'studio' });
+    seed(indexKey('studios', ''), [row]);
+    const host = await open(props({ kind: 'studios' })); await settle();
+    expect(host.querySelector('[data-index-cell]')).not.toBeNull();
+    expect(host.querySelector('[data-index-favorite]')).toBeNull();
+  });
+
+  it('资料页名册没有随行收藏状态，不摆索引页的星标', async () => {
+    const host = await mount(<QueryClientProvider client={queryClient}>
+      <PeopleGrid kind="performers" items={[performer('丙', 13)]} layout="big"
+        props={{ personAvatar: () => ({ html: '<span class="ini">C</span>', face: '' }), openEntity: vi.fn() }} />
+    </QueryClientProvider>);
+    await settle();
+    expect(host.querySelector('[data-index-cell]')).not.toBeNull();
+    expect(host.querySelector('[data-index-favorite]')).toBeNull();
   });
 });

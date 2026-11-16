@@ -65,6 +65,8 @@ export interface IndexPerson {
   /** 与 `identity_labels` 一一对应的分类 id，按它取译文。 */
   identity_categories?: string[];
   following?: boolean;
+  /** 收藏状态由 `_attach_index_favorites` 按规范实体身份下发。 */
+  favorite?: boolean;
   entity_id?: number;
   id?: number;
   k: string;

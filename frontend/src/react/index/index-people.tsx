@@ -11,6 +11,7 @@ import { entityDisplayName } from '../../core/entity-names';
 import { useEntityNames } from '../use-entity-names';
 
 import { cardClass } from '../components/card';
+import { FavoriteStar } from '../library-shortcuts/favorite-star';
 import { spriteGlyph } from '../components/sprite-glyph';
 import type { OnlineAuthor } from '../follow/online-vocab';
 import { ENTITY_KINDS, isCompany, personReadout, type IndexKind, type IndexPerson, type IndexProps, type PeopleLayout } from './index-data';
@@ -39,32 +40,41 @@ const CELL = 'relative flex cursor-pointer flex-col gap-2 p-3 text-inherit';
 const Rss = spriteGlyph('rss');
 
 function Cell(
-  { name, readout, big, children, following, onPress, ...data }:
-  { name: string; readout: string; big: boolean; children: ReactNode; following?: boolean; onPress(): void }
-    & Record<`data-${string}`, string>,
+  { name, readout, big, children, following, favorites, favorite, entityId, entityKind, onPress, ...data }:
+  {
+    name: string; readout: string; big: boolean; children: ReactNode; following?: boolean;
+    favorites?: boolean; favorite?: boolean; entityId?: number; entityKind?: string; onPress(): void;
+  } & Record<`data-${string}`, string>,
 ) {
+  const star = favorites && entityKind === 'performer' && typeof entityId === 'number';
   return (
-    <button type="button" {...data} data-index-cell="" onClick={onPress}
-      className={cardClass({
-        radius: 'plain', padding: 'none', interactive: true,
-        className: `${CELL} ${big ? 'items-stretch text-left' : 'items-center text-center'}`,
-      })}>
-      {children}
-      {following ? <span data-index-feed="" role="img" aria-label={t('catalog:entityHero.newReleasesOn')} className="index-feed-mark absolute top-4 right-4 z-2 inline-flex">
-        <Chip variant="caption" color="soft"><Rss /></Chip>
-      </span> : null}
-      <span data-index-name="" className="text-body-medium wrap-anywhere text-text-primary">{name}</span>
-      <span data-index-readout="" className="text-caption-1-regular">{readout}</span>
-    </button>
+    <div data-index-cell-slot="">
+      <button type="button" {...data} data-index-cell="" onClick={onPress}
+        className={cardClass({
+          radius: 'plain', padding: 'none', interactive: true,
+          className: `${CELL} ${big ? 'items-stretch text-left' : 'items-center text-center'}`,
+        })}>
+        {children}
+        {following ? <span data-index-feed="" role="img" aria-label={t('catalog:entityHero.newReleasesOn')}
+          className={`index-feed-mark absolute top-4 z-2 inline-flex ${star ? 'left-4' : 'right-4'}`}>
+          <Chip variant="caption" color="soft"><Rss /></Chip>
+        </span> : null}
+        <span data-index-name="" className="text-body-medium wrap-anywhere text-text-primary">{name}</span>
+        <span data-index-readout="" className="text-caption-1-regular">{readout}</span>
+      </button>
+      {star ? <FavoriteStar data-index-favorite="" item={{ entity_id: entityId, kind: entityKind, name, favorite }} /> : null}
+    </div>
   );
 }
 
 /** 本地名册。资料页的名册（事务所旗下艺人、片商旗下厂牌）摆的也是这一格，只借取图与去处两样。 */
 export function PeopleGrid(
-  { kind, items, layout, props }:
+  { kind, items, layout, props, favorites = false }:
   {
     kind: Exclude<IndexKind, 'tags'>; items: IndexPerson[]; layout: PeopleLayout;
     props: Pick<IndexProps, 'personAvatar' | 'openEntity'>;
+    /** 资料页的名册没有随行下发收藏状态，只索引页摆星标。 */
+    favorites?: boolean;
   },
 ) {
   const company = isCompany(kind) || kind === 'series';
@@ -78,7 +88,8 @@ export function PeopleGrid(
         const avatar = props.personAvatar(item, entityKind, big);
         return (
           <Cell key={`${entityKind}:${item.entity_id || item.k}`} data-k={item.k} data-kind={entityKind} name={entityDisplayName(entityKind, item.k, item.entity_id)} readout={`${personReadout(kind, item)}${item.identity_labels?.length ? ' · ' + serverLabels('identity.category', item.identity_categories, item.identity_labels).join(' / ') : ''}`}
-            big={big} following={item.following} onPress={() => props.openEntity(entityKind, item.k)}>
+            big={big} following={item.following} favorites={favorites} favorite={item.favorite} entityId={item.entity_id} entityKind={entityKind}
+            onPress={() => props.openEntity(entityKind, item.k)}>
             <Ring html={avatar.html} face={avatar.face} company={company} big={big} />
           </Cell>
         );
