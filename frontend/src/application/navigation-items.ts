@@ -2,7 +2,7 @@
 import { t } from '../i18n';
 
 export type SidebarKey = '' | 'performers' | 'studios' | 'tags' | 'jav' | 'flagged' | 'playlists'
-  | 'follow' | 'immerse' | 'manage' | 'stats' | 'taste' | 'review' | 'data-cleanup' | 'trash'
+  | 'follow' | 'studio-subscriptions' | 'immerse' | 'manage' | 'stats' | 'taste' | 'review' | 'data-cleanup' | 'trash'
   | 'follow-manage' | 'quality' | 'activity';
 export type ManagementKey = 'stats' | 'taste' | 'review' | 'cleanup' | 'trash' | 'follow'
   | 'quality' | 'activity' | 'configuration';
@@ -17,6 +17,7 @@ export const SIDEBAR_ITEMS = [
   ['flagged', t('navigation:sidebar.flagged'), 'bookmark'],
   ['playlists', t('navigation:sidebar.playlists'), 'playlist'],
   ['follow', t('navigation:sidebar.following'), 'rss'],
+  ['studio-subscriptions', t('navigation:sidebar.studioSubscriptions'), 'rss'],
   ['immerse', t('navigation:sidebar.immerse'), 'gallery-vertical-end'],
   ['manage', t('navigation:sidebar.manage'), 'wrench'],
 ] as const satisfies readonly NavigationItem<SidebarKey>[];

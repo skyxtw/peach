@@ -19,6 +19,7 @@ import { controlDiscoveryMetadata, DISCOVERY_METADATA_KEY, discoveryKey, fetchDi
 import { queryClient } from '../query';
 import { DiscoveryCard, resourcePrefill } from './discovery-card';
 import { Releases } from './jav-releases';
+import { StudioSubscriptions } from './studio-subscriptions';
 import { JavHeader } from './jav-header';
 import { IndexSearch } from '../index/index-search';
 import { spriteGlyph } from '../components/sprite-glyph';
@@ -48,6 +49,8 @@ export function JavPage({ tab, readOnly, navigate, receipt }: {
       ? <Releases readOnly={readOnly} receipt={receipt} resource={setDownload} query={text.trim()} navigate={navigate} clearText={() => setText('')} />
       : tab === 'discover'
       ? <Discover readOnly={readOnly} receipt={receipt} resource={setDownload} query={text.trim()} navigate={navigate} clearText={() => setText('')} />
+      : tab === 'studios'
+      ? <StudioSubscriptions navigate={navigate} />
       : <WantList readOnly={readOnly} toast={receipt} query={text.trim()} clearQuery={() => setText('')} />}
     <CloudDownloadDialog prefill={download} close={() => setDownload(null)} receipt={receipt} />
   </div></JavSelectionProvider>;

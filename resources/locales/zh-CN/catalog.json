@@ -542,7 +542,23 @@
     "discover": "发现",
     "label": "JAV 分区",
     "newReleases": "新作",
+    "studioSubscriptions": "厂牌订阅",
     "wants": "想要"
+  },
+  "studioSubscriptions": {
+    "title": "厂牌订阅",
+    "hint": "只看挂到片商实体上的订阅源；演员订阅仍在「关注」。",
+    "loading": "正在读取厂牌订阅…",
+    "failed": "读取厂牌订阅失败",
+    "empty": "还没有订阅厂牌",
+    "emptyHint": "打开一个厂牌页，点「订阅新作」后就会出现在这里。",
+    "browse": "去浏览厂牌",
+    "newCount": "新作 {{count, number}}",
+    "seenCount": "已见 {{count, number}}",
+    "lastFetched": "上次拉取 {{time}}",
+    "neverFetched": "尚未拉取",
+    "openReleases": "查看新作",
+    "manage": "管理订阅"
   },
   "javWant": {
     "added": "已加入想要",
