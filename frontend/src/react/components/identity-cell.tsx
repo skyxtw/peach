@@ -5,6 +5,7 @@ import type { DetailEntityRef } from '../item-detail/item-detail';
 import { entityDisplayName } from '../../core/entity-names';
 import { useEntityNames } from '../use-entity-names';
 import { FavoriteStar } from '../library-shortcuts/favorite-star';
+import { IndexFollowButton } from '../index/index-follow';
 import { t } from '../../i18n';
 
 /** 详情署名共用实体头像、厂牌标识与首字回退。 */
@@ -29,7 +30,8 @@ export function IdentityCell({ kind, person, onOpen, hidden, overflow, face }: {
   return <span data-id-favorite-slot="" hidden={hidden}>
     {cell}
     {kind === 'performer' && typeof person.id === 'number'
-      ? <FavoriteStar load data-id-favorite="" item={{ entity_id: person.id, kind, name: person.name }} />
+      ? <><FavoriteStar load data-id-favorite="" item={{ entity_id: person.id, kind, name: person.name }} />
+        {person.feed ? <IndexFollowButton item={{ entity_id: person.id, name: person.name, feed: person.feed }} /> : null}</>
       : null}
   </span>;
 }
