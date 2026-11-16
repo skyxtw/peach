@@ -540,7 +540,8 @@ export function mountPlayerSeekControls(player: VjsPlayer, controlBar: HTMLEleme
  *
  *  单击仍走播放/暂停，但要等双击窗口过去才兑现；浏览器合成的 click 与 dblclick 都要在捕获阶段
  *  吃掉，否则第一下会先触发播放、第二下又会被 Video.js 当成双击全屏。鼠标不接管，原来的单击与
- *  双击全屏行为不变。沉浸模式有自己的手势，这个函数只挂在舞台播放器上。 */
+ *  双击全屏行为不变。鼠标按住同样触发长按倍速，方便非触屏设备验收；普通单击与双击仍走原路径。
+ *  沉浸模式有自己的手势，这个函数只挂在舞台播放器上。 */
 const TAP_MS = 300;
 const TAP_SLOP = 12;
 const TAP_SUPPRESS_MS = 450;
@@ -573,7 +574,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     if (holding) { holding = false; player.playbackRate(holdRate) }
   };
   const onDown = (event: PointerEvent) => {
-    if (event.pointerType === 'mouse' || !inStage()) return;
+    if (!inStage() || event.button > 0) return;
     clearHold(); restoreRate();
     down = { x: event.clientX, y: event.clientY, at: Date.now() };
     holdTimer = setTimeout(() => {
@@ -585,11 +586,11 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     }, LONG_PRESS_MS);
   };
   const onMove = (event: PointerEvent) => {
-    if (!down || event.pointerType === 'mouse') return;
+    if (!down) return;
     if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_SLOP) { clearHold(); restoreRate() }
   };
   const onUp = (event: PointerEvent) => {
-    if (event.pointerType === 'mouse' || !down || !inStage()) return;
+    if (!down || !inStage()) return;
     clearHold();
     const started = down; down = null;
     if (holding) {
@@ -597,6 +598,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
       suppressUntil = Date.now() + TAP_SUPPRESS_MS;
       return;
     }
+    if (event.pointerType === 'mouse') return;
     if (Date.now() - started.at > 600 || Math.hypot(event.clientX - started.x, event.clientY - started.y) > TAP_SLOP) return;
     const now = Date.now(), side = sideAt(event.clientX);
     suppressUntil = now + TAP_SUPPRESS_MS;

@@ -33,9 +33,9 @@ function setup(seekSeconds = 10, longPressSpeed = 2) {
   return { root, bar, video, player, rate: () => rate };
 }
 
-function pointer(type: string, x: number) {
+function pointer(type: string, x: number, pointerType = 'touch') {
   const event = new Event(type, { bubbles: true }) as PointerEvent;
-  Object.defineProperties(event, { pointerType: { value: 'touch' }, clientX: { value: x }, clientY: { value: 100 } });
+  Object.defineProperties(event, { pointerType: { value: pointerType }, clientX: { value: x }, clientY: { value: 100 } });
   return event;
 }
 
@@ -67,6 +67,17 @@ describe('舞台触屏双击', () => {
     video.dispatchEvent(pointer('pointerup', 200));
     expect(rate()).toBe(1);
     expect(video.currentTime).toBe(50);
+  });
+
+  it('鼠标长按同样加速，普通点击仍交给原生播放路径', () => {
+    vi.useFakeTimers();
+    const { video, player, rate } = setup(10, 3);
+    mountPlayerTouchSeek(player);
+    video.dispatchEvent(pointer('pointerdown', 200, 'mouse'));
+    vi.advanceTimersByTime(500);
+    expect(rate()).toBe(3);
+    video.dispatchEvent(pointer('pointerup', 200, 'mouse'));
+    expect(rate()).toBe(1);
   });
 
   it('同侧两下按步长跳，左右半区方向相反', () => {
