@@ -1115,6 +1115,8 @@
     },
     "feeds": {
       "dmmActressIdDigits": "DMM 女优编号只认数字",
+      "dmmMakerIdDigits": "DMM 片商编号只认数字",
+      "dmmLabelIdDigits": "DMM 厂牌编号只认数字",
       "httpsRequired": "订阅地址必须以 https:// 开头",
       "duplicateUrl": "这个订阅地址已经在列表里了"
     },

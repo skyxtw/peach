@@ -1115,6 +1115,8 @@
     },
     "feeds": {
       "dmmActressIdDigits": "DMM actress IDs must be numeric",
+      "dmmMakerIdDigits": "DMM maker IDs must be numeric",
+      "dmmLabelIdDigits": "DMM label IDs must be numeric",
       "httpsRequired": "Subscription URL must start with https://",
       "duplicateUrl": "This subscription URL is already in the list"
     },
