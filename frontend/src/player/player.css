@@ -81,7 +81,8 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
 @keyframes peach-spinner-right-spin{0%{transform:rotate(-130deg)}50%{transform:rotate(5deg)}to{transform:rotate(-130deg)}}
 /* YouTube `e937390a` 实测控制层：59px 控制栏、40px 左钮、右侧共享胶囊和 6px 进度命中区。 */
 /* video.js 自带 Arial；播放器里的时间、菜单、加载速度都跟页面主字体走，不另起一套。 */
-[data-stage-media] .video-js{font-family:inherit}
+[data-stage-media] .video-js{font-family:inherit;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+[data-stage-media] .video-js *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 [data-stage-media] .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px;
   padding:3px 0 0;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
 [data-stage-media] .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px;margin:0 0 8px;
@@ -523,6 +524,9 @@ video.video-js{vertical-align:top;font-size:10px;line-height:1;font-family:Arial
   color:rgba(255,255,255,.8);background:rgba(255,255,255,.06);font:inherit;font-size:12px;text-align:center}
 .vjs-peach-shortcut span{color:rgba(255,255,255,.8);font-size:13px}
 .video-js.vjs-peach-xsmall .vjs-peach-settings-drawer{position:fixed;z-index:2400;top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:min(72vh,520px);transform:translateY(12px)}
+.vjs-peach-settings-drawer[data-mobile]{position:fixed;z-index:2400;top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:min(72vh,520px);transform:translateY(12px)}
+.vjs-peach-settings-drawer[data-mobile][aria-hidden="false"]{transform:none}
+.vjs-peach-settings-drawer[data-mobile] .vjs-peach-settings-menu{width:auto;max-height:none;border-radius:0}
 .video-js.vjs-peach-xsmall .vjs-peach-settings-drawer[aria-hidden="false"]{transform:none}
 .video-js.vjs-peach-xsmall .vjs-peach-settings-drawer .vjs-peach-settings-menu{width:auto;max-height:none;border-radius:0}
 

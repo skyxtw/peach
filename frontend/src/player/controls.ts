@@ -203,7 +203,15 @@ export function mountPlayerQualityControl(
     return { options, active };
   };
   const isOpen = () => menu.getAttribute('aria-hidden') !== 'true';
+  const placeDrawer = () => {
+    const stage = playerHost().stage();
+    const mobile = player.el().classList.contains('vjs-peach-xsmall');
+    const parent = mobile && stage ? stage : player.el();
+    drawer.toggleAttribute('data-mobile', mobile);
+    if (drawer.parentElement !== parent) parent.append(drawer);
+  };
   const setOpen = (open: boolean) => {
+    if (open) placeDrawer();
     menu.setAttribute('aria-hidden', String(!open)); drawer.setAttribute('aria-hidden', String(!open));
     toggle.setAttribute('aria-expanded', String(open));
     if (!open) subtitleControls?.hide();
@@ -493,6 +501,7 @@ export function mountPlayerQualityControl(
     document.removeEventListener('pointerdown', outside);
     document.removeEventListener(PLAYER_PANEL_EVENT, closeSettingsForOtherPanel);
     if (panelTimer) clearTimeout(panelTimer);
+    drawer.remove();
   });
   subtitleControls = new SubtitleControls(player, video, {
     render: renderPanel, open: () => { view = 'subtitles'; setOpen(true) }, close,
@@ -632,6 +641,8 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     tapTimer = setTimeout(() => { tapTimer = null; lastTap = null; toggleVideoPlayback(video) }, TAP_MS);
   };
   const onCancel = () => { restoreRate(); suppressClick = false; down = null };
+  const keepSelection = (event: Event) => { if (event.target === video) event.preventDefault() };
+  root.addEventListener('contextmenu', keepSelection);
   /* 鼠标可能按住后移出视频再松开：在 window 上兜底恢复。 */
   const releaseOutside = () => {
     if (!holding && !suppressClick) return;
@@ -661,6 +672,7 @@ export function mountPlayerTouchSeek(player: VjsPlayer): void {
     video.removeEventListener('pointerup', onUp);
     video.removeEventListener('pointercancel', onCancel);
     video.removeEventListener('pointerleave', onLeave);
+    root.removeEventListener('contextmenu', keepSelection);
     window.removeEventListener('pointerup', releaseOutside, true);
     window.removeEventListener('pointercancel', releaseOutside, true);
     badge.remove();
