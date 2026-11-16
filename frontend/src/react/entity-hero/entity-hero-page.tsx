@@ -21,11 +21,12 @@ import { Button } from '@/components/base/buttons/button';
 import { AvatarPicker } from '../avatar-picker/avatar-picker-page';
 import { Note } from '../components/note';
 import { PendingWork } from '../components/pending-work';
-import { FavoriteButton } from '../library-shortcuts/shortcut-controls';
+import { EntityActionButton, FavoriteButton } from '../library-shortcuts/shortcut-controls';
 import { busyProps } from '../settings/busy-props';
 import { FeedNewRow } from '../feed-new/feed-new-row';
 import { Glyph } from './glyph';
 import { FeedSwitch, MorePop } from './hero-pop';
+import { StudioBindDialog, type DmmStudioBinding } from './studio-bind-dialog';
 import { NamePicker } from './name-picker';
 import {
   COMPANY_ALIASES_SHOWN, agencyOf, companyFactRows, entityFeedTip, entryMarks, factRows, heroLinks, isCompany, isPeople, nameChoices, nameLine, shownTags,
@@ -55,6 +56,11 @@ function costarImg(person: HeroCostar): string {
 
 export function EntityHeroPage({ kind, name, entity, feedNew, feedHost, feedError, retryFeed, actions, helpers }: EntityHeroProps) {
   useEntityNames();
+  const [bindOpen, setBindOpen] = useState(false);
+  const dmmBindings: DmmStudioBinding[] = (entity.external_refs || []).flatMap((ref) =>
+    ref.provider === 'dmm' && (ref.external_kind === 'maker' || ref.external_kind === 'label')
+      ? [{ kind: ref.external_kind as DmmStudioBinding['kind'], id: ref.external_id }]
+      : []);
   const displayName = entityDisplayName(kind, entity.canonical_name, Number(entity.id));
   const people = isPeople(kind);
   const company = isCompany(kind);
@@ -88,6 +94,11 @@ export function EntityHeroPage({ kind, name, entity, feedNew, feedHost, feedErro
               {kind !== 'tag' ? <NamePicker current={entity.canonical_name} choices={nameChoices(entity, nameLanguage())}
                 onChoose={actions.chooseName} onAddAlias={actions.addAlias} /> : null}
               {entity.id ? <FavoriteButton item={{ entity_id: Number(entity.id), kind, name: entity.canonical_name || name, favorite: entity.favorite }} /> : null}
+              {kind === 'studio' && entity.id ? (
+                <EntityActionButton data-studio-bind="" label={t('catalog:studioBind.entry')} onClick={() => setBindOpen(true)}>
+                  <Glyph name="link" />
+                </EntityActionButton>
+              ) : null}
             </div>
             <PendingWork work={entity.pending_work} />
             <AliasLine kind={kind} entity={entity} actions={actions} />
@@ -146,6 +157,9 @@ export function EntityHeroPage({ kind, name, entity, feedNew, feedHost, feedErro
       {/* 新作那一行摆在壳留好的 `section.feednew[data-feed-new]` 里，与首页那一行同一个组件。 */}
       {feedHost ? createPortal(<FeedNewRow feedNew={feedNew} host={feedHost} wire={helpers.wireFeedRow}
         act={(feedId, action) => actions.feedAction(feedId, action)} error={feedError} retry={retryFeed} />, feedHost) : null}
+      {bindOpen && entity.id ? (
+        <StudioBindDialog current={dmmBindings} close={() => setBindOpen(false)} bind={actions.bindStudio} />
+      ) : null}
     </>
   );
 }

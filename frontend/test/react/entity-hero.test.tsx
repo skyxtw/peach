@@ -13,7 +13,7 @@ import {
   type EntityHeroActions, type EntityHeroData, type EntityHeroHelpers, type EntityHeroProps,
 } from '../../src/react/entity-hero/entity-hero';
 import { queryClient } from '../../src/react/query';
-import { click, mount, settle } from './render';
+import { click, mount, settle, submit, type } from './render';
 
 afterEach(() => { queryClient.clear() });
 beforeEach(() => { registerNameWritings([]); setNameLanguage('zh-CN') });
@@ -30,8 +30,8 @@ const performer = (extra: Partial<EntityHeroData> = {}): EntityHeroData => ({
 
 function actions(patch: Partial<EntityHeroActions> = {}): EntityHeroActions {
   return {
-    openEntity: vi.fn(), chooseName: vi.fn(), addAlias: vi.fn(), follow: vi.fn(async () => {}),
-    refreshFeedAfterCheck: vi.fn(), feedAction: vi.fn(async () => {}), avatarPicked: vi.fn(),
+    openEntity: vi.fn(), chooseName: vi.fn(), addAlias: vi.fn(), bindStudio: vi.fn(async () => {}),
+    follow: vi.fn(async () => {}), refreshFeedAfterCheck: vi.fn(), feedAction: vi.fn(async () => {}), avatarPicked: vi.fn(),
     openFollowAuthor: vi.fn(), confirmFollowAuthor: vi.fn(async () => {}), ...patch,
   };
 }
@@ -510,5 +510,63 @@ describe('「+N」浮层', () => {
     await click(more);
     await act(async () => { more.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) });
     expect(more.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('片商 DMM 编号绑定', () => {
+  const studio = (extra: Partial<EntityHeroData> = {}): EntityHeroData => ({
+    id: 3, canonical_name: 'S1 NO.1 STYLE', asset_count: 9, ...extra,
+  });
+
+  async function openStudio(acts = actions(), entity?: Partial<EntityHeroData>) {
+    return open(props({ kind: 'studio', name: 'S1 NO.1 STYLE', entity: studio(entity), actions: acts }));
+  }
+
+  it('只在片商页出入口，人和其他实体没有', async () => {
+    expect((await open(props())).querySelector('[data-studio-bind]')).toBeNull();
+    const host = await openStudio();
+    expect(host.querySelector('[data-studio-bind]')?.getAttribute('aria-label')).toBe('绑定 DMM 编号');
+  });
+
+  it('弹层默认 maker，提交后交给壳并关闭', async () => {
+    const acts = actions();
+    const host = await openStudio(acts);
+    await click(host.querySelector('[data-studio-bind]'));
+    const dialog = document.querySelector('[data-studio-bind-dialog]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain('片商（maker）');
+    await type(dialog!.querySelector('input'), '3152');
+    await submit(dialog);
+    await settle();
+    expect(acts.bindStudio).toHaveBeenCalledWith('maker', '3152');
+    expect(document.querySelector('[data-studio-bind-dialog]')).toBeNull();
+  });
+
+  it('非法编号与失败原因留在弹层里', async () => {
+    const acts = actions({ bindStudio: vi.fn(async () => { throw new Error('这个 DMM 编号已经绑到另一家片商') }) });
+    const host = await openStudio(acts);
+    await click(host.querySelector('[data-studio-bind]'));
+    const dialog = document.querySelector('[data-studio-bind-dialog]');
+    await type(dialog!.querySelector('input'), 'abc');
+    await submit(dialog);
+    await settle();
+    expect(acts.bindStudio).not.toHaveBeenCalled();
+    expect(dialog!.textContent).toContain('DMM 编号只认 ASCII 数字');
+    await type(dialog!.querySelector('input'), '3152');
+    await submit(dialog);
+    await settle();
+    expect(acts.bindStudio).toHaveBeenCalledWith('maker', '3152');
+    expect(dialog!.querySelector('[role="alert"]')?.textContent).toContain('已经绑到另一家片商');
+    expect(dialog!.isConnected).toBe(true);
+  });
+
+  it('已有绑定显示当前编号并预填，可覆盖', async () => {
+    const host = await openStudio(actions(), {
+      external_refs: [{ provider: 'dmm', external_kind: 'maker', external_id: '3152' }],
+    });
+    await click(host.querySelector('[data-studio-bind]'));
+    const dialog = document.querySelector('[data-studio-bind-dialog]')!;
+    expect(dialog.querySelector('[data-studio-bind-current]')?.textContent).toContain('当前绑定：片商（maker） 3152');
+    expect(dialog.querySelector<HTMLInputElement>('input')?.value).toBe('3152');
   });
 });
