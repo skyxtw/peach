@@ -11,6 +11,7 @@ DEFAULT_PROFILE_ID = "local-default"
 
 class ActivityContract(Protocol):
     def cache_bust(self) -> None: ...
+    def playback_committed(self) -> None: ...
     def write_transaction(self, *, notify: bool = True): ...
 
 
@@ -44,15 +45,17 @@ def w_activity(contract: ActivityContract, body):
 
 
 def w_play(contract: ActivityContract, body):
-    contract.cache_bust()
     aid = int(body["id"])
-    with contract.write_transaction() as connection:
+    # 起播只改一部片的播放次数与最近播放：不清全部聚合缓存，按后台提交让版本化聚合先回
+    # 上一份、后台合并重算（`WebContract.playback_committed`，ADR-0146）。
+    with contract.write_transaction(notify=False) as connection:
         changed = connection.execute(
             "UPDATE asset SET play_count=COALESCE(play_count,0)+1, last_played=? WHERE id=?",
             (time.time(), aid),
         ).rowcount
     from .capacity_history import record_playback
     if changed:
+        contract.playback_committed()
         record_playback(contract)
     return {"ok": True}
 

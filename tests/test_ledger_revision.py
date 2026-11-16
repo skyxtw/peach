@@ -32,6 +32,8 @@ from support.ledger import fresh_ledger
 EXEMPT = {"ledger_revision", "schema_migration", "task_run"}
 #: 播放心跳写的观看进度列，不推 asset 的版本（migration 0054）。
 PLAYBACK_PROGRESS = {"play_seconds", "leave_ratio", "max_reached", "seek_count", "last_played"}
+#: 关注页在线播放心跳写的观看进度列，不推 follow_playback 的版本（migration 0058）。
+FOLLOW_PLAYBACK_PROGRESS = {"play_seconds", "max_reached", "last_played"}
 
 
 def insert_asset(db_path: Path, asset_id: int) -> None:
@@ -82,7 +84,19 @@ class LedgerRevisionTests(unittest.TestCase):
         self.assertEqual(listed, columns - PLAYBACK_PROGRESS,
                          "给 asset 加列要同步改 rev_asset_update 的列名单（migration 0054）")
 
-    def test_playback_heartbeats_keep_versions_and_caches_while_starts_refresh_them(self):
+    def test_follow_playback_revision_follows_every_column_except_playback_progress(self):
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(follow_playback)")}
+            sql = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name='rev_follow_playback_update'").fetchone()[0]
+        listed = {name.strip() for name in
+                  re.search(r"\bOF\b(.*?)\bON\s+follow_playback\b", sql, re.S)[1].split(",")}
+        self.assertEqual(listed, columns - FOLLOW_PLAYBACK_PROGRESS,
+                         "给 follow_playback 加列要同步改 rev_follow_playback_update 的列名单"
+                         "（migration 0058）")
+
+    def test_playback_heartbeats_keep_versions_and_caches_while_starts_refresh_in_the_background(self):
+        """本地播放心跳不改版本也不清缓存；起播只推进版本，聚合同样先回旧值、后台刷新。"""
         from peach import web_activity
         insert_asset(self.db_path, 1)
         tables = ("asset",)
@@ -98,6 +112,87 @@ class LedgerRevisionTests(unittest.TestCase):
                 "SELECT play_seconds,max_reached,seek_count FROM asset WHERE id=1").fetchone(), (10.0, 0.5, 1))
         web_activity.w_play(self.contract, {"id": 1})
         self.assertGreater(self.contract.ledger_revision(tables), before)
+        # 起播不再当场清缓存：版本化聚合先回上一份，后台重算写回后才看到新值（ADR-0146）。
+        self.assertEqual(self.contract.cached_until_changed("tops", self.compute, tables=tables), 1)
+        self.wait_refreshed("tops")
+        self.assertEqual(self.contract.cached_until_changed("tops", self.compute, tables=tables), 3)
+
+    def test_repeated_play_starts_keep_time_caches_and_compute_aggregates_once(self):
+        """连续起播不再整份清缓存：时间型缓存命中，版本化聚合只在后台合并重算一次。"""
+        from peach import web_activity
+        insert_asset(self.db_path, 1)
+        plain_calls = []
+
+        def plain():
+            plain_calls.append(1)
+            return len(plain_calls)
+
+        plays = []
+
+        def play_count():
+            with closing(sqlite3.connect(self.db_path)) as connection:
+                plays.append(connection.execute(
+                    "SELECT play_count FROM asset WHERE id=1").fetchone()[0])
+            return plays[-1]
+
+        self.assertEqual(self.contract.cached("plain", plain), 1)
+        self.assertEqual(self.contract.cached_until_changed(
+            "start-plays", play_count, tables=("asset",)), 0)
+        for _ in range(3):
+            web_activity.w_play(self.contract, {"id": 1})
+        # 时间型缓存没有被清掉：起播不再清全部聚合缓存。
+        self.assertIn("plain", self.contract.cache)
+        self.assertEqual(self.contract.cached("plain", plain), 1)
+        self.assertEqual(len(plain_calls), 1)
+        # 版本化聚合先回上一份，不在这里同步算；连续三次起播只排一次后台重算。
+        self.assertEqual(self.contract.cached_until_changed(
+            "start-plays", play_count, tables=("asset",)), 0)
+        self.wait_refreshed("start-plays")
+        self.assertEqual(self.contract.cached_until_changed(
+            "start-plays", play_count, tables=("asset",)), 3)
+        self.assertEqual(len(plays), 2)
+
+    def test_online_playback_heartbeats_keep_versions_and_caches(self):
+        """关注页在线播放心跳只改进度：不清缓存，也不推 follow_playback 的版本。"""
+        from peach import web_follow
+        with closing(sqlite3.connect(self.db_path)) as connection, connection:
+            connection.executescript(
+                "INSERT INTO follow_source(provider,ref,label,url,created_at,updated_at) "
+                "VALUES('rule34video','alice','Alice','https://rule34video.test/alice','t','t');"
+                "INSERT INTO follow_item(source_id,external_id,title,release_key,first_seen_at,last_seen_at) "
+                "VALUES(1,'1','One','one','t','t');"
+                "INSERT INTO follow_playback(follow_item_id,profile_id) VALUES(1,'local-default');")
+        seconds = []
+
+        def online_seconds():
+            with closing(sqlite3.connect(self.db_path)) as connection:
+                seconds.append(connection.execute(
+                    "SELECT COALESCE(sum(play_seconds),0) FROM follow_playback").fetchone()[0])
+            return seconds[-1]
+
+        tables = ("follow_playback", "follow_item")
+        self.assertEqual(self.contract.cached("plain", self.compute), 1)
+        self.assertEqual(self.contract.cached_until_changed(
+            "stats-online", online_seconds, tables=tables), 0)
+        generation = self.contract.cache_generation
+        for _ in range(3):
+            web_follow.w_follow_activity(self.contract, {
+                "item": 1, "position": 12, "duration": 20, "delta": 3})
+        # 心跳不清缓存、不推进代次，也不改版本：统计页那份结果原样命中。
+        self.assertEqual(self.contract.cache_generation, generation)
+        self.assertEqual(self.contract.cached("plain", self.compute), 1)
+        self.assertEqual(self.contract.cached_until_changed(
+            "stats-online", online_seconds, tables=tables), 0)
+        self.assertEqual(len(seconds), 1)
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT play_seconds,max_reached FROM follow_playback WHERE follow_item_id=1"
+            ).fetchone(), (9.0, 0.6))
+        # 起播（play_count）仍推进版本：下一次读当场拿到新值，心跳攒的时长一并可见。
+        web_follow.w_follow_play(self.contract, {"item": 1})
+        self.assertEqual(self.contract.cached_until_changed(
+            "stats-online", online_seconds, tables=tables), 9.0)
+        self.assertEqual(len(seconds), 2)
 
     def test_a_write_from_another_connection_recomputes_and_nothing_else_does(self):
         self.assertEqual(self.contract.cached_until_changed("taste", self.compute), 1)
