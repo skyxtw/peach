@@ -74,12 +74,14 @@ function Cell(
 
 /** 本地名册。资料页的名册（事务所旗下艺人、片商旗下厂牌）摆的也是这一格，只借取图与去处两样。 */
 export function PeopleGrid(
-  { kind, items, layout, props, actions = false, sort = 'n' }:
+  { kind, items, layout, props, actions = false, sort = 'n', kana = '' }:
   {
     kind: Exclude<IndexKind, 'tags'>; items: IndexPerson[]; layout: PeopleLayout;
     props: Pick<IndexProps, 'personAvatar' | 'openEntity'>;
     /** 当前排序列：格子的读数把它摆在最前面；别的名册不看。 */
     sort?: string;
+    /** 当前五十音行：读数带上读音或「读音未取得」；别的名册不看。 */
+    kana?: string;
     /** 资料页的名册没有随行下发收藏与订阅状态，只在索引页摆这两个实体动作。 */
     actions?: boolean;
   },
@@ -94,7 +96,7 @@ export function PeopleGrid(
         const entityKind = item.entity_kind || ENTITY_KINDS[kind];
         const avatar = props.personAvatar(item, entityKind, big);
         return (
-          <Cell key={`${entityKind}:${item.entity_id || item.k}`} data-k={item.k} data-kind={entityKind} name={entityDisplayName(entityKind, item.k, item.entity_id)} readout={`${personReadout(kind, item, sort)}${item.identity_labels?.length ? ' · ' + serverLabels('identity.category', item.identity_categories, item.identity_labels).join(' / ') : ''}`}
+          <Cell key={`${entityKind}:${item.entity_id || item.k}`} data-k={item.k} data-kind={entityKind} name={entityDisplayName(entityKind, item.k, item.entity_id)} readout={`${personReadout(kind, item, sort, kana)}${item.identity_labels?.length ? ' · ' + serverLabels('identity.category', item.identity_categories, item.identity_labels).join(' / ') : ''}`}
             big={big} following={item.following} actions={actions} favorite={item.favorite} entityId={item.entity_id}
             entityKind={entityKind} feed={item.feed} onPress={() => props.openEntity(entityKind, item.k)}>
             <Ring html={avatar.html} face={avatar.face} company={company} big={big} />

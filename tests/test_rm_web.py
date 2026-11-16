@@ -12,6 +12,7 @@ from unittest import mock
 
 from peach import catalog_rules, interface_text, jav_poster_crop, web_batch, web_catalog, web_entity, web_playlists, web_search, web_stats
 from peach import web_contract as rm_web
+from peach.kana import kana_row
 from peach.previews import entity_image_key, logo_key
 from peach.web_catalog import q_editions, q_items, q_parts
 from support.ledger import fresh_ledger
@@ -535,6 +536,64 @@ class WebDataTests(unittest.TestCase):
         # 缓存键带上解析后的排序，换一列就是另一份答案。
         self.contract.cache.clear()
         self.assertNotEqual(ids(sort="cup", direction="asc"), ids(sort="debut", direction="asc"))
+        ids()
+        unique = {key for key in self.contract.cache if key.startswith("('index'")}
+        self.assertEqual(len(unique), 3)
+
+    def test_kana_row_normalizes_scripts_and_falls_back_to_other(self):
+        """五十音行：平假名、片假名、半角、浊音与空格都归行；空值和罗马字进 other。"""
+        cases = {
+            "あい": "a", "カオリ": "k", "ｻｸﾗ": "s", "\u3000ﾀﾅｶ\u3000": "t",
+            "がっこう": "k", "ヴァイオリン": "a", "ヷ": "w", "ん": "w",
+            None: "other", "": "other", "alice": "other", "漢字": "other",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(kana_row(value), expected)
+
+    def test_performer_index_kana_rows_filter_with_sort_and_stable_pages(self):
+        """艺人名册按五十音行筛选：空值／罗马字归 other，行内仍按 sort/dir 排，翻页不重不漏。"""
+        readings = {31: "あい", 32: "カオリ", 33: "さくら", 34: "\u3000ﾀﾅｶ\u3000",
+                    35: None, 36: "alice", 37: "ん", 38: "ヴァイオリン", 39: "がっこう"}
+        cups = {31: "E", 32: "C", 33: "B", 34: "D", 39: "A"}
+        with closing(sqlite3.connect(self.db_path)) as con, con:
+            for eid, reading in readings.items():
+                con.execute(
+                    "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(?, 'performer', ?, ?, '2026-01-01', '2026-01-01')",
+                    (eid, f"Kana {eid}", f"kana {eid}"))
+                con.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(1,?,'performer','test',1.0)", (eid,))
+                con.execute(
+                    "INSERT INTO performer_profile(entity_id,cup,kana,source,source_url,fetched_at) "
+                    "VALUES(?,?,?,'test','','2026-01-01')", (eid, cups.get(eid), reading))
+
+        def ids(**args):
+            return [row["entity_id"] for row in rm_web.q_index(self.contract, "performers", **args)["items"]]
+
+        self.assertEqual(set(ids(kana="a")), {31, 38})
+        self.assertEqual(set(ids(kana="k")), {32, 39})
+        self.assertEqual(set(ids(kana="s")), {33})
+        self.assertEqual(set(ids(kana="t")), {34})
+        self.assertEqual(set(ids(kana="w")), {37})
+        # 夹具里的 11、12 没有资料行，和空值、罗马字一起落在 other，不混进任何假名行。
+        self.assertEqual(set(ids(kana="other")), {11, 12, 35, 36})
+        self.assertEqual(set(ids()), {11, 12, *readings})
+        # 行内的排序照常生效：k 行里 39 的罩杯 A 排在 32 的 C 前面。
+        self.assertEqual(ids(kana="k", sort="cup", direction="asc"), [39, 32])
+        # 翻页与一次取齐一致，没有重复。
+        pages = [eid for offset in range(0, len(readings) + 1)
+                 for eid in ids(kana="k", sort="cup", direction="asc", limit=1, offset=offset)]
+        self.assertEqual(pages, [39, 32])
+        # 认不出的行回退成不过滤，不报错；其他名册忽略该参数。
+        self.assertEqual(ids(kana="bogus"), ids())
+        self.assertEqual(ids(kana="all"), ids())
+        self.assertEqual(rm_web.q_index(self.contract, "creators", kana="a"),
+                         rm_web.q_index(self.contract, "creators"))
+        # 缓存键带上解析后的行。
+        self.contract.cache.clear()
+        self.assertNotEqual(ids(kana="a"), ids(kana="k"))
         ids()
         unique = {key for key in self.contract.cache if key.startswith("('index'")}
         self.assertEqual(len(unique), 3)

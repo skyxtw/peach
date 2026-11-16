@@ -400,6 +400,56 @@ describe('名册排序', () => {
   });
 });
 
+describe('五十音', () => {
+  it('行切换写回地址并按新行重取；「全部」清除', async () => {
+    seed(indexKey('performers', ''), [person('甲')]);
+    const fetcher = serve(() => ({ items: [person('甲', { kana: 'かおり' })], has_more: false }));
+    const given = props();
+    const host = await open(given);
+    expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('false');
+    await click(host.querySelector('[data-kana-row="k"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: 'k' }), { replace: false });
+    expect(urls(fetcher).at(-1)).toContain('kana=k');
+    expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('true');
+    await click(host.querySelector('[data-kana-row="all"]'));
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: '' }), { replace: false });
+    expect(host.querySelector('[data-kana-row="all"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('筛「其他」时缺读音明说「读音未取得」，不混进假名行', async () => {
+    const rows = [person('甲', { kana: null }), person('乙', { entity_id: 2, kana: 'alice' })];
+    seed(indexKey('performers', '', 'all', 'n', 'desc', 'other'), rows);
+    const host = await open(props({ kana: 'other' }));
+    const found = [...host.querySelectorAll('[data-index-cell]')].map((cell) => cell.textContent || '');
+    expect(found[0]).toContain('读音未取得');
+    expect(found[1]).toContain('读音 alice');
+    expect(host.querySelector('[data-kana-row="other"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('[data-kana-row="a"]')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('五十音行只在本地艺人名册出现', async () => {
+    seed(indexKey('creators', ''), [person('卖家')]);
+    const host = await open(props({ kind: 'creators' }));
+    expect(host.querySelector('[data-kana-row]')).toBeNull();
+  });
+
+  it('地址与查询键上的五十音参数归一：只认艺人、错值回空', () => {
+    const route = indexRoute({
+      kind: 'performers', q: '', scope: 'local', view: 'alphabet', category: 'all', kana: 'k',
+    });
+    expect(route.kana).toBe('k');
+    expect(indexPath(route)).toBe('/performers?kana=k');
+    expect(indexKey('performers', '', 'all', 'n', 'desc', 'k')).toEqual(['index', 'performers', '', 'k']);
+    expect(indexUrl('performers', '', 'all', 120, 0, 'n', 'desc', 'k')).toContain('kana=k');
+    expect(indexRoute({ ...route, kana: 'bogus' }).kana).toBe('');
+    expect(indexRoute({ ...route, kind: 'creators' }).kana).toBe('');
+    expect(indexKey('creators', '', 'all', 'n', 'desc', 'k')).toEqual(['index', 'creators', '']);
+    expect(indexUrl('creators', '', 'all', 120, 0, 'n', 'desc', 'k')).not.toContain('kana=');
+  });
+});
+
 describe('过滤框', () => {
   it('停手 300ms 才查，一路改写地址；新结果到手前留着上一份，输入框不被换掉', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });

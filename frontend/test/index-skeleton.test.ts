@@ -44,4 +44,18 @@ it('地址上的排序参数归一：艺人名册认白名单，其他名册与�
   expect(indexParams('performers', '?sort=debut&dir=sideways')).toMatchObject({ sort: 'debut', dir: 'desc' });
   expect(indexParams('performers', '?sort=bogus')).toMatchObject({ sort: 'n', dir: 'desc' });
   expect(indexParams('tags', '?sort=cup&dir=asc')).toMatchObject({ sort: 'n', dir: 'desc' });
+  expect(indexParams('performers', '?kana=other')).toMatchObject({ kana: 'other' });
+  expect(indexParams('performers', '?kana=bogus')).toMatchObject({ kana: '' });
+  expect(indexParams('tags', '?kana=k')).toMatchObject({ kana: '' });
+});
+
+it('五十音骨架带选中的行，其他名册不画', () => {
+  const host = document.createElement('div');
+  host.innerHTML = indexPlaceholderHtml(indexParams('performers', '?kana=k'), 'big');
+  expect(host.querySelector('[aria-label="五十音"]')).not.toBeNull();
+  expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('true');
+  expect(host.querySelector('[data-kana-row="a"]')?.getAttribute('aria-pressed')).toBe('false');
+  const creators = document.createElement('div');
+  creators.innerHTML = indexPlaceholderHtml(indexParams('creators', '?kana=k'), 'big');
+  expect(creators.querySelector('[data-kana-row]')).toBeNull();
 });

@@ -152,6 +152,7 @@ def _get_index(contract, args):
         args.get("category", ""),
         args.get("sort", "") or "n",
         args.get("dir", ""),
+        args.get("kana", ""),
     )
 
 

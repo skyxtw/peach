@@ -36,6 +36,7 @@ from .web_catalog import (
 )
 from .web_state import WebContract
 from . import entity_classification
+from .kana import KANA_ROWS
 
 
 #: 有资料页的实体种类。事务所（agency）和厂牌是两件事：厂牌出片、事务所出人，
@@ -832,6 +833,11 @@ def _index_sort(kind, sort, direction):
     return sort, direction if direction in ("asc", "desc") else default
 
 
+def _index_kana(kind, kana):
+    """五十音行：只有本地艺人名册认；其余名册与认不出的行回空（不过滤）。"""
+    return kana if kind == "performers" and kana in KANA_ROWS else ""
+
+
 def _index_order_by(sort, direction):
     """排序子句：空值统一排最后，`e.id` 兜底，同值时翻页不会换序、重复或漏行。"""
     if sort == "n":
@@ -841,24 +847,25 @@ def _index_order_by(sort, direction):
 
 
 def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
-            sort="n", direction=""):
+            sort="n", direction="", kana=""):
     """全部艺人 / 创作者 / 厂牌 / 事务所 / 标签的索引页数据。
 
     账本那一段十来条 SQL，名册页合计三四百毫秒；没有搜索词时按 `INDEX_TABLES` 的版本缓存，
     作品数按 `video_work_key` 计，所以分组快照的输入也一起核对。
     搜索词的键空间不封闭，带搜索词照旧现算。读目录索引的头像与标识标志在缓存之外现做。
-    只有本地艺人名册认 `sort`／`direction`；其他名册与认不出的键一律按作品数降序，
-    缓存键带上解析后的排序，换个排法不会拿回另一份答案。
+    只有本地艺人名册认 `sort`／`direction` 与五十音行 `kana`；其他名册与认不出的值
+    一律忽略。缓存键带上解析后的排序与行，换一列或换一行不会拿回另一份答案。
     """
     sort, direction = _index_sort(kind, sort, direction)
+    kana = _index_kana(kind, kana)
 
     def read():
-        return _index_rows(contract, kind, q, limit, offset, category, sort, direction)
+        return _index_rows(contract, kind, q, limit, offset, category, sort, direction, kana)
     if q or kind not in {"agencies", "tags", *INDEX_ENTITY_KINDS}:
         rows, has_more, category_counts = read()
     else:
         rows, has_more, category_counts = contract.cached_until_changed(
-            repr(("index", kind, limit, offset, category, sort, direction)), read, *group_inputs(contract),
+            repr(("index", kind, limit, offset, category, sort, direction, kana)), read, *group_inputs(contract),
             tables=INDEX_TABLES)
     # 下面还要往每行补目录索引的标志，不能写进缓存里那一份。
     rows = [dict(row) for row in rows]
@@ -870,8 +877,9 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
 
 
 def _index_rows(contract: WebContract, kind, q, limit, offset, category,
-                sort="n", direction=""):
+                sort="n", direction="", kana=""):
     sort, direction = _index_sort(kind, sort, direction)
+    kana = _index_kana(kind, kana)
     category_counts = None
     with contract.read_connection() as c:
         if kind == "agencies":
@@ -942,6 +950,9 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category,
             clause, values = entity_classification.filter_sql(category,connection=c)
             sql += clause
             par.extend(values)
+            if entity_kind == "performer" and kana:
+                sql += "AND peach_kana_row(pp.kana)=? "
+                par.append(kana)
             sql += "GROUP BY e.id,e.canonical_name ORDER BY " + _index_order_by(sort, direction) + " LIMIT ? OFFSET ?"
             par.extend((limit + 1, offset))
             rows = [dict(r) for r in c.execute(sql, par)]

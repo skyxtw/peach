@@ -44,6 +44,7 @@ import { OnlineAuthors, PeopleGrid } from './index-people';
 import { TagAlphabet, TagCloud, TagDock, TagFilters, type TagEntry } from './index-tags';
 import { TagManager } from './tag-manager';
 import { PEOPLE_SORTS, nextPeopleSort, normalizePeopleSort, peopleSortAria } from '../../people-sort';
+import { KANA_ROWS, normalizeKanaRow } from '../../identity-filter';
 import { t } from '../../i18n';
 
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人。所以这个开关切的
@@ -97,9 +98,9 @@ export function IndexPage(props: IndexProps) {
   const [managing, setManaging] = useState(false);
   const [route, setRoute] = useState<IndexRoute>(() => indexRoute(
     { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category,
-      sort: props.sort, dir: props.dir },
+      sort: props.sort, dir: props.dir, kana: props.kana },
   ));
-  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category, props.sort, props.dir]);
+  const incoming = JSON.stringify([props.kind, props.q, props.scope, props.view, props.category, props.sort, props.dir, props.kana]);
   const [previousIncoming, setPreviousIncoming] = useState(incoming);
   if (incoming !== previousIncoming) {
     setPreviousIncoming(incoming);
@@ -109,8 +110,9 @@ export function IndexPage(props: IndexProps) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [match, setMatch] = useState<'any' | 'all'>('any');
   const root = useRef<HTMLDivElement>(null);
-  const { kind, q, scope, view, category, sort, dir } = route;
+  const { kind, q, scope, view, category, sort, dir, kana } = route;
   const orderedSort = normalizePeopleSort(kind, sort, dir);
+  const activeKana = normalizeKanaRow(kind, scope, kana);
   const title = INDEX_TITLES[kind], noun = INDEX_NOUNS[kind];
   const onlineTags = kind === 'tags' && scope === 'online';
   const onlineAuthors = kind === 'performers' && scope === 'online';
@@ -234,11 +236,12 @@ export function IndexPage(props: IndexProps) {
         </EmptyState>
       );
     }
-    if (!items.length) return <IndexEmpty kind={kind} filtered={!!q || category !== 'all'}
-      online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all' })} />;
+    if (!items.length) return <IndexEmpty kind={kind} filtered={!!q || category !== 'all' || !!activeKana}
+      online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all', kana: '' })} />;
     if (onlineAuthors) return <OnlineAuthors items={items as OnlineAuthor[]} layout={layout} props={props} />;
     if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props}
-      actions sort={kind === 'performers' ? orderedSort.sort : 'n'} />;
+      actions sort={kind === 'performers' ? orderedSort.sort : 'n'}
+      kana={kind === 'performers' ? activeKana : ''} />;
     const actions = { online: onlineTags, picked, press: pressTag };
     return view === 'alphabet' ? <TagAlphabet groups={groups} actions={actions} /> : <TagCloud tags={tags} actions={actions} />;
   };
@@ -282,6 +285,15 @@ export function IndexPage(props: IndexProps) {
               <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
                 aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
             ))}
+          </div>
+          <div aria-label={t('catalog:peopleIndex.kanaRow')} className={IDENTITY_ROW_CLASS}>
+            {KANA_ROWS.map(([key, label]) => {
+              const selected = key === 'all' ? !activeKana : activeKana === key;
+              return (
+                <Button key={key} variant={selected ? 'primary' : 'secondary'} size="small" data-kana-row={key}
+                  aria-pressed={selected} onClick={() => go({ kana: key === 'all' ? '' : key })}>{label}</Button>
+              );
+            })}
           </div>
           <div data-index-sorts="" role="group" aria-label={t('catalog:peopleIndex.sortLabel')}
             className="mb-4 flex min-w-0 flex-wrap items-center gap-1">

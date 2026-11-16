@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "2d082d80-f087-43a7-b80b-bff8e32113bb", e._sentryDebugIdIdentifier = "sentry-dbid-2d082d80-f087-43a7-b80b-bff8e32113bb");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "4b583fe7-00f2-4d61-9f08-bb40b5c31a8e", e._sentryDebugIdIdentifier = "sentry-dbid-4b583fe7-00f2-4d61-9f08-bb40b5c31a8e");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -2074,6 +2074,20 @@ var He = {
 		groupCjk: "CJK",
 		groupOther: "Other",
 		identityCategory: "Identity category",
+		kanaA: "A row",
+		kanaFact: "Reading {{value}}",
+		kanaH: "Ha row",
+		kanaK: "Ka row",
+		kanaM: "Ma row",
+		kanaMissing: "Reading not on file",
+		kanaN: "Na row",
+		kanaOther: "Other",
+		kanaR: "Ra row",
+		kanaRow: "Japanese reading",
+		kanaS: "Sa row",
+		kanaT: "Ta row",
+		kanaW: "Wa row",
+		kanaY: "Ya row",
 		layout: "Layout for {{title}}",
 		layoutCompactLogo: "Compact · Round logos",
 		layoutCompactRound: "Compact · Round avatars",
@@ -9290,6 +9304,20 @@ var He = {
 		groupCjk: "中文",
 		groupOther: "其他",
 		identityCategory: "身份分类",
+		kanaA: "あ行",
+		kanaFact: "读音 {{value}}",
+		kanaH: "は行",
+		kanaK: "か行",
+		kanaM: "ま行",
+		kanaMissing: "读音未取得",
+		kanaN: "な行",
+		kanaOther: "其他",
+		kanaR: "ら行",
+		kanaRow: "五十音",
+		kanaS: "さ行",
+		kanaT: "た行",
+		kanaW: "わ行",
+		kanaY: "や行",
 		layout: "{{title}}索引版式",
 		layoutCompactLogo: "紧凑 · 圆形标识",
 		layoutCompactRound: "紧凑 · 圆形头像",
@@ -38841,4 +38869,4 @@ kt();
 var Hb = document.getElementById("peach-page"), Ub = Hb ? Vb[Hb.dataset.page ?? ""] : void 0;
 Hb && Ub && (0, Rt.createRoot)(Hb).render(/* @__PURE__ */ (0, V.jsx)(Bb, { children: /* @__PURE__ */ (0, V.jsx)(Ub, { data: { ...Hb.dataset } }) }));
 
-//# debugId=2d082d80-f087-43a7-b80b-bff8e32113bb
+//# debugId=4b583fe7-00f2-4d61-9f08-bb40b5c31a8e

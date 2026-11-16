@@ -8,7 +8,7 @@
  *
  * 版式偏好由调用方读好交进来：这个模块壳与 React 包各带一份，设置 store 只能有一份。 */
 import { boardTabsHtml, fitSkeleton, iconSwitchHtml, indexSkeletonHtml } from '@peach/legacy/ui';
-import { identityFilterSkeletonHtml } from './identity-filter';
+import { identityFilterSkeletonHtml, kanaFilterSkeletonHtml, normalizeKanaRow } from './identity-filter';
 import { islandButton, islandShortcutsEntry, islandSearchInput } from './island-skeleton';
 import { normalizePeopleSort } from './people-sort';
 import { t } from './i18n';
@@ -25,6 +25,8 @@ export interface IndexParams {
   /** 本地艺人名册的排序键与方向；其他名册归一成作品数降序。 */
   sort: string;
   dir: 'asc' | 'desc';
+  /** 本地艺人名册的五十音行；其他名册忽略，空串表示不筛选。 */
+  kana: string;
 }
 
 export const INDEX_TITLES: Readonly<Record<IndexPageKind, string>> = {
@@ -55,10 +57,11 @@ export const peopleLayoutOf = (saved: unknown): 'big' | 'compact' => (saved === 
 export function indexParams(kind: IndexPageKind, search: string): IndexParams {
   const params = new URLSearchParams(search);
   const ordered = normalizePeopleSort(kind, params.get('sort'), params.get('dir'));
+  const scope = params.get('scope') === 'online' ? 'online' : 'local';
   return {
-    kind, q: params.get('q') || '', scope: params.get('scope') === 'online' ? 'online' : 'local',
+    kind, q: params.get('q') || '', scope,
     view: params.get('view') === 'cloud' ? 'cloud' : 'alphabet', category: params.get('category') || 'all',
-    sort: ordered.sort, dir: ordered.dir,
+    sort: ordered.sort, dir: ordered.dir, kana: normalizeKanaRow(kind, scope, params.get('kana')),
   };
 }
 
@@ -74,7 +77,7 @@ const tagFilterSkeletonHtml = (view: string) => `<div class="peach-react content
     <div class="flex min-h-11.5 min-w-0 items-center gap-3 px-3 py-2" data-filter-row="bottom"><span class="countskeleton"></span>
       <span class="ml-auto">${iconSwitchHtml('tag-view', t('catalog:tagFilters.tagView'), TAG_VIEWS, view, { className:'tag-skeleton-view' })}</span></div></div></div>`;
 
-export function indexPlaceholderHtml({ kind, q, scope, view, category }: IndexParams, layout: 'big' | 'compact'): string {
+export function indexPlaceholderHtml({ kind, q, scope, view, category, kana }: IndexParams, layout: 'big' | 'compact'): string {
   const title = INDEX_TITLES[kind] || t('catalog:shared.tags'), people = kind !== 'tags', company = kind === 'studios' || kind === 'agencies' || kind === 'series';
   const noun = INDEX_NOUNS[kind] || t('catalog:peopleIndex.nounTags');
   const switcher = people
@@ -90,7 +93,8 @@ export function indexPlaceholderHtml({ kind, q, scope, view, category }: IndexPa
       ? tabs(PEOPLE_INDEX_TABS, kind === 'performers' && scope === 'online' ? 'online' : kind, t('catalog:peopleIndex.roster'))
       : company ? tabs(MAKER_INDEX_KINDS, kind, t('catalog:peopleIndex.companyType')) : ''}
     ${kind === 'tags' ? tagFilterSkeletonHtml(view) : ''}
-    ${kind === 'performers' && scope !== 'online' ? identityFilterSkeletonHtml(category) : ''}
+    ${kind === 'performers' && scope !== 'online'
+      ? identityFilterSkeletonHtml(category) + kanaFilterSkeletonHtml(kana) : ''}
     ${indexSkeletonHtml({ kind, layout, mode: view })}`;
 }
 
