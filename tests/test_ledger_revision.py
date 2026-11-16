@@ -418,7 +418,7 @@ class LedgerRevisionTests(unittest.TestCase):
         with mock.patch.object(api, "WARM_AGGREGATES", pages), mock.patch.object(
                 api.web_contract, "dispatch_api_get", side_effect=record):
             asyncio.run(api._warm_ledger_aggregates(True, self.contract, asyncio.Event()))
-        self.assertEqual(calls, [("/api/index", {"kind": "performers", "limit": "60"}),
+        self.assertEqual(calls, [("/api/index", {"kind": "performers", "limit": "120"}),
                                  pages[1]])
 
     def test_a_commit_during_a_versioned_computation_keeps_the_result(self):
