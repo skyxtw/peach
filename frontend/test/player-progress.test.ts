@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { playbackKey, playbackPosition, stopPlaybackPosition, trackPlaybackPosition } from '../src/player/progress';
+import { markExternalPlayback, playbackKey, playbackPosition, stopPlaybackPosition, trackPlaybackPosition } from '../src/player/progress';
 import { disposePlayer } from '../src/player/dispose';
 import { stopTelemetry, wireFollowTelemetry } from '../src/player/telemetry';
 import type { VjsPlayer } from '../src/player/types';
@@ -18,7 +18,7 @@ afterEach(() => { stopPlaybackPosition(video); stopTelemetry(video); vi.useRealT
 
 describe('视频续播位置', () => {
   it('关注片段的实际时长独立于帖子时长，恢复到该片段的保存位置', async () => {
-    configurePlayer({ settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds: 10,
+    configurePlayer({ settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds: 10, seekLargeSeconds: 60, longPressSpeed: 2, fullscreenFit: 'contain',
       miniplayer: true, detailAutoplay: false, javImage: 'cover' }), saveSettings: () => {}, toast: () => {},
       loadSourceStatus: async () => ({}), offlineReason: () => '', stage: () => null });
     setDetailPlayer(null);
@@ -94,6 +94,18 @@ describe('视频续播位置', () => {
     expect(playbackKey('follow', item, 0)).not.toBe(playbackKey('follow', item, 1));
     expect(playbackKey('item', { ...item, location: 'online', follow_item_id: 42 }))
       .toBe(playbackKey('follow', { id: 42 }));
+  });
+
+  it('外部播放器写进 ledger 的关闭点覆盖更早的本机位置', () => {
+    trackPlaybackPosition(key, video);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    video.currentTime = 17;
+    video.dispatchEvent(new Event('pause'));
+    markExternalPlayback(key);
+    const later = Date.now() / 1000 + 5;
+    expect(playbackPosition(key, { ...item, leave_ratio: .8, last_played: later })).toBe(240);
+    expect(playbackPosition(key, { ...item, leave_ratio: .8, last_played: 1 })).toBe(17);
+    expect(playbackPosition(key, { ...item, leave_ratio: 1, last_played: later })).toBe(0);
   });
 
   it('损坏的存储与存储拒绝不会阻断播放器', () => {

@@ -29,7 +29,7 @@ function stubFetch(reply: (url: string) => unknown): FetchCall[] {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const host = (seekSeconds = 10): PlayerHost => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, seekLargeSeconds: 60, longPressSpeed: 2, fullscreenFit: 'contain', miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {},
   toast: () => {},
   loadSourceStatus: async () => ({}),
@@ -291,11 +291,11 @@ describe('播放器清晰度', () => {
       paused: () => true, ended: () => false, isFullscreen: () => false, muted: () => false, volume: () => 1, trigger: () => {} });
     mountPlayerQualityControl(player, video, size);
     const open = () => {
-      bar.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
-      bar.querySelector<HTMLButtonElement>('[data-player-quality-view]')!.click();
+      root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      root.querySelector<HTMLButtonElement>('[data-player-quality-view]')!.click();
     };
-    const labels = () => [...bar.querySelectorAll('[data-player-quality-option]')].map((node) => node.textContent);
-    return { bar, video, levels, open, labels, change: () => events.get('change')?.(), notify: (name: string) => events.get(name)?.(),
+    const labels = () => [...root.querySelectorAll('[data-player-quality-option]')].map((node) => node.textContent);
+    return { root, bar, video, levels, open, labels, change: () => events.get('change')?.(), notify: (name: string) => events.get(name)?.(),
       close: () => { fire('dispose'); root.remove() } };
   }
 
@@ -305,11 +305,11 @@ describe('播放器清晰度', () => {
       Object.defineProperties(view.video, { videoWidth: { value: 1920 }, videoHeight: { value: 1080 },
         clientWidth: { value: 640 }, clientHeight: { value: 360 } });
       Object.defineProperties(view.video.closest('media-container')!, { clientWidth: { value: 640 }, clientHeight: { value: 360 } });
-      view.bar.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
       for (const angle of [90, 180, 270, 0]) {
-        view.bar.querySelector<HTMLButtonElement>('[data-player-rotation]')!.click();
-        expect(view.bar.querySelectorAll('[data-player-rotation-option]')).toHaveLength(4);
-        view.bar.querySelector<HTMLButtonElement>(`[data-player-rotation-option="${angle}"]`)!.click();
+        view.root.querySelector<HTMLButtonElement>('[data-player-rotation]')!.click();
+        expect(view.root.querySelectorAll('[data-player-rotation-option]')).toHaveLength(4);
+        view.root.querySelector<HTMLButtonElement>(`[data-player-rotation-option="${angle}"]`)!.click();
         expect(view.video.style.transform).toBe(angle % 180 ? `translate(-50%, -50%) rotate(${angle}deg)` : angle ? `rotate(${angle}deg)` : '');
         expect(view.video.style.width).toBe(angle % 180 ? '360px' : '');
         expect(view.video.style.height).toBe(angle % 180 ? '640px' : '');
@@ -325,9 +325,9 @@ describe('播放器清晰度', () => {
       view.video.dispatchEvent(new Event('loadedmetadata'));
       view.open();
       expect(view.labels()).toEqual(['1080p']);
-      expect(view.bar.querySelector('[data-player-quality-option]')?.getAttribute('aria-checked')).toBe('true');
-      expect(view.bar.querySelector('[data-player-quality-badge]')?.textContent).toBe('HD');
-      view.bar.querySelector<HTMLButtonElement>('[data-player-quality-option]')!.click();
+      expect(view.root.querySelector('[data-player-quality-option]')?.getAttribute('aria-checked')).toBe('true');
+      expect(view.root.querySelector('[data-player-quality-badge]')?.textContent).toBe('HD');
+      view.root.querySelector<HTMLButtonElement>('[data-player-quality-option]')!.click();
       expect(view.levels[0]!.enabled).toBe(true);
     } finally { view.close() }
   });
@@ -337,7 +337,7 @@ describe('播放器清晰度', () => {
     try {
       view.open();
       expect(view.labels()).toEqual(['当前画质']);
-      expect(view.bar.querySelector<HTMLElement>('[data-player-quality-badge]')!.hidden).toBe(true);
+      expect(view.root.querySelector<HTMLElement>('[data-player-quality-badge]')!.hidden).toBe(true);
     } finally { view.close() }
   });
 
@@ -349,7 +349,7 @@ describe('播放器清晰度', () => {
       entries.push({ width: 1920, height: 1080, enabled: true });
       view.notify('addqualitylevel');
       expect(view.labels()).toEqual(['自动', '360p', '1080p']);
-      expect(view.bar.querySelector('[data-player-quality-option="auto"]')?.getAttribute('aria-checked')).toBe('true');
+      expect(view.root.querySelector('[data-player-quality-option="auto"]')?.getAttribute('aria-checked')).toBe('true');
     } finally { view.close() }
   });
 
@@ -359,7 +359,7 @@ describe('播放器清晰度', () => {
     try {
       view.open();
       expect(view.labels()).toEqual(['自动', '360p', '2160p', '线路 3']);
-      const badge = view.bar.querySelector<HTMLElement>('[data-player-quality-badge]')!;
+      const badge = view.root.querySelector<HTMLElement>('[data-player-quality-badge]')!;
       expect(badge.hidden).toBe(true);
       view.levels.selectedIndex = 1; view.change();
       expect(badge.textContent).toBe('4K');
@@ -372,12 +372,12 @@ describe('播放器清晰度', () => {
     const view = menu(entries);
     try {
       view.open();
-      view.bar.querySelector<HTMLElement>('[data-player-quality-option="1"]')!.focus();
+      view.root.querySelector<HTMLElement>('[data-player-quality-option="1"]')!.focus();
       view.levels.selectedIndex = 1; view.change();
       view.video.dispatchEvent(new Event('resize'));
       entries.push({ width: 3840, height: 2160, enabled: true });
       view.notify('addqualitylevel');
-      const panel = view.bar.querySelector('.vjs-peach-settings-menu')!.lastElementChild!;
+      const panel = view.root.querySelector('.vjs-peach-settings-menu')!.lastElementChild!;
       expect(panel.querySelector('strong')?.textContent).toBe('清晰度');
       expect([...panel.querySelectorAll('[data-player-quality-option]')].map((node) => node.textContent))
         .toEqual(['自动', '360p', '1080p', '2160p']);
@@ -403,7 +403,7 @@ describe('播放器清晰度', () => {
       view.open();
       await new Promise((resolve) => requestAnimationFrame(resolve));
       expect(view.labels()).toEqual(['自动', '360p', '1080p']);
-      expect(view.bar.querySelector<HTMLElement>('.vjs-peach-settings-menu')!.style.height).toBe('160px');
+      expect(view.root.querySelector<HTMLElement>('.vjs-peach-settings-menu')!.style.height).toBe('160px');
     } finally {
       delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
       view.close();
@@ -413,13 +413,83 @@ describe('播放器清晰度', () => {
   it('主菜单开着时尺寸变化只改清晰度那一行的读数', () => {
     const view = menu([{ id: 'private-stream-url', enabled: true }]);
     try {
-      view.bar.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
-      const row = view.bar.querySelector('[data-player-quality-view]')!;
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      const row = view.root.querySelector('[data-player-quality-view]')!;
       expect(row.querySelector('b')?.textContent).toBe('当前画质');
       Object.defineProperties(view.video, { videoWidth: { value: 1920 }, videoHeight: { value: 1080 } });
       view.video.dispatchEvent(new Event('resize'));
-      expect(view.bar.querySelector('[data-player-quality-view]')).toBe(row);
+      expect(view.root.querySelector('[data-player-quality-view]')).toBe(row);
       expect(row.querySelector('b')?.textContent).toBe('1080p');
+    } finally { view.close() }
+  });
+
+  it('偏好抽屉可直接改快退快进步长并保存', () => {
+    const view = menu([]);
+    const settings = { ...host().settings() }, saveSettings = vi.fn();
+    configurePlayer({ ...host(), settings: () => settings, saveSettings });
+    try {
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-step]')!.click();
+      const input = view.root.querySelector<HTMLInputElement>('[data-player-seek-input]')!;
+      expect(input.value).toBe('10');
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-preset="30"]')!.click();
+      expect(settings.seekSeconds).toBe(30);
+      expect(saveSettings).toHaveBeenCalled();
+      expect(input.value).toBe('30');
+      view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
+      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒 / 60 秒');
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-step]')!.click();
+      view.root.querySelector<HTMLButtonElement>('[data-player-seek-large-preset="120"]')!.click();
+      expect(settings.seekLargeSeconds).toBe(120);
+      expect(view.root.querySelector<HTMLInputElement>('[data-player-seek-large-input]')!.value).toBe('120');
+      view.root.querySelector<HTMLButtonElement>('[data-player-menu-back]')!.click();
+      expect(view.root.querySelector('[data-player-seek-step] b')?.textContent).toBe('30 秒 / 120 秒');
+    } finally {
+      configurePlayer(host());
+      view.close();
+    }
+  });
+
+  it('偏好抽屉循环切换全屏画面三档并保存', () => {
+    const view = menu([]);
+    const settings = { ...host().settings() }, saveSettings = vi.fn();
+    configurePlayer({ ...host(), settings: () => settings, saveSettings });
+    try {
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      const row = () => view.root.querySelector<HTMLButtonElement>('[data-player-fullscreen-fit]')!;
+      expect(row().querySelector('b')?.textContent).toBe('适应');
+      row().click();
+      expect(settings.fullscreenFit).toBe('cover');
+      expect(view.root.getAttribute('data-peach-fullscreen-fit')).toBe('cover');
+      expect(row().querySelector('b')?.textContent).toBe('铺满');
+      row().click();
+      expect(settings.fullscreenFit).toBe('original');
+      expect(row().querySelector('b')?.textContent).toBe('原始尺寸');
+      row().click();
+      expect(settings.fullscreenFit).toBe('contain');
+      expect(view.root.hasAttribute('data-peach-fullscreen-fit')).toBe(false);
+      expect(saveSettings).toHaveBeenCalledTimes(3);
+    } finally {
+      configurePlayer(host());
+      view.close();
+    }
+  });
+
+  it('播放器偏好抽屉按播放/快捷键分页并保留设置分组', () => {
+    const view = menu([]);
+    try {
+      view.root.querySelector<HTMLButtonElement>('.vjs-peach-settings-toggle')!.click();
+      const drawer = view.root.querySelector<HTMLElement>('.vjs-peach-settings-drawer')!;
+      expect(drawer.getAttribute('aria-hidden')).toBe('false');
+      expect([...drawer.querySelectorAll('.vjs-peach-settings-group')].map(node => node.textContent)).toEqual(['控制', '画面', '界面']);
+      const keys = drawer.querySelector<HTMLButtonElement>('[data-player-settings-tab="keys"]')!;
+      keys.click();
+      expect([...drawer.querySelectorAll('.vjs-peach-shortcut')]).toHaveLength(9);
+      expect(keys.getAttribute('aria-selected')).toBe('true');
+      drawer.querySelector<HTMLButtonElement>('[data-player-settings-tab="play"]')!.click();
+      expect(drawer.querySelector('[data-player-speed]')).not.toBeNull();
+      drawer.querySelector<HTMLButtonElement>('[data-player-settings-close]')!.click();
+      expect(drawer.getAttribute('aria-hidden')).toBe('true');
     } finally { view.close() }
   });
 });

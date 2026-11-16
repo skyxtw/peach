@@ -113,6 +113,38 @@ class ExternalPlaybackTests(unittest.TestCase):
                 self.assertFalse(local_playback.open_media(media, 'mpv'))
                 self.assertEqual(launch.call_args.args[0], ['C:/mpv/mpv.exe', str(media)])
 
+    def test_start_position_reaches_mpv_vlc_and_iina(self):
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory).resolve() / 'movie.mp4'
+            media.write_bytes(b'video')
+            track = MagicMock(return_value=True)
+            players = {'mpv': ('mpv', 'C:/mpv/mpv.exe'), 'vlc': ('VLC', 'C:/VLC/vlc.exe')}
+            with patch.object(local_playback.sys, 'platform', 'win32'), \
+                    patch.dict(os.environ, {'PEACH_HEADLESS_MANAGED': '0'}), \
+                    patch.object(local_playback, 'installed', return_value=players), \
+                    patch.object(local_playback.subprocess, 'Popen') as launch:
+                local_playback.open_media(media, 'mpv', track=track, start_seconds=61.7)
+                self.assertIn('--start=62', launch.call_args.args[0])
+                local_playback.open_media(media, 'vlc', track=track, start_seconds=61.7)
+                self.assertIn('--start-time=62', launch.call_args.args[0])
+            with patch.object(local_playback.sys, 'platform', 'darwin'), \
+                    patch.dict(os.environ, {'PEACH_HEADLESS_MANAGED': '0'}), \
+                    patch.object(local_playback, 'installed', return_value={'iina': ('IINA', '/Applications/IINA.app')}), \
+                    patch.object(local_playback.subprocess, 'Popen') as launch:
+                local_playback.open_media(media, 'iina', track=track, start_seconds=61.7)
+                self.assertIn('--mpv-start=62', launch.call_args.args[0])
+
+    def test_start_position_is_ignored_by_players_without_a_start_argument(self):
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory).resolve() / 'movie.mp4'
+            media.write_bytes(b'video')
+            with patch.object(local_playback.sys, 'platform', 'win32'), \
+                    patch.dict(os.environ, {'PEACH_HEADLESS_MANAGED': '0'}), \
+                    patch.object(local_playback, 'installed', return_value={'potplayer': ('PotPlayer', 'C:/PotPlayer/PotPlayerMini64.exe')}), \
+                    patch.object(local_playback.subprocess, 'Popen') as launch:
+                local_playback.open_media(media, 'potplayer', start_seconds=61.7)
+                self.assertFalse(any(part.startswith('--start') for part in launch.call_args.args[0]))
+
     def test_mac_iina_tracks_through_iina_cli_and_vlc_keeps_open(self):
         with tempfile.TemporaryDirectory() as directory:
             media = Path(directory).resolve() / 'movie.mp4'
@@ -208,6 +240,26 @@ class PlaybackTrackingTests(unittest.TestCase):
         self.assertTrue(reports[-1][0]['ended'])
         near_end = self._mpv([_frame(96), _frame(96), _frame(98.5)], flush_every=3600)
         self.assertTrue(near_end[-1][0]['ended'])
+
+    def test_active_assets_tracks_running_sessions_only(self):
+        import threading
+        release = threading.Event()
+
+        def connect():
+            release.wait(5)
+            raise OSError('closed')
+
+        trackers = tracking.PlaybackTrackers(poll=0.001, connect_wait=5)
+        try:
+            self.assertTrue(trackers.start(tracking.Session(7, connect, lambda: True, lambda *_: None)))
+            self.assertEqual(trackers.active_assets(), {7})
+        finally:
+            release.set()
+            deadline = time.monotonic() + 5
+            while trackers.threads and time.monotonic() < deadline:
+                time.sleep(0.01)
+            trackers.stop()
+        self.assertEqual(trackers.active_assets(), set())
 
     def test_periodic_flush_records_play_once(self):
         frames = [_frame(0)] + [_frame(float(second)) for second in range(6)]

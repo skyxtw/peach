@@ -79,7 +79,7 @@ vi.mock('../src/player', () => ({
 type StagePlayer = typeof import('../src/react/stage/stage-player');
 let stage: StagePlayer;
 let open = true;
-const settings = { miniplayer: true, seekSeconds: 10 };
+const settings = { miniplayer: true, seekSeconds: 10, seekLargeSeconds: 60 };
 let offline = false;
 let dom: ReturnType<typeof miniplayerDom>;
 const requestClose = vi.fn();

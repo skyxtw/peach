@@ -176,7 +176,8 @@ applicationEffects.listen(document, 'keydown', e=>{
     }
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
       e.preventDefault();
-      seekVideoBy(video,preferencesState.appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1));
+      const step=e.shiftKey?(preferencesState.appSettings.seekLargeSeconds||60):(preferencesState.appSettings.seekSeconds||10);
+      seekVideoBy(video,step*(e.key==='ArrowRight'?1:-1));
       return;
     }
     if(e.key===' '||e.key==='k'||e.key==='K'){

@@ -10,17 +10,17 @@ Windows 或 macOS 上，在运行 Peach 的电脑打开作品详情，在详情�
 
 ## 观看进度回传
 
-从详情选定 mpv、VLC（Windows）或 IINA、mpv（macOS）打开时，Peach 跟踪这次播放，把观看记录写进网页播放器使用的同一组列：位置第一次前进时计一次播放（`play_count`、`last_played`），连续前进的时长累计进 `play_seconds`，大幅跳转计入 `seek_count`，最后位置写成 `leave_ratio`，放完记为 1。每 30 秒和播放器退出时各写一次。系统默认播放器和 PotPlayer 不回传。
+从详情选定 mpv、VLC（Windows）或 IINA、mpv（macOS）打开时，Peach 把网页当前进度交给播放器（mpv/IINA 用 `--start`／`--mpv-start`，VLC 用 `--start-time`；系统默认播放器与 PotPlayer 从头播），并跟踪这次播放，把观看记录写进网页播放器使用的同一组列：位置第一次前进时计一次播放（`play_count`、`last_played`），连续前进的时长累计进 `play_seconds`，大幅跳转计入 `seek_count`，最后位置写成 `leave_ratio`，放完记为 1。每 30 秒和播放器退出时各写一次。系统默认播放器和 PotPlayer 不回传。
 
 | 播放器 | 通道 | 启动参数 |
 | --- | --- | --- |
-| mpv | JSON IPC：Windows 命名管道，macOS Unix socket，名字随机 | `--input-ipc-server=…` |
-| IINA | 经 `iina-cli` 透传给内置 mpv，读法同 mpv | `--mpv-input-ipc-server=…` |
-| VLC | Lua HTTP 接口的 `requests/status.json`，只听 `127.0.0.1`，端口和密码随机 | `--extraintf=http --http-host=127.0.0.1 --http-port=… --http-password=…` |
+| mpv | JSON IPC：Windows 命名管道，macOS Unix socket，名字随机 | `--input-ipc-server=…`（有网页进度时另加 `--start=…`） |
+| IINA | 经 `iina-cli` 透传给内置 mpv，读法同 mpv | `--mpv-input-ipc-server=…`（有网页进度时另加 `--mpv-start=…`） |
+| VLC | Lua HTTP 接口的 `requests/status.json`，只听 `127.0.0.1`，端口和密码随机 | `--extraintf=http --http-host=127.0.0.1 --http-port=… --http-password=…`（有网页进度时另加 `--start-time=…`） |
 
 Peach 每秒读一次位置、时长与暂停状态。播放器退出、断开、换成别的文件、mpv 进入空闲或 VLC 停止时结束跟踪；停下时离片尾不到 3 秒，或 mpv 报告文件放完，都按放完记录。同时最多跟踪 4 个播放器，每个最长 12 小时；启动后 15 秒内连不上进度接口就放弃。连不上、读失败或播放器异常退出时只是不记，不提示用户；已经看过的部分照常写入。Peach 关闭时先写下在跟踪的播放再退出。
 
-续播位置在网页播放器里先读当前浏览器保存的位置，没有时才用 `leave_ratio`。在这个浏览器里看过的作品，外部播放器写入的位置不会改变网页续播点。
+续播位置在网页播放器里先读当前浏览器保存的位置；外部播放器确实接上进度回传时，ledger 里更新的关闭点会在回到窗口后接管更早的网页位置，网页之后又看过则仍以网页位置为准。回到窗口后若最后一次落库还没完成，页面会等跟踪线程结束再读最终位置（最多等 15 分钟），不需要手动刷新。没有接上回传的系统默认播放器与 PotPlayer 不改变网页续播点。
 
 VLC 开启了「只允许一个实例」并已在运行时，新打开的文件交给已有窗口，HTTP 接口不会启动，这次播放不记录。
 

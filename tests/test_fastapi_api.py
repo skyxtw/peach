@@ -3369,6 +3369,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(local_playback, 'installed', return_value={'vlc': ('VLC', '/private/vlc')}), \
                 patch('peach.web_local_access.local_client', return_value=True), \
                 patch.object(local_playback, 'open_media') as launch:
+            self.assertEqual((await self.client.get('/api/local-playback/status')).status_code, 401)
+            self.assertEqual((await self.client.get('/api/local-playback/status', headers=headers)).json(), {'active': []})
             options = await self.client.get('/api/local-players', headers=headers)
             self.assertEqual(options.json(), {'players': [
                 {'id': 'default', 'label': '系统默认播放器', 'label_code': 'labels.routesMedia.defaultPlayer'},
@@ -3376,12 +3378,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             result = await self.client.post('/api/local-playback?id=1&player=vlc', json={}, headers=headers)
             self.assertEqual(result.status_code, 200, result.text)
             self.assertEqual(launch.call_args.args[1], 'vlc')
+            positioned = await self.client.post('/api/local-playback?id=1&player=vlc&position=61.5', json={}, headers=headers)
+            self.assertEqual(positioned.status_code, 200, positioned.text)
+            self.assertEqual(launch.call_args.kwargs['start_seconds'], 61.5)
             launch.reset_mock()
             missing = await self.client.post('/api/local-playback?id=999999', json={}, headers=headers)
             self.assertEqual(missing.status_code, 404)
             launch.assert_not_called()
             forwarded = {**headers, 'X-Forwarded-For': '192.0.2.1'}
             self.assertEqual((await self.client.get('/api/local-players', headers=forwarded)).json(), {'players': []})
+            self.assertEqual((await self.client.get('/api/local-playback/status', headers=forwarded)).json(), {'active': []})
             self.assertEqual((await self.client.post('/api/local-playback?id=1', json={}, headers=forwarded)).status_code, 403)
             remote = {**headers, 'Origin': 'https://attacker.example'}
             self.assertEqual((await self.client.post('/api/local-playback?id=1', json={}, headers=remote)).status_code, 403)
