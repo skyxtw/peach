@@ -473,7 +473,9 @@ def _catalog_order(args):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。
             seed = int(time.strftime("%Y%m%d")) % 9973 or 7
-            order = f"((a.id * {seed}) % 99991), a.id"
+            # 旧式 `(a.id * seed) % 99991` 会让所有 99991 的倍数（例如 id=99991）
+            # 恒排第一；换成 32 位混合常数并让日期种子参与加法，避开这个零点。
+            order = f"((a.id * 2654435761 + {seed * 40503}) % 2147483647), a.id"
         else:
             order = "a.id DESC"
     return order
