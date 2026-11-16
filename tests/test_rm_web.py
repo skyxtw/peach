@@ -2943,13 +2943,14 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in biggest["items"]], [2, 1])
 
     def test_items_pagination_is_bounded_and_seed_collisions_have_a_unique_order(self):
+        # 乘数模 2147483647，相隔一个周期的两个 id 仍会撞在同一排序值上，靠 a.id 收敛。
         with self.contract.write_transaction() as connection:
             connection.execute(
-                "INSERT INTO asset(id,location,path,name,medium) VALUES(99992,'local','collision.mp4','collision.mp4','video')")
+                "INSERT INTO asset(id,location,path,name,medium) VALUES(2147483648,'local','collision.mp4','collision.mp4','video')")
         args = {"seed": "1", "limit": "1"}
         first = rm_web.q_items(self.contract, args)
         second = rm_web.q_items(self.contract, {**args, "offset": "1"})
-        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]], [1, 99992])
+        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]], [1, 2147483648])
         bounded = rm_web.q_items(self.contract, {"limit": "-1", "offset": "-2", "seed": "1"})
         self.assertEqual([item["id"] for item in bounded["items"]], [1])
 
