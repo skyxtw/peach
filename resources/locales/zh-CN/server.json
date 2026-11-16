@@ -966,7 +966,10 @@
       "sourceHttpStatus": "来源回了 HTTP {{status}}",
       "scheduleDisabled": "订阅源拉取没有启用",
       "noSourceIds": "这位在 JavDB 与 DMM 上都没有编号",
+      "noStudioIds": "这家片商还没有绑定 DMM 片商或厂牌编号",
       "performerMissing": "找不到这位女优",
+      "entityMissing": "账本里没有这个实体",
+      "entityNotSubscribable": "这一类实体不能订阅新作",
       "nameRequired": "要先给一个女优名",
       "javdbSearchFailed": "JavDB 没有搜成：{{error}}",
       "javdbHttpStatus": "JavDB 回了 HTTP {{status}}",
@@ -4067,7 +4070,9 @@
     "feeds": {
       "kind": {
         "javdbActor": "JAV 订阅",
-        "dmmActress": "JAV 订阅 · DMM"
+        "dmmActress": "JAV 订阅 · DMM",
+        "dmmMaker": "JAV 订阅 · DMM 片商",
+        "dmmLabel": "JAV 订阅 · DMM 厂牌"
       }
     },
     "followCheck": {

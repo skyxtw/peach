@@ -328,6 +328,9 @@ def q_entity(contract: WebContract, args):
         )]
         d.update(_performer_entries(contract, c, d, alias_rows) if kind == "performer" or 'japanese_av' in d['identity_categories']
                  else {"entry_links": []})
+        # 片商/厂牌页的订阅开关：只有显式绑过 DMM maker/label 编号的实体才出现。
+        if kind == "studio" and feeds.dmm_catalogue_ids(c, d["id"]):
+            d["feed"] = {"following": feeds.entity_following(c, d["id"])}
         # 人物资料与按名义分组的别名。
         if kind in {"performer", "creator"}:
             d.update(performer_header.header(c, d["id"], d["canonical_name"]))

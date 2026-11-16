@@ -966,7 +966,10 @@
       "sourceHttpStatus": "The source returned HTTP {{status}}.",
       "scheduleDisabled": "Subscription fetching isn't enabled.",
       "noSourceIds": "This person has no ID on JavDB or DMM.",
+      "noStudioIds": "This studio has no DMM maker or label ID bound yet.",
       "performerMissing": "This actress can't be found.",
+      "entityMissing": "This entity isn't in the ledger.",
+      "entityNotSubscribable": "This kind of entity can't subscribe to new releases.",
       "nameRequired": "Enter an actress name first.",
       "javdbSearchFailed": "JavDB search failed: {{error}}",
       "javdbHttpStatus": "JavDB returned HTTP {{status}}.",
@@ -4067,7 +4070,9 @@
     "feeds": {
       "kind": {
         "javdbActor": "JAV subscription",
-        "dmmActress": "JAV subscription · DMM"
+        "dmmActress": "JAV subscription · DMM",
+        "dmmMaker": "JAV subscription · DMM maker",
+        "dmmLabel": "JAV subscription · DMM label"
       }
     },
     "followCheck": {
