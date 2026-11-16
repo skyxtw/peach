@@ -203,17 +203,25 @@ def index_scope(connection, kind: str) -> str:
     return "e.kind='" + kind + "'"
 
 
-def counts(connection, kind, query, visible_clause):
-    """对搜索范围中的有效实体独立计数，不受所选分类及分页限制。"""
+def counts(connection, kind, query, visible_clause, kana=""):
+    """对搜索范围中的有效实体独立计数，不受所选分类及分页限制。
+
+    给了 `kana` 就只数这一五十音行：分类按钮跟着当前行重算，而不是永远报整本名册。
+    行键用和索引筛选同一个 `peach_kana_row`，空读音仍归 `other`。
+    """
     predicates = category_predicates(connection=connection)
+    join = ' LEFT JOIN performer_profile pp ON pp.entity_id=e.id ' if kana else ' '
     sql = ('SELECT ' + ','.join(f'COALESCE(SUM(({value})),0)' for value in predicates.values()) + ' '
-           'FROM entity e WHERE ' + index_scope(connection, kind) + ' AND EXISTS ('
+           'FROM entity e' + join + 'WHERE ' + index_scope(connection, kind) + ' AND EXISTS ('
            'SELECT 1 FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id '
            'WHERE ae.entity_id=e.id AND ' + visible_clause + ') ')
     params = []
     if query:
         sql += 'AND e.canonical_name LIKE ? '
         params.append(f'%{query}%')
+    if kana:
+        sql += 'AND peach_kana_row(pp.kana)=? '
+        params.append(kana)
     totals = connection.execute(sql,params).fetchone()
     return {key: count for key, count in zip(predicates,totals) if count}
 

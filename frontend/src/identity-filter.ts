@@ -38,9 +38,12 @@ export function identityFilterSkeletonHtml(category: string): string {
 /** 五十音那一行的骨架：键与最终长相一致，选中态照地址；不接线，只占位。 */
 export function kanaFilterSkeletonHtml(kana: string): string {
   const known = KANA_ROWS.some(([key]) => key === kana) ? kana : 'all';
-  const buttons = KANA_ROWS.map(([key, label]) => islandButton({
-    variant: key === known ? 'primary' : 'secondary', size: 'small', label,
-    attrs: `data-kana-row="${key}" aria-pressed="${key === known}"`,
-  })).join('');
+  const buttons = KANA_ROWS.map(([key, label]) => {
+    const count = '<span class="ml-1 inline-block h-2.5 w-5 align-middle rounded-sm skeleton-sheen" data-kana-count-skeleton aria-hidden="true"></span>';
+    return islandButton({
+      variant: key === known ? 'primary' : 'secondary', size: 'small', label: label + count,
+      attrs: `data-kana-row="${key}" aria-pressed="${key === known}"`,
+    });
+  }).join('');
   return `<div class="peach-react"><div aria-label="${t('catalog:peopleIndex.kanaRow')}" class="${IDENTITY_ROW_CLASS}">${buttons}</div></div>`;
 }

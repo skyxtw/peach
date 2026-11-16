@@ -35,8 +35,9 @@ notifyManager.setScheduler((notify) => notify());
 const person = (k: string, patch: Record<string, unknown> = {}) => ({ k, n: 3, entity_id: 1, ...patch });
 const tag = (k: string, cat = 'role') => ({ k, n: 2, cat });
 
-function seed<T>(key: readonly unknown[], items: T[], more = false, categories?: Record<string, number>) {
-  queryClient.setQueryData(key, { pages: [{ items, has_more: more, categories }], pageParams: [0] });
+function seed<T>(key: readonly unknown[], items: T[], more = false, categories?: Record<string, number>,
+                  kanaCounts?: Record<string, number>) {
+  queryClient.setQueryData(key, { pages: [{ items, has_more: more, categories, kana_counts: kanaCounts }], pageParams: [0] });
 }
 
 /** 按地址回话的假 fetch；`answer` 返回 `undefined` 时那一问一直挂着。 */
@@ -427,6 +428,22 @@ describe('五十音', () => {
     expect(found[1]).toContain('读音 alice');
     expect(host.querySelector('[data-kana-row="other"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(host.querySelector('[data-kana-row="a"]')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('五十音按钮显示当前分类下的行数，零行弱化但仍可点', async () => {
+    seed(indexKey('performers', ''), [person('甲', { kana: 'あい' })], false,
+      { japanese_av: 1 }, { a: 2, k: 0, s: 1, other: 1 });
+    const given = props();
+    const host = await open(given);
+    expect(host.querySelector('[data-kana-row="a"]')?.textContent).toContain('2');
+    expect(host.querySelector('[data-kana-row="all"]')?.textContent).toContain('4');
+    const zero = host.querySelector<HTMLButtonElement>('[data-kana-row="k"]')!;
+    expect(zero.textContent).toContain('0');
+    expect(zero.getAttribute('data-kana-empty')).toBe('');
+    expect(zero.getAttribute('aria-pressed')).toBe('false');
+    await click(zero);
+    await settle();
+    expect(given.route).toHaveBeenLastCalledWith(expect.objectContaining({ kana: 'k' }), { replace: false });
   });
 
   it('五十音行只在本地艺人名册出现', async () => {

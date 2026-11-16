@@ -55,6 +55,7 @@ it('五十音骨架带选中的行，其他名册不画', () => {
   expect(host.querySelector('[aria-label="五十音"]')).not.toBeNull();
   expect(host.querySelector('[data-kana-row="k"]')?.getAttribute('aria-pressed')).toBe('true');
   expect(host.querySelector('[data-kana-row="a"]')?.getAttribute('aria-pressed')).toBe('false');
+  expect(host.querySelectorAll('[data-kana-count-skeleton]')).toHaveLength(12);
   const creators = document.createElement('div');
   creators.innerHTML = indexPlaceholderHtml(indexParams('creators', '?kana=k'), 'big');
   expect(creators.querySelector('[data-kana-row]')).toBeNull();

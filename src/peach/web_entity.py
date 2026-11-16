@@ -855,6 +855,8 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
     搜索词的键空间不封闭，带搜索词照旧现算。读目录索引的头像与标识标志在缓存之外现做。
     只有本地艺人名册认 `sort`／`direction` 与五十音行 `kana`；其他名册与认不出的值
     一律忽略。缓存键带上解析后的排序与行，换一列或换一行不会拿回另一份答案。
+    本地艺人名册另给 `kana_counts`：当前搜索与分类下每行的人数；选中某行时
+    `categories` 也按该行重算，分类按钮不会继续报整本名册的计数。
     """
     sort, direction = _index_sort(kind, sort, direction)
     kana = _index_kana(kind, kana)
@@ -862,18 +864,37 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="",
     def read():
         return _index_rows(contract, kind, q, limit, offset, category, sort, direction, kana)
     if q or kind not in {"agencies", "tags", *INDEX_ENTITY_KINDS}:
-        rows, has_more, category_counts = read()
+        rows, has_more, category_counts, kana_counts = read()
     else:
-        rows, has_more, category_counts = contract.cached_until_changed(
+        rows, has_more, category_counts, kana_counts = contract.cached_until_changed(
             repr(("index", kind, limit, offset, category, sort, direction, kana)), read, *group_inputs(contract),
             tables=INDEX_TABLES)
     # 下面还要往每行补目录索引的标志，不能写进缓存里那一份。
     rows = [dict(row) for row in rows]
-    result = _decorate_index(contract, kind, rows, has_more, category_counts)
+    result = _decorate_index(contract, kind, rows, has_more, category_counts, kana_counts)
     if kind == 'tags':
         result['total'] = (category_counts.get(category, 0) if category and category != 'all'
                            else sum(category_counts.values()))
     return result
+
+
+def _index_kana_counts(connection, query, category, visible_clause):
+    """一次 GROUP BY 给五十音行出数；没资料的读音归 `other`，仍按当前搜索与分类收窄。"""
+    counts = {row: 0 for row in KANA_ROWS}
+    sql = ("SELECT peach_kana_row(pp.kana) kana_row,count(*) n FROM entity e "
+           "LEFT JOIN performer_profile pp ON pp.entity_id=e.id WHERE "
+           + entity_classification.index_scope(connection, "performer") +
+           " AND EXISTS (SELECT 1 FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id "
+           "WHERE ae.entity_id=e.id AND " + visible_clause + ") ")
+    params = []
+    if query:
+        sql += "AND e.canonical_name LIKE ? "
+        params.append(f"%{query}%")
+    clause, values = entity_classification.filter_sql(category, connection=connection)
+    sql += clause + " GROUP BY 1"
+    for row, count in connection.execute(sql, [*params, *values]):
+        counts[row] = count
+    return counts
 
 
 def _index_rows(contract: WebContract, kind, q, limit, offset, category,
@@ -881,6 +902,7 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category,
     sort, direction = _index_sort(kind, sort, direction)
     kana = _index_kana(kind, kana)
     category_counts = None
+    kana_counts = None
     with contract.read_connection() as c:
         if kind == "agencies":
             # 事务所自己不挂作品，所以它排的是人：一家有多少艺人是它的规模，作品数是
@@ -967,7 +989,9 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category,
             for row in rows:
                 row.update(summaries[row['entity_id']])
             _attach_index_following(c, rows)
-            category_counts = entity_classification.counts(c,entity_kind,q,COUNTED_VIDEO)
+            if entity_kind == "performer":
+                kana_counts = _index_kana_counts(c, q, category, COUNTED_VIDEO)
+            category_counts = entity_classification.counts(c,entity_kind,q,COUNTED_VIDEO,kana=kana)
         else:
             sql = ("SELECT e.id entity_id,e.canonical_name k, count(DISTINCT " + video_work_key(contract, c) + ") n "
                    "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -987,10 +1011,10 @@ def _index_rows(contract: WebContract, kind, q, limit, offset, category,
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
         _attach_index_favorites(c, rows)
-    return rows, has_more, category_counts
+    return rows, has_more, category_counts, kana_counts
 
 
-def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts):
+def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts, kana_counts=None):
     if kind in INDEX_ENTITY_KINDS:
         entity_kind = INDEX_ENTITY_KINDS[kind]
         # 索引页一屏几十个圆头像，走的是和顶栏那排同一条两级链：规范实体图优先，
@@ -1015,6 +1039,8 @@ def _decorate_index(contract: WebContract, kind, rows, has_more, category_counts
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind in {"tags", "performers", "creators"}:
         result["categories"] = category_counts
+    if kind == "performers" and kana_counts is not None:
+        result["kana_counts"] = kana_counts
     return result
 
 

@@ -110,6 +110,8 @@ export interface IndexPage<T> {
   total?: number;
   /** 分类的命中数量；筛选条只显示有内容的分类。 */
   categories?: Record<string, number>;
+  /** 本地艺人名册按五十音行的当前搜索/分类计数；其他名册没有。 */
+  kana_counts?: Record<string, number>;
 }
 
 /** 地址栏上的那几项。页面改它们只经 `IndexProps.route`，壳按这份拼地址。 */

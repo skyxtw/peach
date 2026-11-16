@@ -177,13 +177,21 @@ export function IndexPage(props: IndexProps) {
   /* 分类计数只随名册、词表和过滤词变，与选中哪一类无关。换分类时新一页还没到，沿用同一份
      名册上一次拿到的计数：分类按钮行不先塌成「全部」加当前项、等数据回来再弹开。头一回
      还没有计数时整排都摆出来，同壳铺的骨架那一排，计数到了再收掉空的那几类。 */
-  const countsKey = `${kind}:${scope}:${q}`;
+  const countsKey = `${kind}:${scope}:${q}:${activeKana}`;
   const lastCounts = useRef<{ key: string; counts: Record<string, number> } | null>(null);
   const pageCounts = result.data?.pages[0]?.categories;
   if (pageCounts && !result.isPlaceholderData) lastCounts.current = { key: countsKey, counts: pageCounts };
-  const categoryCounts = pageCounts ?? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined);
+  const categoryCounts = result.isPlaceholderData
+    ? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined)
+    : pageCounts ?? (lastCounts.current?.key === countsKey ? lastCounts.current.counts : undefined);
   const waiting = result.isPending && !categoryCounts;
   const hasEntries = ([key]: readonly [string, string]) => key === 'all' || waiting || Number(categoryCounts?.[key] || 0) > 0;
+  /* 五十音计数只认当前这一页的响应：换分类时旧计数已经不对，先收起来等新的一份；
+     求和给「全部」，不另向后端要一个 all 键。 */
+  const kanaCounts = result.isPlaceholderData ? undefined : result.data?.pages[0]?.kana_counts;
+  const kanaCount = (key: string) => key === 'all'
+    ? (kanaCounts ? Object.values(kanaCounts).reduce((sum, count) => sum + count, 0) : undefined)
+    : kanaCounts?.[key];
 
   /* 框换了大小，「这张图要不要补底」和人脸放大都得重算：图早加载完了，不会再自己发一次 load。
      赶在绘制之前，否则换版式那一帧是按旧框算的几何。 */
@@ -289,9 +297,19 @@ export function IndexPage(props: IndexProps) {
           <div aria-label={t('catalog:peopleIndex.kanaRow')} className={IDENTITY_ROW_CLASS}>
             {KANA_ROWS.map(([key, label]) => {
               const selected = key === 'all' ? !activeKana : activeKana === key;
+              const count = kanaCount(key);
+              const empty = count === 0;
               return (
-                <Button key={key} variant={selected ? 'primary' : 'secondary'} size="small" data-kana-row={key}
-                  aria-pressed={selected} onClick={() => go({ kana: key === 'all' ? '' : key })}>{label}</Button>
+                <span key={key} className={`inline-flex${empty ? ' opacity-50' : ''}`}>
+                  <Button variant={selected ? 'primary' : 'secondary'} size="small" data-kana-row={key}
+                    data-kana-empty={empty ? '' : undefined}
+                    aria-pressed={selected} onClick={() => go({ kana: key === 'all' ? '' : key })}>
+                    {label}
+                    {count === undefined ? (pending
+                      ? <span data-kana-count-skeleton={key} aria-hidden className="ml-1 inline-block h-2.5 w-5 align-middle rounded-sm skeleton-sheen" />
+                      : null) : <span data-kana-count={key} className="ml-1 text-caption-2-regular tabular-nums opacity-70">{count.toLocaleString()}</span>}
+                  </Button>
+                </span>
               );
             })}
           </div>

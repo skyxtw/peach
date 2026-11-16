@@ -6,6 +6,7 @@ from unittest import mock
 
 from peach import entity_classification as classification, entity_identity_research as research
 from peach.entities import merge_entity, upsert_asset_entity
+from peach.kana import KANA_ROWS
 from peach.web_entity import q_index, q_entity, q_suggest
 from peach.web_catalog import q_items
 from peach.web_state import WebContract
@@ -174,6 +175,47 @@ class EntityClassificationTests(unittest.TestCase):
         data = q_index(WebContract(self.db),'creators',q='Match',limit=1,category='seller')
         self.assertEqual(data['categories'],{'seller':1})
         self.assertEqual([row['entity_id'] for row in data['items']],[seller])
+
+    def test_kana_counts_and_categories_follow_the_selected_row(self):
+        """五十音行数一次 GROUP BY 出齐；分类计数在选中行之后重算，不拿整本名册的答案。"""
+        _, a_row = self.entity('Kana A', kind='performer')
+        _, k_row = self.entity('Kana K', kind='performer')
+        _, other = self.entity('Kana Other', kind='performer')
+        for entity_id, reading in ((a_row, 'あい'), (k_row, 'カオリ')):
+            self.connection.execute(
+                "INSERT INTO performer_profile(entity_id,kana,source,source_url,fetched_at) "
+                "VALUES(?,?,'test','','2026-01-01')", (entity_id, reading))
+        self.claim(a_row, 'market', 'japanese_av')
+        self.claim(a_row, 'identity', 'person')
+        self.claim(k_row, 'market', 'western_adult')
+        self.claim(k_row, 'identity', 'person')
+        self.connection.commit()
+        contract = WebContract(self.db)
+
+        def kana_counts(**args):
+            return q_index(contract, 'performers', **args)['kana_counts']
+
+        expected = {key: 0 for key in KANA_ROWS}
+        expected.update(a=1, k=1, other=1)
+        self.assertEqual(kana_counts(), expected)
+        page = q_index(contract, 'performers')
+        self.assertEqual(page['categories'], {'japanese_av': 1, 'western': 1})
+        # 选中 a 行：列表只剩 a；分类计数跟着这一行重算。
+        a_page = q_index(contract, 'performers', kana='a')
+        self.assertEqual([row['entity_id'] for row in a_page['items']], [a_row])
+        self.assertEqual(a_page['categories'], {'japanese_av': 1})
+        self.assertEqual(a_page['kana_counts'], expected)
+        # other 行收没有资料的人；没有分类断言时分类计数为空，不是整本名册的计数。
+        other_page = q_index(contract, 'performers', kana='other')
+        self.assertEqual([row['entity_id'] for row in other_page['items']], [other])
+        self.assertEqual(other_page['categories'], {})
+        # 分类筛选会同步收窄五十音行数，但不改变分类按钮的总数口径。
+        selected = q_index(contract, 'performers', category='japanese_av')
+        self.assertEqual([row['entity_id'] for row in selected['items']], [a_row])
+        self.assertEqual(selected['categories'], {'japanese_av': 1, 'western': 1})
+        expected_selected = {key: 0 for key in KANA_ROWS}
+        expected_selected['a'] = 1
+        self.assertEqual(selected['kana_counts'], expected_selected)
 
     def test_fc2_release_does_not_determine_performer_occupation(self):
         asset_id, entity_id = self.entity('Known Person',kind='performer')
