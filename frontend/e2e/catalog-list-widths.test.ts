@@ -30,7 +30,7 @@ describe('馆藏表格列宽与占位图', () => {
         const a = picture.getBoundingClientRect(), b = placeholder.getBoundingClientRect();
         const title = node.querySelector<HTMLElement>('[data-list-name]')!;
         return { picture: getComputedStyle(picture).backgroundColor,
-          expected: getComputedStyle(picture).getPropertyValue('--sunk').trim(),
+          expected: getComputedStyle(picture).getPropertyValue('--media-placeholder').trim(),
           centerDelta: Math.abs(a.top + a.height / 2 - b.top - b.height / 2),
           titleWidth: title.clientWidth, titleHeight: title.clientHeight, fullHeight: title.scrollHeight,
           lineHeight: parseFloat(getComputedStyle(title).lineHeight), clamp: getComputedStyle(title).webkitLineClamp };
@@ -82,11 +82,11 @@ describe('馆藏表格列宽与占位图', () => {
       const columnMenu = page.getByRole('dialog', { name: '表格显示列' });
       await columnMenu.locator('label').filter({ has: page.getByRole('checkbox', { name: '评分', exact: true }) }).click();
       await page.keyboard.press('Escape');
-      assert.equal(await page.getByRole('columnheader', { name: /^评分/ }).count(), 0);
+      assert.equal(await page.getByRole('columnheader', { name: /评分/ }).count(), 0);
       await page.reload({ waitUntil: 'load' });
       await page.locator('[data-catalog-row][data-id="99001"]').waitFor();
       assert.ok(Math.abs((await header.boundingBox())!.width - resizedWidth) <= 1);
-      assert.equal(await page.getByRole('columnheader', { name: /^评分/ }).count(), 0);
+      assert.equal(await page.getByRole('columnheader', { name: /评分/ }).count(), 0);
       await page.getByRole('button', { name: /作品列表排序/ }).click();
       const sortResponse = page.waitForResponse(response => {
         const url = new URL(response.url());
@@ -94,11 +94,11 @@ describe('馆藏表格列宽与占位图', () => {
       });
       await page.getByRole('option', { name: '评分', exact: true }).click();
       await sortResponse;
-      assert.equal(await page.getByRole('columnheader', { name: /^评分/ }).count(), 0);
+      assert.equal(await page.getByRole('columnheader', { name: /评分/ }).count(), 0);
       await page.getByRole('button', { name: '显示列', exact: true }).click();
       await page.getByRole('button', { name: '显示全部列', exact: true }).click();
       await page.keyboard.press('Escape');
-      await page.getByRole('columnheader', { name: /^评分/ }).waitFor();
+      await page.getByRole('columnheader', { name: /评分/ }).waitFor();
       const scroll = page.locator('[data-catalog-table] .overflow-x-auto');
       const scrolled = await scroll.evaluate(node => {
         node.scrollLeft = node.scrollWidth;

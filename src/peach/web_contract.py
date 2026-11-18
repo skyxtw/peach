@@ -55,10 +55,10 @@ from .web_activity import (
 )
 from .web_playlists import q_playlists, w_playlist
 from .web_review import w_review_decision, w_review_genre
+from .personal_records import ASSET_REFERENCE_TABLES
 from .web_batch import (
     AD_DIRPACK,
     AD_DOMAIN,
-    ASSET_REFERENCE_TABLES,
     BUNDLE_DIR_ASSETS,
     CONTENT_BYTES,
     INTERNET_SHORTCUT_SUFFIXES,
@@ -106,11 +106,13 @@ from .web_catalog import (
 )
 from .web_entity import (
     q_entity,
+    q_entity_merge,
     q_entity_photos,
     q_index,
     q_photo_set,
     q_suggest,
     w_entity_alias,
+    w_entity_merge,
     w_entity_name,
 )
 from .web_router import (
@@ -152,8 +154,8 @@ __all__ = [
     "is_jav_code",
     "jav_display_metadata", "normalise_code_key", "normalize_entity_name",
     "ordered_multipart_items", "part_marker", "promo_residue", "purge_assets",
-    "q_ads", "q_duplicates", "q_editions", "q_entity", "q_entity_photos", "q_facets",
-    "w_entity_alias", "w_entity_name",
+    "q_ads", "q_duplicates", "q_editions", "q_entity", "q_entity_merge", "q_entity_photos", "q_facets",
+    "w_entity_alias", "w_entity_merge", "w_entity_name",
     "q_index", "q_item", "q_items", "q_parts", "q_photo_set", "q_playlists",
     "q_quality_goals", "q_related", "q_search_history", "q_stats", "q_suggest", "q_taste",
     "q_tops", "state_clause", "state_predicate", "tag_is_not_a_performer_name",

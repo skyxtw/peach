@@ -30,7 +30,7 @@ export function CustomSources({ receipt }: { receipt(message: string): void }) {
   const changed = (result: { items: Source[] }) => queryClient.setQueryData(KEY, result);
   const hasContent = Boolean(query.isPending || query.error || query.data?.items.length || action.error);
   const add = <Button variant="secondary" onClick={() => setEditing(blank())}>{t('manage:customSources.addSource')}</Button>;
-  return <Section title={t('manage:customSources.title')}>
+  return <Section id="custom-sources" title={t('manage:customSources.title')}>
     {hasContent ? <Stack>
       {query.isPending ? <div aria-busy="true" data-skeleton="" aria-label={t('manage:customSources.loading')} /> : null}
       {query.error ? <ErrorText>{errorMessage(query.error)}</ErrorText> : null}
@@ -44,6 +44,7 @@ export function CustomSources({ receipt }: { receipt(message: string): void }) {
           {source.enabled ? t('manage:customSources.disable') : t('manage:customSources.enable')}</Button>
         <Button variant="danger" onClick={() => confirmModal({ title: t('manage:customSources.deleteTitle'),
           body: t('manage:customSources.deleteBody', { name: esc(source.name) }), confirmLabel: t('manage:customSources.deleteConfirm'), danger: true,
+          holdToConfirm: true,
           onConfirm: async () => { changed(await apiSend<{ items: Source[] }>(URL, { action: 'delete', id: source.id }));
             setEditing(null); receipt(t('manage:customSources.deleted')) } })}>{t('manage:shared.delete')}</Button>
       </div>)}

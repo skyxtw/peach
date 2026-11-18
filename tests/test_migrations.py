@@ -10,10 +10,31 @@ from peach.migrations import plan, upgrade
 
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
-ALL_VERSIONS = [f'{number:04d}' for number in range(58)] + ['9001', '9002', '9003', '9004']
+ALL_VERSIONS = [f'{number:04d}' for number in range(59)] + ['9001', '9002', '9003', '9004']
 
 
 class MigrationTests(unittest.TestCase):
+    def test_catalog_revision_upgrade_clears_orphan_repairs_and_keeps_assets_and_personal_records(self):
+        previous = self.root / 'before-catalog-revision'
+        previous.mkdir()
+        for path in MIGRATIONS.glob('*.sql'):
+            if path.name < '0058_':
+                shutil.copyfile(path, previous / path.name)
+        upgrade(self.db, previous)
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.execute("INSERT INTO asset(id,location,path,name,medium,play_count,rating) "
+                               "VALUES(1,'local','R:\\media\\one.mp4','one.mp4','video',3,80)")
+            connection.executemany("INSERT INTO ledger_upgrade_item(rule,asset_id,state,updated_at) "
+                                   "VALUES('media:test',?,'done','now')", [(1,), (999,)])
+            before = connection.execute('SELECT * FROM asset').fetchall()
+        self.assertEqual([item.version for item in upgrade(self.db, MIGRATIONS)],
+                         ['0058', '9001', '9002', '9003', '9004'])
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            self.assertEqual(connection.execute('SELECT * FROM asset').fetchall(), before)
+            self.assertEqual(connection.execute('SELECT asset_id FROM ledger_upgrade_item').fetchall(), [(1,)])
+            connection.execute('DELETE FROM asset WHERE id=1')
+            self.assertEqual(connection.execute('SELECT count(*) FROM ledger_upgrade_item').fetchone()[0], 0)
+
     def test_reference_index_upgrade_preserves_rows_and_removes_only_legacy_duplicates(self):
         previous = self.root / 'previous-indexes'
         previous.mkdir()
@@ -1286,7 +1307,7 @@ class StoredValueIdsTests(unittest.TestCase):
             return connection.execute(sql).fetchall()
 
     def test_old_values_become_ids_and_everything_else_stays(self):
-        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0057', '9001', '9002', '9003', '9004'])
+        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ['0057', '0058', '9001', '9002', '9003', '9004'])
         self.assertEqual(self.rows("SELECT id,ctx_orient,ctx_length,ctx_quality FROM asset ORDER BY id"), [
             (1, 'portrait', 'quick', 'low'), (2, 'landscape', 'long', '1080P'), (3, 'landscape', 'short', '4K'),
             (4, None, 'medium', None), (5, None, None, None)])

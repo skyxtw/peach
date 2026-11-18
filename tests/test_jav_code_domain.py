@@ -421,6 +421,65 @@ class TokyoHotShapeTests(unittest.TestCase):
                 'edition_badges': ['chinese-subtitles', 'uncensored']})
         self.assertEqual(jav_fallback_title('MKD-S118.mp4', 'MKD-S118'), '')
 
+    def test_registered_digit_labels_reach_every_code_entrypoint(self):
+        """TMA 的 `T28`、`T38` 厂牌段带数字；只认登记过的这两段。"""
+        from peach.feeds import scan_code
+        for value in ('T38-076', 't38-076', 'T38_076', 't38076', 'T38-76', 'T38-076-C', '[98t.tv]T38-076'):
+            self.assertEqual(release_code_from_text(value), 'T38-076', value)
+            self.assertEqual(release_code_from_filename(f'{value}.mp4'), 'T38-076', value)
+        self.assertEqual(release_code_from_filename('T28-612 週に3回ハメてます.mp4'), 'T28-612')
+        self.assertEqual(scan_code('T38-076 今日、家族に売られました。'), 'T38-076')
+        self.assertEqual(scan_code('T28-612 週に3回ハメてます', product=True), 'T28-612')
+        self.assertTrue(is_jav_code('T28-612'))
+        self.assertEqual(normalise_code_key('t28_612'), 'T28-612')
+        self.assertEqual(code_query_variants('T28-612'), ('T28-612',))
+        self.assertEqual(jav_display_metadata('T38-076-C 片名.mp4', 'T38-076'), {
+            'display_code': 'T38-076', 'display_title': '片名', 'edition_badges': ['chinese-subtitles']})
+        # DMM 的 content_id 带片商数字头，和别家番号一样不与裸番号算成同一身份。
+        self.assertEqual(release_identity('t2800612'), 'T28-612')
+        self.assertEqual(release_identity('55t2800612'), '55T28-612')
+        self.assertFalse(same_release_code('T28-612', 'T38-612'))
+
+    def test_unregistered_letter_digit_labels_stay_unrecognised(self):
+        """厂牌名、画质词与素材编号同样是「字母+数字」，白名单之外一律不是番号。"""
+        for value in ('S1-123', 'G1-123', 'VR180-123', 'X1080', 'G2115', 'p1000', 'T29-123',
+                      'T-28612', 'AT28-612', 'T280-612', 'T28'):
+            self.assertIsNone(release_code_from_text(value), value)
+            self.assertIsNone(release_code_from_filename(f'{value}.mp4'), value)
+        self.assertEqual(release_code_from_filename('MIAA-636-C_X1080X.mp4'), 'MIAA-636')
+        self.assertFalse(is_jav_code('T28612'))
+
+    def test_s_model_and_catwalk_digit_labels_keep_their_registered_serial_width(self):
+        """#124：S Model 的 `S2M`、`S2MCR` 与キャットウォーク的 `CW3D2DBD` 厂牌段带数字。"""
+        for value, code in (('S2M-009', 'S2M-009'), ('s2m009', 'S2M-009'), ('S2M-027-C', 'S2M-027'),
+                            ('S2MCR-08', 'S2MCR-08'), ('S2MCR-008', 'S2MCR-08'),
+                            ('CW3D2DBD-14', 'CW3D2DBD-14'), ('cw3d2dbd_14', 'CW3D2DBD-14')):
+            self.assertEqual(release_code_from_text(value), code, value)
+            self.assertEqual(release_code_from_filename(f'{value}.mp4'), code, value)
+        self.assertTrue(same_release_code('S2MCR-08', 'S2MCR-008'))
+        self.assertFalse(same_release_code('S2M-008', 'S2MCR-08'))
+        self.assertTrue(is_jav_code('CW3D2DBD-14'))
+
+    def test_registered_label_suffix_stays_in_the_code_while_edition_markers_are_stripped(self):
+        """#124：`IBW-483z` 的 `z` 是番号的一部分；`C`、`U`、`UC` 这些版次标记照旧剥掉。"""
+        for name in ('IBW-483z.mp4', 'IBW-483Z.mp4', 'ibw483z.mp4', 'IBW-483z-C.mp4',
+                     'IBW-483z 少女の道草.mp4', '[98t.tv]IBW-483z.mp4'):
+            self.assertEqual(release_code_from_filename(name), 'IBW-483Z', name)
+        self.assertEqual(release_code_from_text('IBW-483z'), 'IBW-483Z')
+        self.assertTrue(same_release_code('IBW-483Z', 'IBW-483z'))
+        self.assertFalse(same_release_code('IBW-483', 'IBW-483z'))
+        # 别的段尾字母不算番号；登记段的其他字母也不算。
+        for name, code in (('ADN-516C.mp4', 'ADN-516'), ('ABW-483z.mp4', 'ABW-483'), ('IBW-483C.mp4', 'IBW-483'),
+                           ('SNOS-205-UC.mp4', 'SNOS-205'), ('ADN-516-U.mp4', 'ADN-516')):
+            self.assertEqual(release_code_from_filename(name), code, name)
+
+    def test_codes_followed_by_encoding_and_enhancement_tails_are_recognised(self):
+        """#124、#200：番号后面接转码、修复或增强说明时取番号本身。"""
+        for name, code in (('SNOS-205-C.H265.mp4', 'SNOS-205'), ('SNOS-124.restored.H265.mp4', 'SNOS-124'),
+                           ('SNOS-289.H265.mp4', 'SNOS-289'), ('ABC-199_AI.mp4', 'ABC-199'),
+                           ('ABC-199-AI.mp4', 'ABC-199'), ('MKD-S62.mp4', 'MKD-S62')):
+            self.assertEqual(release_code_from_filename(name), code, name)
+
     def test_uncensored_only_labels_get_the_uncensored_badge(self):
         for name, code in (('SMBD-120.mp4', 'SMBD-120'), ('SKYHD-050-C.mp4', 'SKYHD-050')):
             with self.subTest(code=code):

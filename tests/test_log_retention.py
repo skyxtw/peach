@@ -7,7 +7,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from peach import log_retention
+from peach import log_retention, retention_settings
 
 NOW = datetime(2026, 9, 5, 12, 0, 0)
 
@@ -70,6 +70,27 @@ class SweepTests(unittest.TestCase):
 
     def test_the_retention_is_half_a_year(self):
         self.assertEqual(log_retention.RETENTION, timedelta(days=183))
+        self.assertEqual(retention_settings.log_retention(Path(self.tmp.name) / "state"), log_retention.RETENTION)
+
+    def test_a_shorter_retention_from_this_computer_deletes_sooner(self):
+        state = Path(self.tmp.name) / "state"
+        self.assertEqual(retention_settings.save(state, {"log_days": 30}), {"backup_keep": 5, "log_days": 30})
+        touch(self.logs / "tray.log", NOW - timedelta(days=31))
+        touch(self.logs / "sync.log", NOW - timedelta(days=29))
+        actions = log_retention.sweep(self.logs, now=NOW, retention=retention_settings.log_retention(state))
+        self.assertEqual([action for action in actions if action.startswith("deleted")], ["deleted tray.log"])
+
+    def test_retention_settings_take_only_listed_choices_and_survive_a_broken_file(self):
+        state = Path(self.tmp.name) / "state"
+        for body in ({"log_days": 7}, {"backup_keep": True}, {"backup_keep": "5"}, {}):
+            with self.assertRaises(ValueError):
+                retention_settings.save(state, body)
+        self.assertFalse((state / retention_settings.FILENAME).exists())
+        state.mkdir()
+        (state / retention_settings.FILENAME).write_text('{"backup_keep": 3, "log_days": 365}', encoding="utf-8")
+        self.assertEqual(retention_settings.read(state), {"backup_keep": 5, "log_days": 365})
+        (state / retention_settings.FILENAME).write_text("not json", encoding="utf-8")
+        self.assertEqual(retention_settings.read(state), {"backup_keep": 5, "log_days": 183})
 
     def test_idle_logs_of_finished_processes_go_and_the_rest_stay(self):
         entry = b'{"stage": "entry", "pid": 1}\n'
@@ -83,6 +104,21 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(actions, ["removed 2 idle process logs"])
         self.assertEqual(sorted(path.name for path in self.logs.iterdir()),
                          ["crash-12.log", "crash-13.log", "errors-12.log", "errors-13.log"])
+
+    def test_idle_logs_already_cut_into_monthly_segments_go_too(self):
+        # #485 之前积下的空日志在托盘启动时先被切成段，段名带 `.until-` 也要认得。
+        entry = b'{"stage": "entry", "pid": 1}\n'
+        august = datetime(2026, 8, 20, 9, 0)
+        touch(self.logs / "crash-21.until-20260820.log", august, b"")
+        touch(self.logs / "errors-21.until-20260820.log", august, entry)
+        touch(self.logs / "crash-22.until-20260820.log", august, b"Fatal Python error: Aborted\n")
+        touch(self.logs / "errors-23.until-20260820.log", august, entry)
+        touch(self.logs / "tray-http.out.until-20260820.log", august, b"")
+        actions = log_retention.sweep(self.logs, now=NOW, alive=lambda pid: pid == 23)
+        self.assertEqual(actions, ["removed 2 idle process logs"])
+        self.assertEqual(sorted(path.name for path in self.logs.iterdir()),
+                         ["crash-22.until-20260820.log", "errors-23.until-20260820.log",
+                          "tray-http.out.until-20260820.log"])
 
 
 if __name__ == "__main__":

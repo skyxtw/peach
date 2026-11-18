@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from . import playback_tracking as tracking
-from .media import normalized_path
+from .media import bounded_normalized_path
 from .user_messages import UserValueError
 
 
@@ -95,11 +95,13 @@ def open_media(path: Path, player: str = 'default', *, track: Track | None = Non
 
     `start_seconds` 是网页当前进度：mpv/IINA/VLC 能接到起播位置，其余播放器从头开始。
     `extra_args` 只给人工验收用（静音、暂停起播），接口不暴露。
+    文件在不在带期限地问（`media_io.bounded`），网盘答不上抛超时（`OSError` 的子类）。
     """
     if not available():
         raise UserValueError("errors.localPlayback.deploymentUnsupported")
-    path = normalized_path(path)
-    if not path.is_file() or path.suffix.lower() not in {
+    from . import media_io
+    path = bounded_normalized_path(path)
+    if not media_io.bounded(media_io.mount_key(path), path.is_file) or path.suffix.lower() not in {
         '.mp4', '.m4v', '.mkv', '.webm', '.avi', '.mov', '.wmv', '.flv', '.ts', '.mts', '.m2ts',
         '.mpg', '.mpeg', '.vob', '.iso', '.mp3', '.m4a', '.flac', '.wav', '.ogg', '.opus',
     }:

@@ -20,11 +20,15 @@ describe(`全屏画面比例：${stylesheet}`, () => {
       const page = await browser.newPage({ viewport });
       try {
         const css = readFileSync(new URL(stylesheet, import.meta.url), 'utf8');
-        await page.setContent(`<style>${css}</style><div data-stage-media>
+        const html = `<style>${css}</style><div data-stage-media>
           <div class="video-js"><video-player><media-container>
             <video class="vjs-tech" width="1920" height="1080"></video>
             <button style="position:relative;z-index:1">全屏</button>
-          </media-container></video-player></div></div>`);
+          </media-container></video-player></div></div>`;
+        // Chrome 157 在 macOS 拒绝空来源页面的原生全屏请求，夹具使用浏览器拦截的可信本地来源。
+        await page.route('http://localhost/**', route => route.fulfill({ contentType: 'text/html', body: html }));
+        await page.goto('http://localhost/fullscreen-fixture');
+        assert.equal(await page.evaluate(() => isSecureContext), true, '原生全屏夹具需要可信来源');
         await page.locator('button').evaluate(button => {
           button.addEventListener('click', () => button.parentElement!.requestFullscreen());
         });
@@ -39,6 +43,14 @@ describe(`全屏画面比例：${stylesheet}`, () => {
         });
         assert.equal(frame.fit, 'contain', '比例不同时保留完整画面和黑边');
         assert.deepEqual(frame.box, [0, 0, ...frame.viewport]);
+        if (viewport.height > viewport.width) {
+          await page.setViewportSize({ width: viewport.height, height: viewport.width });
+          await page.waitForFunction(() => {
+            const frame = document.querySelector('video')!.getBoundingClientRect();
+            return innerWidth > innerHeight && frame.width === innerWidth && frame.height === innerHeight;
+          });
+          assert.equal(await video.evaluate(node => getComputedStyle(node).objectFit), 'contain', '横屏后继续显示完整画面');
+        }
         await page.evaluate(() => document.exitFullscreen());
         for (const state of ['class', 'attribute', 'full-window']) {
           await page.locator('.video-js').evaluate((root, state) => {

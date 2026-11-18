@@ -146,6 +146,97 @@ class NpmAuditTests(unittest.TestCase):
                 self.assertEqual(npm_audit.audit(ROOT, runner=run, sleep=mock.Mock()), 1)
                 self.assertEqual(run.call_count, attempts)
 
+    def backport_fixture(self):
+        from base64 import b64encode
+        from hashlib import sha512
+        from scripts import npm_backports
+
+        root = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        project = root / 'frontend'
+        archive = project / 'vendor' / 'test-glob.tgz'
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b'test backport artifact')
+        integrity = 'sha512-' + b64encode(sha512(archive.read_bytes()).digest()).decode('ascii')
+        advisory = 'https://github.com/advisories/GHSA-test-test-test'
+        record = {'project': 'frontend', 'package': 'test-glob', 'version': '1.2.3',
+                  'advisories': [advisory], 'artifact': 'vendor/test-glob.tgz', 'integrity': integrity,
+                  'source': 'https://example.com/upstream/commit/a', 'expires': '2026-12-01T00:00:00+00:00'}
+        registry = root / npm_backports.REGISTRY
+        registry.parent.mkdir()
+        registry.write_text(json.dumps([record]), encoding='utf-8')
+        (project / 'package-lock.json').write_text(json.dumps({'packages': {'node_modules/test-glob': {
+            'version': '1.2.3', 'resolved': 'file:vendor/test-glob.tgz', 'integrity': integrity,
+        }}}), encoding='utf-8')
+        payload = {'auditReportVersion': 2, 'metadata': {'vulnerabilities': {'high': 3, 'critical': 0}},
+                   'vulnerabilities': {
+                       'build-tool': {'severity': 'high', 'via': ['file-walker']},
+                       'file-walker': {'severity': 'high', 'via': ['test-glob']},
+                       'test-glob': {'severity': 'high', 'nodes': ['node_modules/test-glob'],
+                                     'via': [{'url': advisory}]},
+                   }}
+        return root, project, archive, record, payload
+
+    def test_registered_archive_accepts_transitive_findings_and_retains_original_audit(self):
+        from datetime import datetime, timezone
+        from scripts import npm_audit
+
+        root, project, _archive, record, payload = self.backport_fixture()
+        response = subprocess.CompletedProcess([], 1, json.dumps(payload), '')
+        with mock.patch.object(npm_audit, 'PROJECT_ROOT', root), mock.patch.object(npm_audit, 'datetime') as time_now:
+            time_now.now.return_value = datetime(2026, 11, 18, tzinfo=timezone.utc)
+            self.assertEqual(npm_audit.audit(project, runner=mock.Mock(return_value=response)), 0)
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertEqual(result['decision'], 'verified_backport')
+        self.assertEqual(result['audit'], payload)
+        self.assertEqual(result['backports'], [record])
+
+    def test_backport_cannot_cover_other_paths_advisories_or_corrupt_artifacts(self):
+        from copy import deepcopy
+        from datetime import datetime, timezone
+        from scripts import npm_backports
+
+        root, project, archive, _record, payload = self.backport_fixture()
+        now = datetime(2026, 11, 18, tzinfo=timezone.utc)
+        self.assertEqual(npm_backports.verify(root, root, payload, now=now), [])
+        self.assertEqual(npm_backports.verify(root, project, payload,
+                                              now=datetime(2026, 12, 1, tzinfo=timezone.utc)), [])
+        for cause in ({'url': 'https://example.com/unrelated-advisory'}, 'unknown-package', 'build-tool'):
+            with self.subTest(cause=cause):
+                changed = deepcopy(payload)
+                changed['vulnerabilities']['file-walker']['via'].append(cause)
+                self.assertEqual(npm_backports.verify(root, project, changed, now=now), [])
+        critical = deepcopy(payload)
+        critical['metadata']['vulnerabilities']['critical'] = 1
+        self.assertEqual(npm_backports.verify(root, project, critical, now=now), [])
+        lock_path = project / 'package-lock.json'
+        saved_lock = lock_path.read_text(encoding='utf-8')
+        additional_copy = json.loads(saved_lock)
+        additional_copy['packages']['node_modules/file-walker/node_modules/test-glob'] = {'version': '1.2.3'}
+        lock_path.write_text(json.dumps(additional_copy), encoding='utf-8')
+        self.assertEqual(npm_backports.verify(root, project, payload, now=now), [])
+        lock_path.write_text(saved_lock, encoding='utf-8')
+        archive.write_bytes(b'changed artifact')
+        self.assertEqual(npm_backports.verify(root, project, payload, now=now), [])
+
+    def test_multiple_reported_versions_each_require_a_registered_archive(self):
+        from datetime import datetime, timezone
+        from scripts import npm_backports
+
+        root, project, archive, record, payload = self.backport_fixture()
+        now = datetime(2026, 11, 18, tzinfo=timezone.utc)
+        node = 'node_modules/file-walker/node_modules/test-glob'
+        lock_path = project / 'package-lock.json'
+        lock = json.loads(lock_path.read_text(encoding='utf-8'))
+        lock['packages'][node] = {**lock['packages']['node_modules/test-glob'], 'version': '0.9.0',
+                                  'resolved': 'file:vendor/older-test-glob.tgz'}
+        lock_path.write_text(json.dumps(lock), encoding='utf-8')
+        payload['vulnerabilities']['test-glob']['nodes'].append(node)
+        self.assertEqual(npm_backports.verify(root, project, payload, now=now), [])
+        archive.with_name('older-test-glob.tgz').write_bytes(archive.read_bytes())
+        older = {**record, 'version': '0.9.0', 'artifact': 'vendor/older-test-glob.tgz'}
+        (root / npm_backports.REGISTRY).write_text(json.dumps([record, older]), encoding='utf-8')
+        self.assertEqual(npm_backports.verify(root, project, payload, now=now), [record, older])
+
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
@@ -176,6 +267,8 @@ class DependencyPolicyTests(unittest.TestCase):
 
     def test_python_dependencies_are_exactly_pinned(self):
         declared = list(self.pyproject["project"]["dependencies"])
+        ocr = tomllib.loads((ROOT / 'resources/ocr/environment/pyproject.toml').read_text(encoding='utf-8'))
+        declared.extend(ocr['project']['dependencies'])
         for values in self.pyproject["project"]["optional-dependencies"].values():
             declared.extend(values)
         self.assertTrue(declared)
@@ -190,6 +283,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "tldextract": "tldextract",
             "AppKit": "pyobjc-framework-Cocoa",
             "Foundation": "pyobjc-framework-Cocoa",
+            "Vision": "pyobjc-framework-Vision",
             "PIL": "pillow",
             "PyObjCTools": "pyobjc-framework-Cocoa",
             "apscheduler": "APScheduler",
@@ -201,11 +295,13 @@ class DependencyPolicyTests(unittest.TestCase):
             "curl_cffi": "curl_cffi",
             "cv2": "opencv-python-headless",
             "dmgbuild": "dmgbuild",
+            "ebmlite": "ebmlite",
             "fastapi": "fastapi",
             "filelock": "filelock",
             "google": "protobuf",
             "grpc": "grpcio",
             "httpx": "httpx",
+            "ifaddr": "ifaddr",
             "itsdangerous": "itsdangerous",
             "m3u8": "m3u8",
             "numpy": "numpy",
@@ -252,6 +348,18 @@ class DependencyPolicyTests(unittest.TestCase):
             {owner.casefold() for module, owner in owners.items() if module in external} - names,
             set(),
         )
+
+    def test_ocr_environment_has_isolated_dependencies_and_a_takeover_recipe(self):
+        root = ROOT / 'resources/ocr/environment'
+        manifest = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))
+        self.assertEqual(manifest['project']['requires-python'], '>=3.14,<3.15')
+        requirements = manifest['project']['dependencies']
+        self.assertEqual({item.split('==')[0] for item in requirements},
+                         {'rapidocr', 'onnxruntime', 'opencv-python-headless', 'numpy'})
+        key, recipe = adopt.recipe_for(['resources/ocr/environment/uv.lock'])
+        self.assertEqual(key, 'ocr')
+        self.assertEqual(recipe['checks'],
+                         (('uv', 'lock', '--project', 'resources/ocr/environment', '--check'),))
 
     def test_frontend_manifest_is_exact_and_matches_vendored_paths(self):
         manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))

@@ -534,6 +534,49 @@ class RecoveryServiceCadenceTests(unittest.TestCase):
             time.sleep(.02)
         return predicate()
 
+    def test_stop_waits_for_a_stuck_recovery_only_up_to_its_deadline(self):
+        """关停时在途接回卡住：最多等 `timeout` 秒，记下各线程停在哪，不把关停挂住。"""
+        import threading
+        stuck, release = threading.Event(), threading.Event()
+        self.service.start()
+        self.addCleanup(release.set)
+        self.service.scheduler.add_job(lambda: (stuck.set(), release.wait(30)))
+        self.assertTrue(stuck.wait(5))
+        with patch('peach.error_reporting.local_event') as event:
+            started = time.monotonic()
+            self.assertFalse(self.service.stop(timeout=.5))
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual(event.call_args.args[0], 'job-recovery-stop-timeout')
+        self.assertIn('stacks', event.call_args.kwargs)
+
+    def test_stop_finishes_dispatching_a_one_shot_before_shutting_down(self):
+        from apscheduler.schedulers.base import STATE_RUNNING
+        removing, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+        remove_job = self.service.scheduler.remove_job
+        failures = []
+
+        def remove(job_id, jobstore=None):
+            if job_id == 'closing-once':
+                removing.set()
+                release.wait(5)
+            return remove_job(job_id, jobstore)
+
+        with patch.object(self.service.scheduler, 'remove_job', side_effect=remove), \
+                patch('threading.excepthook', side_effect=failures.append):
+            self.service.start()
+            self.service.scheduler.add_job(lambda: None, id='closing-once')
+            self.assertTrue(removing.wait(5))
+            closer = threading.Thread(target=self.service.stop)
+            closer.start()
+            try:
+                self.assertTrue(self.wait_for(lambda: self.service.scheduler.state != STATE_RUNNING))
+            finally:
+                release.set()
+                closer.join(5)
+            self.assertFalse(closer.is_alive())
+            self.assertEqual([str(error.exc_value) for error in failures], [])
+
     def test_an_idle_service_does_not_restore_between_events(self):
         self.service.start()
         time.sleep(.5)
@@ -569,6 +612,38 @@ class RecoveryServiceCadenceTests(unittest.TestCase):
         with patch.object(self.module, 'FALLBACK_SECONDS', .3):
             self.service.start()
             self.assertTrue(self.wait_for(lambda: len(self.restored) >= 2, timeout=3))
+
+    def test_a_recovery_stuck_past_the_limit_is_left_behind_and_later_rounds_skip_only_its_task(self):
+        """一轮接回卡在某个任务上太久（#144 报的 tick 卡死后每次都被跳过）：放下那一轮，后面照常接回，
+        只是先不碰卡住的那个任务；那一轮自己回来后，那个任务恢复接回。"""
+        entered, release = threading.Event(), threading.Event()
+        rounds = []
+
+        def restore(contract, track=None, skip=()):
+            rounds.append(tuple(skip))
+            if len(rounds) == 1:
+                def stuck(_body):
+                    entered.set()
+                    release.wait(5)
+                track('library-processing', stuck)({})
+
+        self.addCleanup(release.set)
+        with patch.object(self.module, 'restore', side_effect=restore),                 patch('peach.error_reporting.local_event') as event:
+            self.service.start()
+            worker = threading.Thread(target=self.service.tick, daemon=True)
+            worker.start()
+            self.assertTrue(entered.wait(5))
+            self.service.watch(now=time.monotonic() + self.module.ABANDON_SECONDS + 1)
+            self.assertEqual(event.call_args.args[0], 'job-recovery-abandoned')
+            self.assertEqual(event.call_args.kwargs['step'], 'library-processing')
+            self.assertTrue(self.wait_for(lambda: len(rounds) >= 2, timeout=3), '放下之后马上另起一轮')
+            self.assertEqual(rounds[1], ('library-processing',))
+            self.assertIsNotNone(self.service.scheduler.get_job(self.service._fallback_job))
+            self.assertIsNone(self.service.scheduler.get_job(self.module.FALLBACK_JOB), '兜底定时换了一个')
+            release.set()
+            worker.join(5)
+            self.service.tick()
+        self.assertEqual(rounds[-1], (), '卡住的那一轮回来后不再跳过那个任务')
 
     def test_events_during_a_running_recovery_cause_one_more_round(self):
         entered, release = threading.Event(), threading.Event()

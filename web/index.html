@@ -42,7 +42,7 @@ if(location.pathname==='/wall')document.documentElement.setAttribute('data-wall-
 </head>
 <body>
 <a class="skiplink" href="#main" data-i18n="shell:chrome.skipToContent">跳到正文</a>
-<!-- Lucide static 1.72.0, ISC. Local pinned subset; no CDN/runtime dependency.
+<!-- Lucide static 1.74.0, ISC. Local pinned subset; no CDN/runtime dependency.
      Climax uses Health Icons 3.1.0 sperm outline-24px, CC0/public domain.
      Phosphor 2.1.1 regular, MIT: filled glyphs where a stroked icon cannot say it. -->
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
@@ -263,6 +263,8 @@ if(location.pathname==='/wall')document.documentElement.setAttribute('data-wall-
   <section class="index" id="index" hidden></section>
   <!-- 管理条、面包屑、标题与说明行是常驻组件 manage-header（`frontend/src/react/manage-header/`），由路由树画进这个节点。 -->
   <div data-manage-header></div>
+  <!-- 回收站的筛选浮层：首页那副玻璃浮层只留下排（读数、清空、版式、卡片／列表与排序），由 `catalog-filter` 岛画进来。 -->
+  <div id="trashFilter" hidden></div>
   <section class="stats" id="stats" hidden></section>
   <div class="count mono" id="count" role="status" aria-live="polite" aria-atomic="true"></div>
   <div class="gridstack" id="grid"></div>

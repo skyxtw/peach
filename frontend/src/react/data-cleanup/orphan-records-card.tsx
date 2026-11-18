@@ -20,13 +20,18 @@ import { SourceLabel } from '../components/source-label';
 import { spriteGlyph } from '../components/sprite-glyph';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
+import type { BulkAction } from '../components/bulk-action';
 import {
   attachOrphan, candidateText, fetchOrphanRecords, ORPHAN_RECORDS_KEY, purgeOrphan, recordsText,
-  type OrphanRecord,
+  RECORD_LABELS, type OrphanRecord,
 } from './orphan-records';
 import { t } from '../../i18n';
 
 const PLAY = spriteGlyph('play');
+const recordLabels: Record<string, string> = Object.fromEntries([...RECORD_LABELS,
+  ['rating', t('catalog:shared.rating')], ['play_count', t('catalog:catalogList.plays')],
+  ['last_played', t('catalog:catalogList.lastWatched')], ['o_count', t('catalog:catalogList.climaxCount')],
+]);
 
 const refresh = () => queryClient.invalidateQueries({ queryKey: ORPHAN_RECORDS_KEY, exact: true });
 
@@ -53,6 +58,7 @@ function OrphanActions({ item, toast }: { item: OrphanRecord; toast(message: str
   const remove = () => {
     void confirmModal({
       title: t('cleanup:orphans.deleteRecord'),
+      holdToConfirm: true,
       body: recordsText(item.records)
         ? t('cleanup:orphans.deleteBodyWithActivity', { name: item.name, records: recordsText(item.records) })
         : t('cleanup:orphans.deleteBody', { name: item.name }),
@@ -88,7 +94,7 @@ function OrphanIdentity({ item }: { item: OrphanRecord }) {
         <span className="flex min-w-0 items-center gap-3">
           {/* 快照图供认片；没有图或取不到时留一格带描边的占位，和重复文件页的封面格同一个样子。
               窄屏收起，把宽度让给名字与记录。 */}
-          <span className="relative inline-grid aspect-16/10 w-24 flex-none place-items-center max-cleanup-tight:hidden overflow-hidden rounded-lg border border-separator-border bg-background-tertiary-default text-text-tertiary">
+          <span className="relative inline-grid aspect-16/10 w-24 flex-none place-items-center max-cleanup-tight:hidden overflow-hidden rounded-lg border border-separator-border bg-media-placeholder text-text-tertiary">
             <PLAY aria-hidden className="size-5" />
             {item.has_thumb
               ? <img src={`/thumb?id=${item.id}&c=4`} alt="" loading="lazy"
@@ -112,24 +118,24 @@ export function OrphanRecordsCard({ toast }: { toast(message: string): void }) {
   const [selected, setSelected] = useState<string[]>([]);
   const query = useQuery({ queryKey: ORPHAN_RECORDS_KEY, queryFn: ({ signal }) => fetchOrphanRecords(signal) });
   const items = query.data?.items ?? [];
-  const purge = useMutation({
-    mutationFn: (ids: number[]) => purgeOrphan(ids),
-    onSuccess: (data) => {
-      toast(t('cleanup:orphans.purged', { count: data.purged })
-        + (data.blocked.length ? t('cleanup:orphans.purgedBlocked', { count: data.blocked.length }) : ''));
-      setSelected([]); void refresh();
-    },
-  });
-  const removeSelected = (chosen: OrphanRecord[]) => void confirmModal({
-    title: t('cleanup:orphans.deleteSelectedTitle'),
-    body: t('cleanup:orphans.deleteSelectedBody', { count: chosen.length }),
-    items: chosen.map((item) => item.name),
-    confirmLabel: t('cleanup:orphans.deleteSelectedTitle'), danger: true,
-    onConfirm: () => purge.mutateAsync(chosen.map((item) => item.id)),
-  });
+  const host = { receipt: toast };
+  /* 永久删除撤不回：弹窗写明，回执只报删了几条、几条没删成。 */
+  const purgeSelected = (count: number): BulkAction<OrphanRecord> => {
+    let outcome: Awaited<ReturnType<typeof purgeOrphan>> | null = null;
+    return {
+      key: 'purge', label: t('cleanup:orphans.deleteSelectedCount', { count }), reversal: 'irreversible', danger: true, holdToConfirm: true,
+      confirm: (chosen) => ({ title: t('cleanup:orphans.deleteSelectedTitle'), danger: true,
+        body: t('cleanup:orphans.deleteSelectedBody', { count: chosen.length }), items: chosen.map((item) => item.name) }),
+      run: async (chosen) => { outcome = await purgeOrphan(chosen.map((item) => item.id)) },
+      receipt: () => outcome ? t('cleanup:orphans.purged', { count: outcome.purged })
+        + (outcome.blocked.length ? t('cleanup:orphans.purgedBlocked', { count: outcome.blocked.length }) : '') : '',
+    };
+  };
   const columns: DataColumn<OrphanRecord>[] = [
     { id: 'item', label: t('cleanup:shared.video'), width: 480, min: 320, value: (item) => item.name, render: (item) => <OrphanIdentity item={item} /> },
     { id: 'records', label: t('cleanup:orphans.columnActivity'), width: 176, min: 144, value: (item) => recordsText(item.records),
+      filter: { values: item => Object.keys(item.records).filter(key => item.records[key as keyof typeof item.records]),
+        option: key => ({ label: recordLabels[key] || key }) },
       render: (item) => <span className="block min-w-0 whitespace-normal wrap-anywhere">{recordsText(item.records) || t('cleanup:shared.none')}</span> },
     { id: 'target', label: t('cleanup:shared.actions'), width: items.some(item => item.candidates.length) ? 360 : 128, min: 128, value: (item) => item.candidates.length,
       render: (item) => <OrphanActions item={item} toast={toast} /> },
@@ -146,10 +152,9 @@ export function OrphanRecordsCard({ toast }: { toast(message: string): void }) {
               description={ORPHAN_RECORDS_TEXT}
               rowId={(item) => String(item.id)} rowLabel={(item) => item.name}
               selected={selected} onSelected={setSelected}
-              actions={(chosen) => <Button variant="danger" size="small" disabled={!chosen.length}
-                {...busyProps(purge.isPending)} onClick={() => removeSelected(chosen)}>
-                {t('cleanup:orphans.deleteSelectedCount', { count: chosen.length })}
-              </Button>} />}
+              actions={(chosen) => [{ items: chosen, host,
+                action: purgeSelected(chosen.length),
+                done: () => { setSelected([]); void refresh() } }]} />}
     </section>
   );
 }

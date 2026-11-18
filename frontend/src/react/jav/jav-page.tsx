@@ -23,7 +23,7 @@ import { Releases } from './jav-releases';
 import { JavHeader } from './jav-header';
 import { IndexSearch } from '../index/index-search';
 import { spriteGlyph } from '../components/sprite-glyph';
-import { FilterGlassRows, FilterIconButton, FilterPill, GlassPill } from '../components/filter-glass';
+import { FilterGlassRows, FilterIconButton, FilterPill, FilterActionButton } from '../components/filter-glass';
 import { LibraryShortcuts } from '../library-shortcuts/shortcut-controls';
 import { Segments, SortKeys } from '../entity-filter/entity-filter-page';
 import { TaskProgress } from '../components/task-progress';
@@ -31,18 +31,19 @@ import { activityKind } from '../../activity-kinds';
 import { DISCOVERY_SORTS, discoveryScore, recommendationScore, type DiscoverySort } from './discovery-sorts';
 import { jobText, serverLabelList } from '../../core/server-text';
 import { t } from '../../i18n';
+import type { Receipt } from '../components/bulk-action';
 
 const MetadataStopGlyph = spriteGlyph('x');
 const MetadataRefreshGlyph = spriteGlyph('refresh-cw');
 const SEARCH_LABELS: Record<string, string> = { releases: t('catalog:javSearch.filterReleases'), discover: t('catalog:javSearch.filterRecommended'), wants: t('catalog:javSearch.filterWants') };
 
 export function JavPage({ tab, readOnly, navigate, receipt }: {
-  tab: string; readOnly: boolean; navigate(path: string): void; receipt(message: string): void;
+  tab: string; readOnly: boolean; navigate(path: string): void; receipt: Receipt;
 }) {
   const [download, setDownload] = useState<DownloadPrefill | null>(null);
   const [text, changeText] = useState(() => new URLSearchParams(location.search).get('q') || '');
   const setText = (value: string) => { changeText(value); writeJavQuery({ q: value }) };
-  return <JavSelectionProvider key={tab} readOnly={readOnly} receipt={receipt}><div className="flex w-full flex-col gap-6">
+  return <JavSelectionProvider key={tab} readOnly={readOnly} receipt={receipt} dock={tab !== 'wants'}><div className="flex w-full flex-col gap-6">
     <JavHeader tab={tab} navigate={navigate} find={() => setDownload({})}
       search={<IndexSearch label={SEARCH_LABELS[tab] || t('catalog:javDiscover.filter')} value={text} onQuery={setText} />} />
     {tab === 'releases'
@@ -153,7 +154,7 @@ function Discover({ readOnly, receipt, resource, query, navigate, clearText }: {
       </div></div>} bottom={<>
         <span data-catalog-readout="">{waiting ? <span data-skeleton="count" aria-hidden className="relative inline-block h-3.5 w-37.5 rounded-md align-middle skeleton-sheen" /> : t('catalog:countLabel.works', { count: items.length })}</span>
         <LibraryShortcuts currentHref={() => location.pathname + location.search} />
-        {query || tag ? <GlassPill onPress={() => { setTag(''); clearText() }}>{t('catalog:shared.clearFilters')}</GlassPill> : null}
+        {query || tag ? <FilterActionButton onPress={() => { setTag(''); clearText() }}>{t('catalog:shared.clearFilters')}</FilterActionButton> : null}
         <span data-entity-sorts="">
         {scope === 'external' ? <FilterIconButton data-entity-batch="" data-jav-metadata-update=""
           label={metadata?.status === 'running' ? t('catalog:javDiscover.stopUpdating') : t('catalog:javDiscover.updateMetadata')}
@@ -161,7 +162,7 @@ function Discover({ readOnly, receipt, resource, query, navigate, clearText }: {
           icon={metadata?.status === 'running' ? MetadataStopGlyph : MetadataRefreshGlyph}
           onPress={() => updateMetadata(metadata?.status === 'running' ? 'stop' : 'update')} /> : null}
         <Segments label={t('catalog:entityFilter.javCardLayout')} value={layout} options={JAV_LAYOUTS} onChange={storeJavLayout} />
-        <SortKeys sorts={DISCOVERY_SORTS.map(([key, label, ariaLabel]) => ({ key, label, ariaLabel,
+        <SortKeys group="discover" sorts={DISCOVERY_SORTS.map(([key, label, ariaLabel]) => ({ key, label, ariaLabel,
           pressed: key === sort, dir: direction }))} onSort={key => {
           if (key === sort) setAscending(!ascending); else { setSort(key as DiscoverySort); setAscending(key === 'code') }
         }} /></span>

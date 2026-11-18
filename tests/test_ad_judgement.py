@@ -174,6 +174,34 @@ class ResourceJunkQueueTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_software_packages_and_course_assets_stay_out_of_the_junk_queue(self):
+        next_id = 1
+        for release in ('ABC-001', 'ABC-002', 'ABC-003'):
+            for name in ('README.md', 'LICENSE-MIT.txt', 'package.json', 'gen-mapping.ts'):
+                self.add(next_id, 'local', rf'R:\games\{release}\node_modules\windows-1252\{name}', 'other')
+                next_id += 1
+            self.add(next_id, 'local', rf'R:\games\{release}\bin\runtime.dll', 'other')
+            next_id += 1
+        self.add(next_id, 'local', r'R:\courses\Enjoy App 其实也是很好的客户端\assets\001_audio.mp3', 'audio')
+        self.add(next_id + 1, 'local', r'R:\courses\Happy mapping\gen-mapping.ts', 'video', 1000, 10)
+        self.assertEqual(q_ads(self.contract)['items'], [])
+        checked = junk.isolate(self.db_path, asset_ids=list(range(1, next_id + 2)))
+        self.assertEqual(checked['isolated'], 0)
+
+    def test_repeated_attachments_keep_file_ids_and_offer_one_display_group(self):
+        for asset_id in (1, 2, 3):
+            self.add(asset_id, 'local', rf'R:\releases\ABC-00{asset_id}\attachment.pdf', 'other', 401006)
+        items = q_ads(self.contract)['items']
+        self.assertEqual({item['id'] for item in items}, {1, 2, 3})
+        self.assertEqual(len({item['copy_group'] for item in items}), 1)
+        self.assertEqual(sum(item['size'] for item in items), 1203018)
+
+    def test_app_boundaries_keep_advertising_and_transport_streams_readable(self):
+        self.add(1, 'local', r'R:\media\含羞草APP\❤含 羞 草❤.png', 'image')
+        self.add(2, 'local', r'R:\media\点击下载APP.ts', 'video', 1000, 10)
+        self.add(3, 'local', r'R:\media\Happy anniversary.ts', 'video', 1000, 10)
+        self.assertEqual({item['id'] for item in q_ads(self.contract)['items']}, {1, 2})
+
     def test_automatic_isolation_requires_a_scope_and_observes_source_and_directory_boundaries(self):
         for aid, location, folder in ((1, 'local', 'media'), (2, 'local', 'media2'), (3, '115', 'media')):
             self.add(aid, location, rf'R:\{folder}\点击进入.url', 'other')
@@ -258,6 +286,60 @@ class ResourceJunkQueueTests(unittest.TestCase):
         self.assertNotIn(6, by_id)
         self.assertNotIn(7, by_id)
         self.assertTrue(all("path" not in item for item in result["items"]))
+
+    def test_each_page_names_its_media_library_from_the_current_settings(self):
+        self.add(3, "pikpak", r"A:\资源\点击这里.url", "other", 128)
+
+        def owned_by(library):
+            return lambda config, path: {"library_id": library} if path == r"A:\资源\点击这里.url" else {}
+
+        with mock.patch.object(web_batch.settings_file, "active", return_value=object()), \
+                mock.patch("peach.media_identity.ownership", side_effect=owned_by("lib-a")):
+            first = q_ads(self.contract)["items"]
+        # 评分缓存只随账本表失效；媒体库归属按取页那一刻的设置算，换了设置下一次取就跟着换。
+        with mock.patch.object(web_batch.settings_file, "active", return_value=object()), \
+                mock.patch("peach.media_identity.ownership", side_effect=owned_by("lib-b")):
+            second = q_ads(self.contract)["items"]
+        self.assertEqual([item["library_id"] for item in first], ["lib-a"])
+        self.assertEqual([item["library_id"] for item in second], ["lib-b"])
+        self.assertTrue(all("path" not in item and "_path" not in item for item in first + second))
+
+    def disposals(self):
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            return dict(connection.execute("SELECT id, disposal_reason FROM asset WHERE disposal='trash'").fetchall())
+
+    def test_dispose_all_moves_every_undecided_item_of_the_kind_beyond_one_page(self):
+        # 网址快捷方式在媒体目录里直接进待判断：造 205 条，比页面一次取回的 200 条多。
+        for asset_id in range(1000, 1205):
+            self.add(asset_id, "local", rf"R:\media\入口{asset_id}.url", "other", 128)
+        self.add(2000, "local", r"R:\下载\福利群vip0955.com.zip", "archive", 2048)
+        self.assertEqual(q_ads(self.contract, kind="url")["total"], 205)
+
+        result = web_batch.w_ads_dispose_all(self.contract, {"kind": "url", "status": "pending", "expected": 205})
+
+        self.assertEqual(result["changed"], 205)
+        self.assertEqual(sorted(result["ids"]), list(range(1000, 1205)))
+        # 只动这一类；归入原因记垃圾，撤销按返回的 id 还原。
+        self.assertEqual(self.disposals(), {asset_id: "junk" for asset_id in range(1000, 1205)})
+        self.assertEqual(q_ads(self.contract, kind="url")["total"], 0)
+        self.assertEqual({item["id"] for item in q_ads(self.contract)["items"]}, {2000})
+        # 撤销把这一整批原样还原，同样不分段。
+        restored = web_batch.w_ads_restore_all(self.contract, {"ids": result["ids"]})
+        self.assertEqual(restored["changed"], 205)
+        self.assertEqual(self.disposals(), {})
+        self.assertEqual(q_ads(self.contract, kind="url")["total"], 205)
+
+    def test_dispose_all_refuses_a_count_the_user_did_not_confirm_and_the_excluded_view(self):
+        self.add(3, "pikpak", r"A:\资源\点击这里.url", "other", 128)
+        self.add(4, "local", r"R:\media\福利群vip0955.com.zip", "archive", 2048)
+        # 确认框给人看的是 1 条，队列里实际是 2 条：整批拒绝，一条不动。
+        with self.assertRaises(ValueError):
+            web_batch.w_ads_dispose_all(self.contract, {"kind": "", "status": "pending", "expected": 1})
+        with self.assertRaises(ValueError):
+            web_batch.w_ads_dispose_all(self.contract, {"kind": "", "status": "dismissed", "expected": 2})
+        with self.assertRaises(ValueError):
+            web_batch.w_ads_dispose_all(self.contract, {"kind": "", "status": "pending"})
+        self.assertEqual(self.disposals(), {})
 
     def test_game_download_promo_name_enters_review_without_automatic_trash(self):
         name = "18+游戏大全(996gg.cc)-七龍珠H版-三國志H版-三國群淫傳等.mp4"
@@ -471,6 +553,24 @@ class ResourceJunkQueueTests(unittest.TestCase):
 
         self.assertEqual([item["id"] for item in result["items"]], [90])
 
+    def test_release_artwork_without_a_code_field_or_sibling_video_is_preserved(self):
+        base = r'B:\云下载\kpkp3.com_483SGKX-016'
+        self.add(301, '115', base + r'\kpkp3.com_483SGKX-016.jpg', 'image', 230258)
+        self.add(302, '115', base + r'\kpkp3.com_483SGKX-016B.jpg', 'image', 196355)
+        self.add(303, '115', base + r'\kpkp3.com_483SGKX-016_点击进入.jpg', 'image', 230258)
+        self.assertEqual([item['id'] for item in q_ads(self.contract)['items']], [303])
+        self.assertEqual(junk.isolate(self.contract.database, asset_ids=[301, 302])['isolated'], 0)
+
+    def test_fc2_bonus_parts_are_preserved_beside_the_full_length_main(self):
+        code = 'FC2-PPV-4592208'
+        base = r'A:\日本\FC2\FC2-PPV-4592208'
+        self.add(310, 'pikpak', base + r'\fc4592208.mp4', 'video', 5 * 1024**3, 5340, code=code)
+        self.add(311, 'pikpak', base + r'\fc4592208_sp.mp4', 'video', 102400332, 260.994067, code=code)
+        self.add(312, 'pikpak', base + r'\fc4592208_gift2.mp4', 'video', 90 * 1024**2, 90, code=code)
+        self.add(313, 'pikpak', base + r'\FC2-PPV-4592208 短片.mp4', 'video', 90 * 1024**2, 90, code=code)
+        self.assertEqual([item['id'] for item in q_ads(self.contract)['items']], [313])
+        self.assertEqual(junk.isolate(self.contract.database, asset_ids=[311, 312])['isolated'], 0)
+
     def test_cover_and_screenshot_outlive_their_promo_directory(self):
         """目录名带域名只说明从哪个站下的，说明不了目录里的图是广告。"""
         # 正片本体的体积在候选范围外，这里只作为截图的对照存在。
@@ -572,6 +672,40 @@ class ResourceJunkQueueTests(unittest.TestCase):
         self.assertEqual(junk._promo_name_reason('.rar', path, 128 * 1024), '')
         self.assertEqual(junk._promo_name_reason('.rar', r'B:\MVP\n1025.rar', 4111), '')
 
+    def test_creator_folder_promotional_video_names_enter_review(self):
+        names = (
+            '美女荷官在线发牌_vip5678.mp4',
+            '激情隨時看.mp4',
+            'N房间的精彩直播 只有你想不到的刺激.mp4',
+        )
+        for asset_id, name in enumerate(names, 1):
+            self.add(asset_id, '115', rf'B:\创作者\示例作者\作品\{name}', 'video',
+                     8 * 1024**2, 90, creator='示例作者')
+
+        items = q_ads(self.contract, limit=200)['items']
+        self.assertEqual({item['id'] for item in items}, {1, 2, 3})
+        for item in items:
+            self.assertGreaterEqual(item['score'], junk.JUNK_REVIEW_SCORE)
+            self.assertLess(item['score'], junk.AUTO_TRASH_SCORE)
+            self.assertIn('推广视频的固定命名', item['why'])
+        checked = junk.isolate(self.db_path, asset_ids=[1, 2, 3])
+        self.assertEqual((checked['isolated'], checked['review']), (0, 3))
+
+        w_batch(self.contract, {'ids': [1], 'operation': 'dismiss-junk'})
+        self.assertEqual({item['id'] for item in q_ads(self.contract)['items']}, {2, 3})
+        w_batch(self.contract, {'ids': [1], 'operation': 'reconsider-junk'})
+        self.assertEqual({item['id'] for item in q_ads(self.contract)['items']}, {1, 2, 3})
+
+    def test_creator_video_promo_names_require_matching_name_and_small_size(self):
+        for asset_id, name, size in (
+            (1, '美女荷官剧情片.mp4', 8 * 1024**2),
+            (2, '6月28日(1).mov', 12 * 1024**2),
+            (3, '美女荷官在线发牌_vip5678.mp4', 32 * 1024**2 + 1),
+        ):
+            self.add(asset_id, '115', rf'B:\创作者\示例作者\作品\{name}', 'video',
+                     size, 90, creator='示例作者')
+        self.assertEqual(q_ads(self.contract)['items'], [])
+
     def test_promotional_page_navigation_images_with_inherited_release_code(self):
         base = r'B:\MVP\1pon-092415_001-fhd'
         page = base + r'\花一分钟记住我们的网址 - sex5.xxx_files'
@@ -614,12 +748,12 @@ class ResourceJunkQueueTests(unittest.TestCase):
         self.add(10, '115', r'B:\云下载\notes.txt', 'other', 470)
         self.add_download(2, 'ABP-616', r'B:\云下载', 1)
         items = {item['id']: item for item in q_ads(self.contract, limit=200)['items']}
-        self.assertEqual(set(items), {2, 3, 4, 7})
+        self.assertEqual(set(items), {2, 3, 7})
         self.assertIn('SSIS-839 下载包里的附带短视频，正片长 120 分', items[2]['why'])
         self.assertIn('附带压缩包', items[7]['why'])
         self.assertLess(items[7]['score'], web_batch.AUTO_TRASH_SCORE)
         checked = junk.isolate(self.contract.database, asset_ids=list(range(1, 11)), protected_ids=[1])
-        self.assertEqual(sorted(checked['ids']), [2, 3, 4])
+        self.assertEqual(sorted(checked['ids']), [2, 3])
 
     def test_untracked_folders_under_the_download_root_use_their_own_release_video(self):
         # 下载根由已有任务确定；没有任务行的旧下载按目录名里的番号认正片。

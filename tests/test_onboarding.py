@@ -510,6 +510,28 @@ class SetupJsonContractTests(_SetupHttpCase):
             self.assertTrue((self.data_root / 'config.toml').exists())
         require.assert_not_called()
 
+    def test_lan_source_setup_on_any_system_checks_openssl_before_saving(self):
+        """#395：源码部署对局域网监听时完成页去 HTTPS 入口，缺 OpenSSL 先报出来，不再回到设置页打转。"""
+        with mock.patch.object(distribution, 'standalone', return_value=False), \
+                mock.patch.object(distribution, 'docker', return_value=False), \
+                mock.patch.object(onboarding.certs, 'require_openssl',
+                                  side_effect=UserRuntimeError('errors.certs.opensslMissing')) as require:
+            response = self._send('POST', self.SUBMIT, json=self._body(scan_now=False, host="2"))
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertIn('OpenSSL', response.json()['errors']['data_root'])
+            self.assertFalse((self.data_root / 'config.toml').exists())
+            require.assert_called_once_with()
+
+    @unittest.skipIf(NATIVE_WINDOWS, 'Windows 源码首设一律需要 TLS')
+    def test_loopback_source_setup_off_windows_does_not_need_openssl(self):
+        with mock.patch.object(distribution, 'standalone', return_value=False), \
+                mock.patch.object(distribution, 'docker', return_value=False), \
+                mock.patch.object(onboarding.certs, 'require_openssl',
+                                  side_effect=UserRuntimeError('errors.certs.opensslMissing')) as require:
+            response = self._send('POST', self.SUBMIT, json=self._body(scan_now=False))
+        self.assertEqual(response.status_code, 200, response.text)
+        require.assert_not_called()
+
     def _rows(self, *paths, location="local"):
         return [{"path": str(path), "location": location,
                  "root": "" if NATIVE_WINDOWS else "R:\\media" + (str(index + 1) if index else "")}
@@ -665,6 +687,27 @@ class SetupJsonContractTests(_SetupHttpCase):
         self.assertTrue(loaded.present)
         self.assertEqual((loaded.server.host, loaded.server.port), ("127.0.0.1", 8900))
         self.assertFalse(loaded.replication.enabled)
+
+    def _synced_settings(self, data_root):
+        from peach import web_settings
+        from peach.repository import LedgerDatabase
+        return web_settings.q_settings(LedgerDatabase(data_root / "database" / "ledger.db"))
+
+    def test_first_step_language_is_saved_into_the_new_ledger(self):
+        self._submit(scan_now=False, interface_language="en")
+        self.assertEqual(self._synced_settings(self.data_root)["interfaceLanguage"], "en")
+
+    def test_first_step_language_leaves_an_existing_ledger_alone(self):
+        from peach import web_settings
+        from peach.repository import LedgerDatabase
+        tree = onboarding.create_data_tree(onboarding.resolve_config(str(self.data_root))[0])
+        web_settings.w_settings(LedgerDatabase(tree.database), {"interfaceLanguage": "zh-CN"})
+        self._submit(scan_now=False, interface_language="en")
+        self.assertEqual(self._synced_settings(self.data_root)["interfaceLanguage"], "zh-CN")
+
+    def test_an_unknown_language_is_a_field_error_before_anything_is_written(self):
+        self.assertEqual(set(self._errors(self._body(interface_language="fr"))), {"interface_language"})
+        self.assertFalse(self.data_root.exists())
 
     def test_a_custom_data_root_is_loaded_by_the_tray_and_a_fresh_launch(self):
         import json
@@ -886,6 +929,7 @@ class SetupJsonContractTests(_SetupHttpCase):
         cases = (
             ("已配置", {"configured": True}, 404, "not found"),
             ("非回环调用方", {"client": ("198.51.100.7", 51000)}, 403, "setup is loopback-only"),
+            ("局域网 IPv6 调用方", {"client": ("fd00::7", 51000)}, 403, "setup is loopback-only"),
         )
         for name, kwargs, status, message in cases:
             with self.subTest(name):
@@ -895,6 +939,9 @@ class SetupJsonContractTests(_SetupHttpCase):
         with self.subTest("独立包的非回环主机名"), mock.patch.object(distribution, "standalone", return_value=True):
             response = self._send("GET", self.QUESTIONS, base_url="http://peach.local:8900")
             self.assertEqual((response.status_code, response.json()), (403, {"error": "请使用本机地址打开设置", "message_code": "api.pages.openSetupLocally", "message_params": {}}))
+        with self.subTest("IPv6 回环调用方"):
+            response = self._send("GET", self.QUESTIONS, client=("::1", 51000))
+            self.assertEqual(response.status_code, 200)
         with self.subTest("读题不看 Origin"):
             response = self._send("GET", self.QUESTIONS, headers={"Origin": "http://elsewhere.example"})
             self.assertEqual(response.status_code, 200)
@@ -903,6 +950,7 @@ class SetupJsonContractTests(_SetupHttpCase):
         cases = (
             ("已配置", {"configured": True}, 404, {"error": "not found"}),
             ("非回环调用方", {"client": ("198.51.100.7", 51000)}, 403, {"error": "setup is loopback-only"}),
+            ("局域网 IPv6 调用方", {"client": ("fd00::7", 51000)}, 403, {"error": "setup is loopback-only"}),
             ("别的页面发来", {"headers": {"Origin": "http://elsewhere.example"}}, 403,
              {"error": "请从 Peach 设置页提交", "message_code": "api.pages.submitFromSetup", "message_params": {}}),
         )

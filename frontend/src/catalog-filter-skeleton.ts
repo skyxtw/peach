@@ -24,11 +24,13 @@ const slots = (html: string): string => html.repeat(EMPTY_SLOTS);
 export const tierPlaceholdersHtml = (kind: 'performer' | 'studio'): string =>
   slots(`<span data-catalog-placeholder="${kind}" aria-hidden="true"><span></span><span>&nbsp;</span></span>`);
 
-export function catalogFilterSkeletonHtml(views: readonly CatalogView[], state: string, head?: Pick<CatalogFilterProps, 'sorts' | 'layout'>): string {
+/** `tiers` 为假是设置里关掉了首页两排头像：骨架也不铺那两排，岛挂上时不跳。 */
+export function catalogFilterSkeletonHtml(views: readonly CatalogView[], state: string, head?: Pick<CatalogFilterProps, 'sorts' | 'layout'>,
+  tiers = true): string {
   const viewHtml = views.map((view) => `<a href="${esc(view.href)}" data-catalog-view="${esc(view.k)}"`
     + ` data-entity-press="" aria-pressed="${state === view.k}">${esc(view.label)}</a>`).join('');
   /* 两排照本机上次画好时的结构：上次没人的那排取回后也是收起的。 */
-  const shape = rememberedTiers();
+  const shape = tiers ? rememberedTiers() : { performers: false, studios: false };
   return `<div class="peach-react"><div class="contents" data-catalog-root="" data-loading="">`
     + `<div data-catalog-tiers="" aria-busy="true"${shape.performers || shape.studios ? '' : ' hidden'}>`
     + (shape.performers ? `<div data-catalog-tier="performers" data-skeleton="tiers">${tierPlaceholdersHtml('performer')}</div>` : '')
@@ -47,4 +49,16 @@ export function catalogFilterSkeletonHtml(views: readonly CatalogView[], state: 
     + ` class="relative inline-block h-3.5 w-37.5 rounded-md align-middle skeleton-sheen"></span></span>${islandShortcutsEntry()}</span>`
     + (head ? filterControlsSkeletonHtml(head.sorts, head.layout) : '')
     + `</div></div></div></div>`;
+}
+
+/** 回收站的筛选浮层只有下排（`catalog-filter-page.tsx` 的 `TrashHead`）：读数一条微光，右边版式、
+ *  卡片／列表与排序键，没有换一批与文件夹开关。「清空回收站」等读数到了才出，骨架里不占位。 */
+export function trashFilterSkeletonHtml(head: Pick<CatalogFilterProps, 'sorts' | 'layout'>): string {
+  return `<div class="peach-react"><div role="group" aria-label="${t('catalog:catalogFilter.filterAndSort')}" data-filter-glass=""`
+    + ` data-glass-pane="" data-filter-frame="" data-catalog-frame="" class="sticky top-topbar z-10 mb-5.5 flex flex-col mx-auto w-full max-w-board">`
+    + `<div data-filter-row="bottom" aria-busy="true" class="flex min-w-0 items-center gap-3 px-3 py-2 min-h-12">`
+    + `<span data-catalog-summary=""><span data-catalog-readout=""><span data-skeleton="count" aria-hidden="true"`
+    + ` class="relative inline-block h-3.5 w-37.5 rounded-md align-middle skeleton-sheen"></span></span></span>`
+    + filterControlsSkeletonHtml(head.sorts, head.layout, { folders: false, shuffle: false })
+    + `</div></div></div>`;
 }

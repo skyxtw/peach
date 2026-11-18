@@ -268,6 +268,28 @@ _CODE_DATE = re.compile(rf"^{_MMDDYY}[-_]\d{{2,4}}$")
 #: 没有实证的形态放进来，素材编号和文件计数都会被当成番号。
 _KIRARI_BODY = r"MKB?D-S\d{2,4}"
 _KIRARI_CODE = re.compile(rf"^{_KIRARI_BODY}$", re.I)
+#: 厂牌段是「一个字母加数字」的番号，只认登记过的厂牌。放开成任意「字母+数字」的话，
+#: 厂牌名 `S1`、`G1`，画质词 `X1080`、`VR180`，素材编号 `G2115`、`p1000` 都会被读成番号
+#: （后三种本机账本里都有）。
+#: TMA 的 `T28`、`T38`：JavBus 片商页 `studio/54` 2026-11-14 全量翻过，这两段分别 282、65 部，
+#: 序号三位，TMA 别的字母段都是纯字母；r18.dev 给 `T28-612` 的 content_id 是 `55t2800612`。
+#: S Model 的 `S2M`（アンコール，序号三位）、`S2MCR`（Model Collection Remix，序号两位）与
+#: キャットウォーク的 `CW3D2DBD`（序号两位）：#124 报告，2026-11-16 在 JavDB 搜索页核过
+#: `S2M-009`、`S2MCR-08`、`CW3D2DBD-14` 都按这个写法收录。两位序号的段在 `SERIAL_WIDTHS` 里登记位数。
+#: 交替按长度从长到短排：`S2MCR-08` 不能先被 `S2M` 吃掉一截。
+DIGIT_LABELS = ("CW3D2DBD", "S2MCR", "S2M", "T28", "T38")
+DIGIT_LABEL_PATTERN = "(?:" + "|".join(sorted(DIGIT_LABELS, key=lambda label: (-len(label), label))) + ")"
+_DIGIT_LABEL_TEXT = re.compile(rf"^({DIGIT_LABEL_PATTERN})[-_. ]?(\d{{2,5}})$", re.I)
+_DIGIT_LABEL_CODE = re.compile(rf"^{DIGIT_LABEL_PATTERN}-\d{{2,5}}$")
+#: 尾字母属于番号本身的厂牌段：アイビーワークス 的 `IBW-483z`。JavDB 2026-11-16 搜索页里
+#: `IBW-483z`、`IBW-489z`、`IBW-493z`、`IBW-583z` 都带 `z`（#124）。别的段的尾字母多半是版次
+#: （`ADN-516C` 的 `C` 是中字），所以只认登记过的段与字母，版次标记照旧按共享规则剥掉。
+LABEL_SUFFIXES = {"IBW": "Z"}
+SUFFIXED_CODE_PATTERN = "(?:" + "|".join(
+    f"{label}-\\d{{2,5}}{suffix}" for label, suffix in sorted(LABEL_SUFFIXES.items())) + ")"
+_SUFFIXED_TEXT = re.compile(
+    "^(" + "|".join(sorted(LABEL_SUFFIXES)) + r")[-_. ]?(\d{2,5})("
+    + "|".join(sorted(set(LABEL_SUFFIXES.values()))) + r")(?![A-Za-z0-9])", re.I)
 
 #: Tokyo-Hot 的编号没有厂牌字母段：`n1234`／`k1234` 是本编，`red-123` 是 Red Hot 支线。
 #: 规范写法取小写，不跟着别的番号大写——javbus 的作品页地址就是 `/n1234`，NeoAVDC
@@ -386,7 +408,8 @@ _CODE_BODY = re.compile(r"^(?:\d{3})?[A-Za-z]{2,8}[-_. ]?\d{2,5}$")
 _FORUM_URL_WRAPPER = re.compile(r"^\[url\](.+)\[(?:\||/)url\]$", re.I)
 _REMUX_CODE_TAIL = re.compile(r"\(([A-Za-z]{2,8}-\d{2,5})\)\[BD[ ._-]Remux\]$", re.I)
 _INLINE_STUDIO_CODE = re.compile(
-    rf"(?<![A-Za-z0-9])(?:(?:\d{{3}})?[A-Za-z]{{2,8}}-\d{{2,5}}|{_KIRARI_BODY})(?![A-Za-z0-9])", re.I)
+    rf"(?<![A-Za-z0-9])(?:(?:\d{{3}})?[A-Za-z]{{2,8}}-\d{{2,5}}|{_KIRARI_BODY}|{DIGIT_LABEL_PATTERN}-\d{{2,5}})"
+    r"(?![A-Za-z0-9])", re.I)
 
 #: DMM 自己交付的文件名：四位发行日（`0112` 是 1 月 12 日）顶在番号前面，编码写在后面。
 #: 四位是判据的关键——素人系的前缀恰好三位（`259LUXU-1007`），放宽到「若干位数字」
@@ -493,7 +516,7 @@ _QUALITY_TOKEN = re.compile(r"^(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)$", re.I)
 #: （`TG-2025-01-27`）是日期。只取词元开头这一段，紧跟的版次和分卷（`-C`、`-CD1`、
 #: `_part1`）不影响番号。
 _HYPHENATED_CODE = re.compile(
-    rf"^(?:{_KIRARI_BODY}(?![0-9])|(?:\d{{3}})?[A-Z]{{2,8}}-\d{{3,5}}(?![0-9]|-\d{{2}}-\d))",
+    rf"^(?:{_KIRARI_BODY}(?![0-9])|(?:(?:\d{{3}})?[A-Z]{{2,8}}|{DIGIT_LABEL_PATTERN})-\d{{3,5}}(?![0-9]|-\d{{2}}-\d))",
     re.I,
 )
 #: 用户番号识别规则的上限。每条规则要对库里每个文件名跑一遍，条数和长度都设个顶。
@@ -624,6 +647,10 @@ def normalise_code_key(code: str | None) -> str:
     short_fc2 = _FC2_ID.match(value)
     if short_fc2:
         return f"FC2-PPV-{short_fc2.group(1)}"
+    digit_label = _DIGIT_LABEL_TEXT.fullmatch(value)
+    if digit_label:
+        label, digits = digit_label.groups()
+        return f"{label}-{code_serial(label, digits)}"
     shape = re.fullmatch(r"(\d{3})?([A-Z]+)-?(\d+)([A-Z]{0,2})", value)
     if not shape:
         return value
@@ -641,7 +668,7 @@ SHORT_SERIAL_PREFIXES = frozenset({"MCDV"})
 
 #: 官方编号定宽、不足位数补零的字母段。`HEYZO`：官网与各来源都写四位（`HEYZO-0707`），
 #: 按三位收成 `HEYZO-707` 就查不到资料（#354）。
-SERIAL_WIDTHS = {"HEYZO": 4}
+SERIAL_WIDTHS = {"HEYZO": 4, "S2MCR": 2, "CW3D2DBD": 2}
 
 
 def _keeps_width(letters: str, digits: str) -> bool:
@@ -691,6 +718,7 @@ def is_jav_code(code: str | None) -> bool:
         or _CODE_AMATEUR.match(value)
         or _CODE_DATE.match(value)
         or _KIRARI_CODE.match(value)
+        or _DIGIT_LABEL_CODE.match(value)
         or tokyo_hot_code(value)
     )
 
@@ -784,6 +812,11 @@ def _release_identity(code: str) -> str:
         # 来源只给一串数字时分隔符无从得知，原样留着数字，别替它挑一个片商。
         # 与带分隔符那一侧的比对交给 `same_release_code`。
         return value
+    digit_label = re.fullmatch(rf"(\d{{1,4}})?({DIGIT_LABEL_PATTERN})(\d{{2,5}})", value)
+    if digit_label:
+        # DMM 的 content_id 带片商数字头（`55t2800612`），和别的番号一样留在身份里。
+        prefix, label, number = digit_label.groups()
+        return f"{prefix or ''}{label}-{code_serial(label, number)}"
     shape = _RELEASE_ID.fullmatch(value)
     if shape:
         prefix, letters, number, suffix = shape.groups()
@@ -833,6 +866,8 @@ def code_letter_stem(code: str | None) -> str:
     value = normalise_code_key(code)
     if not value or value.startswith("FC2"):
         return ""
+    if _DIGIT_LABEL_CODE.fullmatch(value):
+        return value.split("-", 1)[0].lower()
     return re.sub(r"[^A-Z]", "", value.split("-", 1)[0]).lower()
 
 
@@ -954,10 +989,35 @@ def release_code_from_text(value: str | None) -> str | None:
     if date:
         return f"{date.group(1)}{date.group(2)}{date.group(3)}"
     body = VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
+    suffixed = _suffixed_code(body, whole=True)
+    if suffixed:
+        return suffixed
     canonical = normalise_code_key(body)
-    if not (_CODE_BODY.fullmatch(body) or _KIRARI_CODE.fullmatch(canonical)) or is_code_body_stopword(body):
+    if not (_CODE_BODY.fullmatch(body) or _KIRARI_CODE.fullmatch(canonical)
+            or _DIGIT_LABEL_TEXT.fullmatch(body)) or is_code_body_stopword(body):
         return None
     return canonical if is_jav_code(canonical) else None
+
+
+def _suffixed_code(text: str, *, whole: bool = False) -> str:
+    """`LABEL_SUFFIXES` 登记的「字母段 + 序号 + 尾字母」番号；`whole` 要求整段就是它。"""
+    shape = _SUFFIXED_TEXT.match(text)
+    if not shape or (whole and shape.end() != len(text)):
+        return ""
+    label, digits, suffix = shape.group(1).upper(), shape.group(2), shape.group(3).upper()
+    return normalise_code_key(f"{label}-{digits}{suffix}") if LABEL_SUFFIXES.get(label) == suffix else ""
+
+
+def without_label_suffix(code: str | None) -> str:
+    """登记尾字母番号去掉尾字母后的写法（`IBW-483Z` → `IBW-483`）；不是这一类返回空串。
+
+    旧版把尾字母当版次剥掉，存下的就是这个写法；升级补修按它认出要改回的行。
+    """
+    value = normalise_code_key(code)
+    shape = re.fullmatch(r"([A-Z]+)-(\d+)([A-Z])", value)
+    if not shape or LABEL_SUFFIXES.get(shape.group(1)) != shape.group(3):
+        return ""
+    return f"{shape.group(1)}-{shape.group(2)}"
 
 
 def _tokyo_hot_from_text(text: str) -> str:
@@ -1086,7 +1146,9 @@ def _titled_release_code(stem: str) -> str | None:
         if _QUALITY_TOKEN.match(token):
             continue
         head = _HYPHENATED_CODE.match(token)
-        return release_code_from_text(head.group(0)) if head else None
+        if not head:
+            return None
+        return _suffixed_code(token) or release_code_from_text(head.group(0))
     return None
 
 
@@ -1099,6 +1161,9 @@ def _jav_code_pattern(code: str | None) -> str:
     fc2 = re.fullmatch(r"FC2-PPV-(\d+)", canonical)
     if fc2:
         return rf"FC2(?:[-_ ]?PPV)?[-_ ]*0*{re.escape(fc2.group(1))}"
+    if _DIGIT_LABEL_CODE.fullmatch(canonical):
+        label, serial = canonical.split("-", 1)
+        return rf"{label}[-_ ]*{code_serial_pattern(label, serial)}"
     amateur = re.fullmatch(r"(\d{3})?([A-Z]+)-(\d+)([A-Z]{0,2})", canonical)
     if amateur:
         prefix, letters, digits, suffix = amateur.groups()
@@ -1730,3 +1795,10 @@ def fill_masked_title(masked: str, originals) -> str | None:
               and not any(char in candidate for char in MASKED_TITLE_CHARS)
               and (found := pattern.search(candidate))}
     return filled.pop() if len(filled) == 1 else None
+
+
+#: 标题里标明蓝光版的说法（`jav_editions.bluray_title`）。
+BLURAY_TITLE = re.compile(r"ブルーレイ|blu[\s-]?ray", re.I)
+#: 比对蓝光版与配信版标题前去掉的版本字样与随附物：剩下的才是作品名。
+EDITION_TITLE_WORDS = re.compile(
+    r"ブルーレイ(?:ディスク|エディション|版)?|blu[\s-]?ray(?:\s*disc)?(?:\s*edition)?|特典映像付き?|チェキ付き?", re.I)

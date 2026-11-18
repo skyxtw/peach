@@ -58,7 +58,7 @@ from .media import (
 from .mdns import create_mdns_publisher
 from .mount_reachability import MountReachability
 from .mp4repair import HeaderRepairStore
-from .platform import location_mounts
+from .platform import location_mount_values
 from .previews import (
     COVER_SMALL_THUMB_EDGE,
     COVER_SMALL_THUMB_QUALITY,
@@ -84,7 +84,7 @@ from .routes_auth import FIRST_ACCESS_DENIED_CODE, AssetLoginRequired, PageLogin
 # tests/test_follow_web.py 按 `api.MEDIA_CACHE_SECONDS` 断言两者的关系。
 from .routes_media import AVATAR_CACHE_SECONDS, MEDIA_CACHE_SECONDS  # noqa: F401
 from .segments import HlsSegmentService
-from .streaming import StreamSessionRegistry
+from .streaming import StreamSessionRegistry, shutdown_stream_executor
 from .sync import LedgerSync
 from .transcodes import TranscodeService
 from .user_messages import UserFacingError, error_fields, message_fields, nested_message, response_status
@@ -340,12 +340,34 @@ WARM_AGGREGATES = (("/api/index", {"kind": "performers", "limit": "120"}),
                    ("/api/search/recommendations", {}),
                    ("/api/taste", {"window": "all"}), ("/api/review", {}), ("/api/ads", {}),
                    ("/api/follow", {}))
+#: 关停时最多等在算的那份预热这么久（秒）：比存储卷探测的期限长一点，正常都等得到它放下连接；
+#: 等不到就不再等，免得一份卡住的预热让服务停不下来。
+WARMUP_STOP_SECONDS = 15.0
+
+
+def _prune_ledger_backups(settings: PeachSettings) -> None:
+    """账本旁的写入前备份按保留份数清退，规则与托盘启动时同一份（`ledger_backups.prune`）。
+
+    Docker 与 `peach serve` 没有托盘，只有服务启动这一处能清；有托盘的部署两处都清，删过的
+    再删是空操作。要先做一次整库完整性检查，所以放在后台线程里，不挡后台服务启动；失败只记日志。"""
+    import threading
+    from . import retention_settings
+
+    def prune():
+        try:
+            ledger_backups.prune(settings.db_path, apply=True,
+                                 keep_recent=retention_settings.backup_keep(settings.follow_state_root))
+        except Exception:
+            LOGGER.warning('Database backup retention cleanup failed', exc_info=True)
+
+    threading.Thread(target=prune, name='PeachLedgerBackupPrune', daemon=True).start()
 
 
 def _start_ledger_services(settings: PeachSettings, contract, services, migration: LedgerMigration | None = None) -> bool:
     """只读核对当前账本后，恢复任务并启动依赖账本的后台服务。
 
-    结构待迁移的写入端先整份备份再迁移；`migration` 记下进行中与失败，供请求闸门与状态接口读。"""
+    结构待迁移的写入端先整份备份再迁移；`migration` 记下进行中与失败，供请求闸门与状态接口读。
+    写入端在迁移之后、升级补修之前按保留份数清退账本备份（`_prune_ledger_backups`）。"""
     try:
         # 上次从备份恢复没走完：先把账本收拾到确定的状态，再判它能不能用（ADR-0138）。
         ledger_backups.recover(settings.db_path)
@@ -374,6 +396,8 @@ def _start_ledger_services(settings: PeachSettings, contract, services, migratio
         LOGGER.warning("Database not ready; background tasks that need it stay stopped (database: %s; schema: %s). Restart the service once the database is ready.",
                        status["database"], status["schema"])
         return False
+    if repairs is not None and repairs.available:
+        _prune_ledger_backups(settings)
     if repairs is not None:
         try:
             repairs.prepare()
@@ -390,6 +414,24 @@ def _start_ledger_services(settings: PeachSettings, contract, services, migratio
     return True
 
 
+def _configure_follow_backfill(contract, upgrade_repairs):
+    """「修复与迁移」里两项 rule34 补填的后台执行；每趟开始前备份账本，备份与确认项同名同处。"""
+    import time
+    from .follow_backfill import Backfill
+    from .follow_secrets import credential_store_for
+    from .migrations import sqlite_backup
+
+    def backup(prefix: str):
+        path = contract.db_path.with_name(f'ledger.pre-{prefix}{time.time_ns()}.db')
+        sqlite_backup(contract.db_path, path)
+        return path
+
+    return Backfill(contract, runs=contract.task_runs, backup=backup,
+                    credentials=credential_store_for(contract.follow_secrets_root,
+                                                     shared_root=contract.follow_shared_root),
+                    available=lambda: upgrade_repairs.available)
+
+
 async def _warm_ledger_aggregates(ledger_ready: bool, contract, stopping: asyncio.Event) -> None:
     """走和真实请求同一条分派，缓存键一致，页面第一次打开就是现成的。"""
     if not ledger_ready:
@@ -402,6 +444,15 @@ async def _warm_ledger_aggregates(ledger_ready: bool, contract, stopping: asynci
         except Exception:
             # 预热失败不影响服务启动，这一页照旧在第一次打开时自己算。
             LOGGER.debug("aggregate warmup failed: %s", path, exc_info=True)
+
+
+async def _stop_warmup(warmup: asyncio.Task) -> None:
+    """关停时等预热收尾：to_thread 的查询在线程内释放连接后才算结束，最多等 `WARMUP_STOP_SECONDS`。"""
+    try:
+        await asyncio.wait_for(warmup, WARMUP_STOP_SECONDS)
+    except TimeoutError:
+        LOGGER.warning("Aggregate warmup still running after %ss at shutdown; not waiting for it",
+                       WARMUP_STOP_SECONDS)
 
 
 def _server_error_headers(request: Request, error: Exception, status_code=500):
@@ -504,6 +555,11 @@ class _LedgerActivation:
                 self.automatic_started = True
             if ready:
                 self.sharing.start()
+                # 「修复与迁移」里关注旧快照能删多少：启动后就在后台估算，页面第一次打开直接读结果。
+                reclaim = getattr(self.app.state, 'follow_evidence', None)
+                repairs = getattr(self.app.state, 'upgrade_repairs', None)
+                if reclaim is not None and getattr(repairs, 'available', False):
+                    reclaim.prime()
             return ready
 
     async def _wait_for_installation(self):
@@ -644,7 +700,7 @@ def create_app(
     )
     mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
-        address=settings.mdns_address,
+        address=settings.mdns_address, ipv6=settings.mdns_ipv6,
     ) if settings.mdns_enabled else None
     providers = default_registry()
     opencode_go = OpenCodeGoClient(transport=http_transport)
@@ -665,7 +721,7 @@ def create_app(
         secrets_root=settings.secrets_root,
         db_path=settings.db_path,
         declared_roots=LOCATION_ROOT_DECLARATIONS,
-        mounts=location_mounts(),
+        mounts=location_mount_values(),
         available=_writer(sync),
         ffprobe=resolver.ffprobe,
         after_ingest=contract.cache_bust,
@@ -712,6 +768,8 @@ def create_app(
     from .library_sharing import Service as LibrarySharing
     from . import settings_file
     sharing = LibrarySharing(settings_file.active(), contract)
+    from .seed_sharing import Service as SeedSharing
+    seed_sharing = SeedSharing(settings_file.active(), contract)
     from .automatic_updates import AutomaticUpdates
     from .routes_configuration import managed_configuration
     automatic_updates = AutomaticUpdates(
@@ -719,6 +777,7 @@ def create_app(
         available=managed_configuration() and bool(settings.configured),
     )
     upgrade_repairs = _configure_upgrade_repairs(settings, contract, sync)
+    follow_backfill = _configure_follow_backfill(contract, upgrade_repairs)
     _configure_capacity_guard(settings, contract,
         (transcode_service, hls_service, entity_thumb_service, cover_thumb_service, cover_small_thumb_service))
 
@@ -740,17 +799,21 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # asyncio 异常处理器由 `cli._run_uvicorn` 装在 uvicorn 的事件循环上：它要拿着 uvicorn
+        # asyncio 异常处理器由 `listening.serve` 装在 uvicorn 的事件循环上：它要拿着 uvicorn
         # 的 Server，才能在监听被标准库关掉后重新监听。
         # 握手要等 cloudflared 连上边缘，断网时会等满 `wait_timeout`；放在后台，本机访问
         # 不等公网入口。连接进度由 `tunnel_manager.snapshot()` 报告。
         tunnel_startup = asyncio.create_task(asyncio.to_thread(_start_tunnel, settings, tunnel_manager))
-        services = (follow_scheduler, feed_scheduler, push_discovery, downloads, recovery_service, jav_browser, upgrade_repairs)
+        services = (seed_sharing, follow_scheduler, feed_scheduler, push_discovery, downloads, recovery_service, jav_browser, upgrade_repairs,
+                    follow_backfill, _app.state.cover_repair)
         activation = _LedgerActivation(_app, settings, contract, services, automatic_updates, sharing)
         _app.state.ledger_activation = activation
         ledger_ready = await activation.start()
         if settings.configured:
             mount_reachability.start()
+            # javdb 的节拍和独立采集脚本共用数据根里的同一个文件，两边同时跑也不超过它的速率上限。
+            from .library_processing import share_source_limits
+            share_source_limits(settings.follow_state_root)
         warmup = asyncio.create_task(warm_startup_entries())
         aggregate_stop = asyncio.Event()
         aggregate_warmup = asyncio.create_task(_warm_ledger_aggregates(ledger_ready, contract, aggregate_stop))
@@ -769,19 +832,21 @@ def create_app(
             _app.state.ledger_background_ready = False
             aggregate_stop.set()
             warmup.cancel()
-            recovery_service.stop()
+            # 等在途接回收尾有上限，放在线程里等，不占事件循环。
+            await asyncio.to_thread(recovery_service.stop)
             follow_scheduler.stop()
             feed_scheduler.stop()
-            automatic_updates.stop()
+            await asyncio.to_thread(automatic_updates.stop)
             await asyncio.to_thread(upgrade_repairs.stop)
+            await asyncio.to_thread(follow_backfill.stop)
             await asyncio.to_thread(sharing.stop)
+            await asyncio.to_thread(seed_sharing.stop)
             push_discovery.stop()
             await asyncio.to_thread(jav_browser.stop)
             downloads.stop()
             mount_reachability.stop()
             await asyncio.to_thread(network_reachability.stop)
-            # to_thread 的查询在线程内释放连接后才算结束。
-            await aggregate_warmup
+            await _stop_warmup(aggregate_warmup)
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
             # 一下，免得在途的那一轮在解释器拆卸期间还继续查库、往没人读的状态里写。
             contract.stop_background_jobs()
@@ -798,6 +863,7 @@ def create_app(
             http_transport.close()
             follow_media_resolver.close()
             hls_plan_executor.shutdown(wait=False, cancel_futures=True)
+            shutdown_stream_executor()
 
     app = FastAPI(
         title="Peach API",
@@ -812,6 +878,7 @@ def create_app(
     app.state.ledger_migration = LedgerMigration()
     app.state.web_contract = contract
     app.state.library_sharing = sharing
+    app.state.seed_sharing = seed_sharing
     app.state.repository = repository
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
@@ -842,6 +909,11 @@ def create_app(
     from .follow_evidence import Reclaim
     app.state.follow_evidence = Reclaim(Path(contract.follow_sources_root) / "follow", contract,
                                         runs=contract.task_runs)
+    app.state.follow_backfill = follow_backfill
+    from .cover_repair import CoverRepair
+    app.state.cover_repair = CoverRepair(contract.cover_root, upgrade_repairs.root, contract,
+                                         contract.follow_secrets_root, runs=contract.task_runs,
+                                         available=lambda: upgrade_repairs.available and contract.task_runs.enabled)
     app.state.push_discovery = push_discovery
     app.state.downloads = downloads
     app.state.jav_browser = jav_browser
@@ -969,6 +1041,7 @@ def create_app(
                 "mdns_service": mdns.name if mdns is not None else None,
                 "mdns_service_host": mdns.hostname if mdns is not None else None,
                 "mdns_address": mdns.address if mdns is not None else None,
+                "mdns_ipv6_addresses": list(getattr(mdns, "ipv6_addresses", ())),
                 "ledger_sync": sync.status if sync is not None else "disabled",
                 "ledger_read_only": read_only,
                 **_read_only_fields(sync, read_only),

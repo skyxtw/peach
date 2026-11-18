@@ -100,6 +100,7 @@
   "completionPrompt": {
     "afterCurrentTask": "当前任务结束后可单独补全。",
     "allMetered": "这批影片中有 {{count, number}} 部暂无预览，都在流量保护目录，同步时不抽帧，{{tail}}",
+    "dismiss": "不再提示",
     "done": "补全完成：取得 {{count, number}} 张封面，生成 {{previews}} 部视频预览。",
     "failed": "补全未完成",
     "fillMetered": "补全流量保护的 {{count, number}} 部",
@@ -124,7 +125,7 @@
     "doneAllReachable": "检查完成，全部可连接",
     "doneWithFailures": "检查完成，{{count, number}} 项未通过",
     "elapsed": "用时 {{seconds}} 秒",
-    "hdImages": "{{source}} 高清图片",
+    "hdImages": "{{source}} 图片",
     "help": "检查各来源页面与 DMM 高清图片服务器。可连接不代表登录有效。",
     "lastChecked": "上次检查 {{time}}",
     "loadingStatus": "正在读取连接检查状态",
@@ -135,6 +136,7 @@
     "seconds": "{{seconds}} 秒",
     "secondsSuffix": " · {{seconds}} 秒",
     "title": "连接检查",
+    "uncheckedTarget": "{{target}}：未检查",
     "unreachableTarget": "{{target}}：不能连接"
   },
   "customSources": {
@@ -276,12 +278,18 @@
     "title": "高清封面"
   },
   "hdUpgrades": {
+    "clearSelection": "取消选择",
+    "dockLabel": "所选高清升级的操作",
     "emptyBody": "现有版本都已满足条件，或还没有加入追踪。",
     "emptyTitle": "没有标记中的高清版目标",
+    "listReason": "判定原因",
     "loadFailed": "高清版目标读取失败",
     "noPreview": "暂无预览",
     "notFound": "未取得高清版目标，请刷新页面重试。",
     "openVideo": "打开 {{title}}",
+    "selectAll": "全选",
+    "selectVideo": "选择 {{title}}",
+    "selectedCount": "已选 {{count, number}} 部",
     "showingFirst": "显示前 {{shown}} 部，共 {{count, number}} 部。",
     "summaryLabel": "待升级",
     "unknownSize": "大小未知",
@@ -345,8 +353,7 @@
     "repairs": "修复与迁移",
     "review": "人工复核",
     "sources": "来源和凭证",
-    "trash": "回收站",
-    "trashCount": "{{count, number}} 个符合 · 显示 {{shown}}"
+    "trash": "回收站"
   },
   "manageSkeleton": {
     "loadingLibraryTools": "正在读取数据管理状态",
@@ -538,7 +545,13 @@
     "selectGroup": "全选本组",
     "sourceChosen": "已选择 {{source}}，点击通过所选采用。",
     "switchCategoryHint": "可切换分类查看其他待确认资料。",
-    "viewOtherCategories": "查看其他分类"
+    "viewOtherCategories": "查看其他分类",
+    "confirm": {
+      "approved": "将通过选中的 {{count, number}} 项，按所选来源写入资料。",
+      "rejected": "将忽略选中的 {{count, number}} 项，移到「已忽略」。",
+      "restore": "将选中的 {{count, number}} 项放回待处理。",
+      "skipped": "将选中的 {{count, number}} 项移到稍后处理。"
+    }
   },
   "reviewQueue": {
     "approved": "已通过",
@@ -591,6 +604,7 @@
     "processingStatus": "处理状态",
     "restoreSelected": "恢复所选",
     "reviewStatus": "复核状态",
+    "selectAll": "全选全部 {{count, number}} 项",
     "selectGroup": "全选当前分类",
     "selectPage": "全选本页",
     "selectedCount": "已选 {{count, number}} 项",
@@ -615,6 +629,8 @@
     "busyOrigin": "当前的扫描与采集任务（{{origin}}）还没结束，等它完成或取消后再开始新的同步",
     "canceledBody": "已取得的资料和预览已保留，这一轮不会自动继续，需要时重新同步。",
     "canceledTitle": "已取消上次任务",
+    "coversFetched": "已补上 {{count, number}} 张封面。",
+    "coversToast": "封面已补全：{{count, number}} 张",
     "currentLibraryName": "当前任务媒体库：{{name}}",
     "currentLine": "当前：{{file}} · {{action}}{{waited}}",
     "disconnected": "连接中断，正在重新读取处理进度",
@@ -678,6 +694,7 @@
     "waited": " · 已等待 {{elapsed}}"
   },
   "scrapingSources": {
+    "contents": "本页目录",
     "loadFailed": "读取采集来源失败",
     "loadFailedTitle": "采集来源读取失败",
     "loading": "正在读取采集来源",
@@ -768,6 +785,7 @@
     "setUpProxy": "配置 Peach 代理",
     "signInUnverified": "登录有效性待验证。",
     "testConnection": "检查连接",
+    "unchecked": "未检查",
     "uploadFile": "导入文件"
   },
   "stats": {
@@ -850,6 +868,8 @@
     "spaceUsed": "使用空间"
   },
   "syncMenu": {
+    "coversOnly": "仅补全封面",
+    "coversOnlyHint": "只找缺的封面，不查影片资料",
     "fillGroup": "补全方式",
     "fillImportedTitle": "补全已入库影片",
     "fillMetadataHint": "补资料和视频属性，生成预览图",
@@ -881,6 +901,7 @@
     "syncTheseVideos": "同步这些影片",
     "workCollect": "为已入库影片补全资料和视频属性，并生成预览图",
     "workCollectNoPreviews": "为已入库影片补全资料和视频属性",
+    "workCovers": "读取配套文件，只为缺封面的影片找封面，不查影片资料",
     "workFindNew": "发现并登记未入库的新文件，保留已有影片资料",
     "workFull": "扫描目录发现文件，再补全资料和视频属性，并生成预览图",
     "workFullNoPreviews": "扫描目录发现文件，再补全资料和视频属性",

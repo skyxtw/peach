@@ -286,9 +286,11 @@ class GitHubCandidateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "未取得"):
                 github.select("owner/repo", "a" * 40)
 
-    def test_loaded_docker_image_must_match_the_recorded_image_id(self):
-        image = {"Id": "sha256:" + "b" * 64, "Architecture": "arm64", "Config": {"Labels": {
-            "org.opencontainers.image.version": "1.2.3", "org.opencontainers.image.revision": "a" * 40}}}
+    def test_loaded_docker_image_must_match_the_recorded_image_content(self):
+        image = {"Id": "sha256:" + "b" * 64, "Architecture": "arm64", "Os": "linux",
+                 "RootFS": {"Type": "layers", "Layers": ["sha256:" + "1" * 64, "sha256:" + "2" * 64]},
+                 "Config": {"Entrypoint": ["/entrypoint.sh"], "Env": ["PATH=/usr/bin"], "Labels": {
+                     "org.opencontainers.image.version": "1.2.3", "org.opencontainers.image.revision": "a" * 40}}}
         inspected = []
         def inspect(command, **_kw):
             inspected.append(command[-1])
@@ -301,7 +303,14 @@ class GitHubCandidateTests(unittest.TestCase):
             self.assertEqual(set(inspected), {"longmeidao/peach:candidate-arm64"}, "每个架构核对自己的候选标签")
             with self.assertRaisesRegex(ValueError, "架构"):
                 github.image_receipt(receipt, "1.2.3", "amd64", verify=True)
+            # 在 arm64 runner（overlay2）记录、在 amd64 runner（containerd）载入后核对：Id 换了，内容没变。
             image["Id"] = "sha256:" + "c" * 64
+            github.image_receipt(receipt, "1.2.3", "arm64", verify=True)
+            image["RootFS"]["Layers"][-1] = "sha256:" + "3" * 64
+            with self.assertRaises(ValueError):
+                github.image_receipt(receipt, "1.2.3", "arm64", verify=True)
+            image["RootFS"]["Layers"][-1] = "sha256:" + "2" * 64
+            image["Config"]["Entrypoint"] = ["/other.sh"]
             with self.assertRaises(ValueError):
                 github.image_receipt(receipt, "1.2.3", "arm64", verify=True)
 

@@ -118,6 +118,24 @@ def download(repo: str, sha: str, group: str, destination: Path) -> dict:
     return {"promoted": True, "run_id": receipt["run_id"], "commit": sha, "group": group}
 
 
+#: 构成镜像内容身份的启动配置字段；其余字段（主机名、空端口表等）随 Docker 版本与存储方式变化。
+IMAGE_CONFIG_FIELDS = ("Entrypoint", "Cmd", "Env", "User", "WorkingDir", "Labels")
+
+
+def image_identity(inspected: dict) -> str:
+    """跨 Docker 镜像存储一致的内容身份：架构、各层内容摘要与启动配置。
+
+    `docker image inspect` 的 `Id` 在 containerd 存储里是 manifest 摘要，在 overlay2 存储里是 config 摘要；
+    arm64 runner 与发布用的 amd64 runner 存储不同，同一镜像 `docker load` 后 `Id` 对不上。层摘要按未压缩
+    内容计算，两种存储一致。"""
+    config = inspected.get("Config") or {}
+    content = {"architecture": inspected.get("Architecture"), "os": inspected.get("Os"),
+               "layers": (inspected.get("RootFS") or {}).get("Layers") or [],
+               "config": {field: config.get(field) for field in IMAGE_CONFIG_FIELDS}}
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def image_receipt(destination: Path, version: str, architecture: str, *, verify: bool) -> dict:
     actual = json.loads(subprocess.check_output(["docker", "image", "inspect", "--format", "{{json .}}",
                                                 f"longmeidao/peach:candidate-{architecture}"], text=True, encoding="utf-8"))
@@ -127,7 +145,10 @@ def image_receipt(destination: Path, version: str, architecture: str, *, verify:
         raise ValueError(t("github_release_candidate.imageTagMismatch"))
     if actual.get("Architecture") != architecture:
         raise ValueError(t("github_release_candidate.imageArchitectureMismatch"))
-    expected = {"image_id": actual["Id"], "commit": sha, "version": version, "architecture": architecture}
+    if not (actual.get("RootFS") or {}).get("Layers"):
+        raise ValueError(t("github_release_candidate.imageDigestMismatch"))
+    expected = {"image_identity": image_identity(actual), "commit": sha, "version": version,
+                "architecture": architecture}
     if verify:
         if json.loads(destination.read_text(encoding="utf-8")) != expected:
             raise ValueError(t("github_release_candidate.imageDigestMismatch"))

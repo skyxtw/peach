@@ -1,9 +1,9 @@
 /* preferences 域控制器：本域状态与动作，启动由 Application 的生命周期统一安装。 */
 import { loadMediaSources } from './../query/media-sources';
-import { buildBars, catalogState, dropOfflineFromDefaultLoc, homePath, loadCatalog, paintCatalogFilter, repaintCatalogGrid } from './catalog.js';
-import { appSettingsStore } from './../appearance/settings';
+import { buildBars, catalogState, dropOfflineFromDefaultLoc, homePath, loadCatalog, paintCatalogFilter, repaintCatalogGrid, syncCatalogFilterScreen } from './catalog.js';
+import { appSettingsStore, wireGestureSettings } from './../appearance/settings';
 import { interfaceLanguage, storedInterfaceLanguage, t } from '../i18n';
-import { entityDisplayName, setNameLanguage } from '../core/entity-names';
+import { entityDisplayName, setNameLanguage, setNameLocale } from '../core/entity-names';
 import { orientLabel } from '../core/stored-values';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from '../ui-kit/sounds';
 import { applyTheme, watchSystemTheme } from './../appearance/theme';
@@ -16,7 +16,7 @@ import { catalogSortPage, pageSortPreference, preferredDirection } from './../so
 import { releaseHoverPreviews, setHoverState } from './../card-art/hover';
 import { reloadCurrentSurface } from './layout.js';
 import { refreshPageNavigation } from '../history/page-navigation';
-import { refreshFeedRows, syncFeedAutoScroll } from './feed.js';
+import { refreshFeedRows, syncFeedAutoScroll, syncHomeFeedSetting } from './feed.js';
 import { stageApi } from '../react/application-residents';
 import { syncJavImages } from './../jav-artwork';
 import { coverAnchor } from './../card-art/framing';
@@ -163,6 +163,8 @@ preferencesState.OFFLINE_REASON = {local:t('shell:storageOffline.localLabel'),
 preferencesState.offlineReason = key=>preferencesState.sourceProblems[key]||preferencesState.OFFLINE_REASON[key]||t('shell:storageOffline.other');
 preferencesState.settingsStore = appSettingsStore();
 preferencesState.appSettings = preferencesState.settingsStore.value;
+wireGestureSettings(preferencesState.settingsStore);
+setNameLocale(interfaceLanguage);
 setNameLanguage(preferencesState.appSettings.performerNameLanguage);
 preferencesState.saveSettings = ()=>preferencesState.settingsStore.save();
 document.documentElement.style.setProperty('--hover-delay',`${preferencesState.appSettings.hoverDelaySeconds}s`);
@@ -208,6 +210,7 @@ preferencesState.settingsEffects = {
     notifyShell();
     if(location.pathname==='/')replaceCatalogAddress();
   },
+  hoverPreview:()=>{if(!preferencesState.appSettings.hoverPreview)releaseHoverPreviews()},
   hoverDelay:()=>{
     if(!preferencesState.appSettings.hoverDelaySeconds)document.querySelectorAll('[data-previewing],[data-longhover]')
       .forEach(el=>{setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)});
@@ -227,6 +230,17 @@ preferencesState.settingsEffects = {
     repaintDetailPoster();
   },
   searchHistoryLimit:()=>updateManagedRoute($('#searchMenu'),{historyLimit:preferencesState.appSettings.searchHistoryLimit}),
+  searchRecommendations:()=>updateManagedRoute($('#searchMenu'),{recommend:preferencesState.appSettings.searchRecommendations}),
+  feedNewRows:()=>syncHomeFeedSetting(state.browse==='folders'),
+  /* 竖屏带的开关与张数都改了目录的请求口径（排不排除竖屏、一条取几张），按新口径重取一遍。 */
+  homeShorts:()=>{if(isCatalogPath(location.pathname))loadCatalog()},
+  homeTiers:()=>syncCatalogFilterScreen(),
+  /* 首页当场换到新的默认档；地址上带着 `thumb` 的、不在首页的，下次回首页时生效。 */
+  homePreviewOnly:()=>{
+    if(navigationState.surfacePath()!=='/'||new URLSearchParams(location.search).has('thumb'))return;
+    state.thumb=preferencesState.appSettings.homePreviewOnly?'1':'0';notifyShell();
+    paintCatalogFilter({previewOnly:state.thumb==='1'});replaceCatalogAddress();
+  },
 };
 preferencesState.syncGlassOptics = ()=>{};
 preferencesState.placeSidebarHead = ()=>{};

@@ -2,6 +2,7 @@ import json
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from peach.ffmpeg import BinaryChoice
 from peach.hardware_transcode import HardwareEncoder
 from peach.transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
 from support.mp4 import minimal_mp4
+from support.stalls import stalled_mount
 
 
 class _Resolver:
@@ -77,6 +79,21 @@ class TranscodeServiceTests(unittest.TestCase):
             self.assertFalse(list((root / 'cache').glob('*.mp4')))
             self.assertEqual(source.read_bytes(), b'original')
 
+    def test_a_stuck_source_is_reported_unavailable_within_the_deadline(self):
+        """起播时片源 stat 没有现成的可用（大小写兜底、SMB）：再问一次也带期限。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source = root / 'stuck' / 'movie.mkv'
+            source.parent.mkdir()
+            source.write_bytes(b'original')
+            service = TranscodeService(_Resolver(root / 'ffmpeg.exe'), root / 'cache')
+            with stalled_mount(source.parent), patch('peach.transcodes.subprocess.Popen') as process:
+                started = time.monotonic()
+                with self.assertRaises(TranscodeUnavailable):
+                    service.browser_path(1, source)
+                self.assertLess(time.monotonic() - started, 3)
+            process.assert_not_called()
+
     def test_diagnostic_profile_reads_cached_evidence_without_touching_media(self):
         from peach.transcodes import _MediaProfile
         service = TranscodeService(_Resolver(None), Path('cache'))
@@ -89,6 +106,44 @@ class TranscodeServiceTests(unittest.TestCase):
             self.assertEqual(report['size_bytes'], 2048)
             self.assertNotIn(str(source), str(report))
             self.assertEqual(service.hardware.diagnostic_snapshot()['probe_status'], 'not-probed')
+
+    def test_original_trial_only_for_streams_the_browser_can_decode_and_hear(self):
+        for name, codec, pixel, audio, decode, expected in (
+            ("movie.mkv", "h264", "yuv420p", "aac", frozenset(), True),
+            ("movie.mkv", "h264", "yuv420p", "opus", frozenset(), True),
+            ("movie.mkv", "h264", "yuv420p", "ac3", frozenset(), False),
+            ("movie.mkv", "hevc", "yuv420p", "aac", frozenset(), False),
+            ("movie.mkv", "hevc", "yuv420p", "aac", frozenset({"hevc"}), True),
+            ("movie.mkv", "h264", "yuv420p10le", "aac", frozenset(), False),
+            ("movie.avi", "h264", "yuv420p", "aac", frozenset(), False),
+        ):
+            with self.subTest(name=name, codec=codec, audio=audio, decode=sorted(decode)), \
+                    tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                source = root / name
+                source.write_bytes(b"source")
+                service = TranscodeService(_Resolver(root / "ffmpeg", root / "ffprobe"), root / "cache")
+                streams = [{"codec_type": "video", "codec_name": codec, "pix_fmt": pixel},
+                           {"codec_type": "audio", "codec_name": audio}]
+                with patch("peach.transcodes.subprocess.Popen", side_effect=_media_process([], streams)):
+                    self.assertIs(service.original_playable(source, decode=decode), expected)
+
+    def test_hls_processing_preserves_compatible_video_and_audio_independently(self):
+        for codec, pixel, audio, mode in (
+            ("h264", "yuv420p", "aac", "copy"),
+            ("h264", "yuv420p", "dts", "audio"),
+            ("h264", "yuv420p10le", "aac", "transcode"),
+            ("hevc", "yuv420p", "aac", "transcode"),
+        ):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                source = root / "movie.mkv"
+                source.write_bytes(b"source")
+                service = TranscodeService(_Resolver(root / "ffmpeg", root / "ffprobe"), root / "cache")
+                streams = [{"codec_type": "video", "codec_name": codec, "pix_fmt": pixel},
+                           {"codec_type": "audio", "codec_name": audio}]
+                with patch("peach.transcodes.subprocess.Popen", side_effect=_media_process([], streams)):
+                    self.assertEqual(service.hls_mode(source), mode)
 
     def setUp(self):
         candidates = patch("peach.hardware_transcode.HardwareTranscoder._candidates",
@@ -264,6 +319,30 @@ class TranscodeServiceTests(unittest.TestCase):
                     service.media_duration(source)
                 self.assertEqual(len(calls), 2, "冷却过了再探一次")
 
+    def test_conversion_reuses_the_remembered_failed_probe(self):
+        """转码槽里那次探测也认失败记忆：探不动的片子再转一次不再多等一次 ffprobe。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "movie.avi"
+            source.write_bytes(b"avi")
+            service = TranscodeService(_Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                                       root / "cache", prefer_hardware=False)
+
+            class Process:
+                returncode = 1
+
+                def __init__(self, command, **_kwargs):
+                    self.command = command
+
+                def communicate(self, timeout=None):
+                    return b"", b"Invalid data found when processing input"
+
+            with patch.object(service, "_probe", return_value=None) as probe,                     patch("peach.transcodes.subprocess.Popen", side_effect=Process):
+                for _ in range(2):
+                    with self.assertRaises(TranscodeUnavailable):
+                        service.browser_path(9, source)
+            self.assertEqual(probe.call_count, 1)
+
     def test_avi_is_transcoded_once_and_cached(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -322,6 +401,115 @@ class TranscodeServiceTests(unittest.TestCase):
             self.assertEqual(transcodes[0][transcodes[0].index("-c:a") + 1], "copy")
             self.assertNotIn("h264_nvenc", transcodes[0])
             self.assertNotIn("libx264", transcodes[0])
+
+    def _hevc_path(self, decode, *, pixel_format="yuv420p", tag="hvc1", audio="aac"):
+        """按浏览器报的 `decode` 取一部 HEVC MP4 的播放路径；回 (路径, 是否产物, 编码命令)。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "movie.mp4"
+            source.write_bytes(b"source")
+            service = TranscodeService(_Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                                       root / "cache", prefer_hardware=False)
+            commands = []
+            streams = [
+                {"codec_type": "video", "codec_name": "hevc", "pix_fmt": pixel_format, "codec_tag_string": tag},
+                {"codec_type": "audio", "codec_name": audio},
+            ]
+            with patch("peach.transcodes.subprocess.Popen", side_effect=_media_process(commands, streams)):
+                path, produced = service.browser_path(31, source, decode=decode)
+                planned = service.requires_conversion(source, decode=decode)
+                remux = service.remuxes(source, decode=decode)
+            encodes = [command for command in commands if "ffprobe" not in command[0]]
+            return path.name, produced, planned, remux, encodes
+
+    def test_hevc_plays_from_the_original_only_when_the_browser_reports_it(self):
+        cases = (
+            # (decode, 像素格式, tag, 音轨, 直放, 换封装)
+            (frozenset(), "yuv420p", "hvc1", "aac", False, False),
+            (frozenset({"hevc"}), "yuv420p", "hvc1", "aac", True, False),
+            (frozenset({"hevc"}), "yuv420p10le", "hvc1", "aac", False, False),
+            (frozenset({"hevc", "hevc10"}), "yuv420p10le", "hvc1", "aac", True, False),
+            (frozenset({"hevc", "hev1"}), "yuv420p", "hev1", "aac", True, False),
+            (frozenset({"hevc"}), "yuv420p", "hev1", "aac", False, True),
+            (frozenset({"hevc"}), "yuv420p", "hvc1", "ac3", False, True),
+            (frozenset({"hevc"}), "yuv422p", "hvc1", "aac", False, False),
+            (frozenset({"hevc", "hevc10"}), "yuv420p10le", "dvh1", "aac", False, False),
+        )
+        for decode, pixel_format, tag, audio, direct, remux in cases:
+            with self.subTest(decode=sorted(decode), pixel_format=pixel_format, tag=tag, audio=audio):
+                name, produced, planned, remuxes, encodes = self._hevc_path(
+                    decode, pixel_format=pixel_format, tag=tag, audio=audio)
+                self.assertEqual(produced, not direct)
+                self.assertEqual(planned, not direct)
+                self.assertEqual(remuxes, remux)
+                if direct:
+                    self.assertEqual((name, encodes), ("movie.mp4", []))
+                    continue
+                first = encodes[0]
+                video = first[first.index("-c:v") + 1]
+                if remux:
+                    # 只换封装：视频原样复制、改写成 Safari 认的 hvc1，产物和 H.264 转码分开存。
+                    self.assertEqual(video, "copy")
+                    self.assertEqual(first[first.index("-tag:v") + 1], "hvc1")
+                    self.assertTrue(name.endswith("-copy.mp4"), name)
+                else:
+                    self.assertEqual(video, "libx264")
+                    self.assertFalse(name.endswith("-copy.mp4"), name)
+
+    def test_transport_stream_with_decodable_video_is_remuxed_not_reencoded(self):
+        """`.ts` 一类只是容器浏览器不认：探到解得了的视频就整片换封装，产物走 `-copy` 缓存。"""
+        cases = (
+            # (后缀, 视频编码, 像素格式, decode, 换封装)
+            (".ts", "h264", "yuv420p", frozenset(), True),
+            (".m2ts", "h264", "yuv420p", frozenset(), True),
+            (".mts", "hevc", "yuv420p", frozenset({"hevc"}), True),
+            (".ts", "hevc", "yuv420p", frozenset(), False),
+            (".ts", "mpeg2video", "yuv420p", frozenset({"hevc"}), False),
+        )
+        for suffix, codec, pixel_format, decode, remux in cases:
+            with self.subTest(suffix=suffix, codec=codec, decode=sorted(decode)), \
+                    tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                source = root / f"movie{suffix}"
+                source.write_bytes(b"transport")
+                service = TranscodeService(_Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                                           root / "cache", prefer_hardware=False)
+                commands = []
+                streams = [{"codec_type": "video", "codec_name": codec, "pix_fmt": pixel_format},
+                           {"codec_type": "audio", "codec_name": "aac"}]
+                with patch("peach.transcodes.subprocess.Popen", side_effect=_media_process(commands, streams)):
+                    self.assertEqual(service.remuxes(source, decode=decode), remux)
+                    path, produced = service.browser_path(5, source, decode=decode)
+                encodes = [command for command in commands if "ffprobe" not in command[0]]
+                self.assertTrue(produced)
+                self.assertEqual(path.name.endswith("-copy.mp4"), remux)
+                video = encodes[0][encodes[0].index("-c:v") + 1]
+                self.assertEqual(video, "copy" if remux else "libx264")
+                if remux:
+                    self.assertEqual(len(encodes), 1)
+                    self.assertEqual(encodes[0][encodes[0].index("-c:a") + 1], "copy")
+
+    def test_sessionless_transport_stream_probes_but_never_remuxes(self):
+        """悬停预览打不带会话的 `/stream`：`.ts` 只跑只读探测，缺缓存就拒绝，不起换封装。"""
+        from peach.transcodes import TranscodeNeedsSession
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "movie.ts"
+            source.write_bytes(b"transport")
+            service = TranscodeService(_Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                                       root / "cache", prefer_hardware=False)
+            commands = []
+            streams = [{"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p"}]
+            with patch("peach.transcodes.subprocess.Popen", side_effect=_media_process(commands, streams)):
+                with self.assertRaises(TranscodeNeedsSession):
+                    service.browser_path(5, source, convert=False)
+            self.assertEqual([Path(command[0]).stem for command in commands], ["ffprobe"])
+            self.assertFalse((root / "cache").exists() and any((root / "cache").iterdir()))
+
+    def test_decode_parameter_keeps_only_known_capabilities(self):
+        from peach.transcodes import parse_decode
+        self.assertEqual(parse_decode("hevc,hevc10,av1,,HEVC"), frozenset({"hevc", "hevc10"}))
+        self.assertEqual(parse_decode(""), frozenset())
 
     def test_h264_with_incompatible_audio_copies_video_and_encodes_aac(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -18,7 +18,7 @@ const placeholders = (text: string) => [...text.matchAll(/\{\{\s*([^},\s]+)[^}]*
 const base = (key: string) => key.replace(/_(zero|one|two|few|many|other)$/, '');
 const extraPlaceholders = (source: string, text: string) => placeholders(text).filter((name) => !placeholders(source).includes(name));
 
-/** TBX 里每条术语：中文词、英文写法、是不是禁用写法。 */
+/** TBX 里每条术语：中文词、英文写法、是不是禁用写法、Weblate 标记。 */
 function glossary() {
   const doc = new DOMParser().parseFromString(readFileSync(join(locales, 'glossary/en.tbx'), 'utf8'), 'application/xml');
   return [...doc.querySelectorAll('termEntry')].map((entry) => {
@@ -26,6 +26,7 @@ function glossary() {
     const target = lang('en')?.querySelector('tig');
     return {
       id: entry.getAttribute('id') || '',
+      flags: (entry.getAttribute('weblate-flags') || '').split(',').map((flag) => flag.trim()).filter(Boolean),
       zh: lang('zh-Hans')?.querySelector('term')?.textContent?.trim() || '',
       en: target?.querySelector('term')?.textContent?.trim() || '',
       forbidden: target?.querySelector('termNote[type="administrativeStatus"]')?.textContent?.trim() === 'forbidden',
@@ -102,6 +103,13 @@ describe('界面文案的语言资源', () => {
     expect(terms.length).toBeGreaterThan(0);
     expect(terms.filter((term) => !term.zh || !term.en)).toEqual([]);
     expect(new Set(terms.map((term) => term.id)).size).toBe(terms.length);
+  });
+
+  it('定稿术语都标成 terminology，Weblate 才会把它补进每门语言的术语表', () => {
+    /* 双语 TBX 没有新语言的模板，Weblate 新开语言时只建空文件；带这个标记的源术语由它同步到全部语言。禁用写法只针对英文，不同步。 */
+    const terms = glossary();
+    expect(terms.filter((term) => !term.forbidden && !term.flags.includes('terminology')).map((term) => term.id)).toEqual([]);
+    expect(terms.filter((term) => term.forbidden && term.flags.includes('terminology')).map((term) => term.id)).toEqual([]);
   });
 });
 

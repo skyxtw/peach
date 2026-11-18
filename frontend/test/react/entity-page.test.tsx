@@ -74,6 +74,9 @@ function serve(plan: Plan = {}) {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       writes.push({ url: url.pathname, body });
       if (url.pathname === '/api/entity-alias') return reply({ added: !body.remove, alias: body.alias });
+      if (url.pathname === '/api/entity-batch') return reply({ entity_ids: body.entity_ids, skipped: [],
+        mode: body.mode, asset_ids: body.mode === 'trash' ? [1, 2, 3] : [], retained_entity_ids: [],
+        purged: body.mode === 'purge' ? 3 : 0, blocked: [], cleanup_pending: [], cache_blocked: [] });
       if (url.pathname === '/api/avatar-pick') {
         plan.picked?.();
         return reply({ ok: true });
@@ -89,6 +92,12 @@ function serve(plan: Plan = {}) {
         plan.bind?.();
         return reply({ ok: true, entity_id: body.entity_id, kind: body.kind, id: body.id });
       }
+      if (url.pathname === '/api/entity-merge') {
+        return reply({
+          target: { id: body.target_id, canonical_name: '有冈みう' },
+          source: { id: body.source_id, canonical_name: NAME },
+        });
+      }
       return reply({ ok: true });
     }
     if (url.pathname === '/api/avatar-choices') {
@@ -97,12 +106,22 @@ function serve(plan: Plan = {}) {
           detail: '', found_by: '', current: false, crop: false, bases: [], focus: null, cast: 0 }] });
     }
     if (url.pathname === '/api/entity') return reply(plan.entityFor?.() ?? plan.entity ?? entity());
+    if (url.pathname === '/api/entity-batch/plan') return reply({ names: [NAME], assets: 3, bytes: 1024, shared: 0, token: 'profile-plan' });
     if (url.pathname === '/api/items') return reply(plan.items ? plan.items(query) : items([1, 2, 3]));
     if (url.pathname === '/api/photos') return reply(plan.photos ? plan.photos(query) : photos(0));
     if (url.pathname === '/api/photo-set') return reply(plan.set ? plan.set(query) : photos(2, { id: 9, title: '图集' }));
     if (url.pathname === '/api/follow/credentials') return reply({ providers: [] });
     if (url.pathname === '/api/follow') return reply(plan.follow ? plan.follow(query) : followPage([]));
     if (url.pathname === '/api/feeds/discoveries') return reply(plan.feed ?? { items: [] });
+    if (url.pathname === '/api/suggest') {
+      return reply({ groups: [{ kind: query.get('kind'), items: [
+        { value: NAME, n: 4, entity_id: 7001 }, { value: '有冈みう', n: 9, entity_id: 7002 }] }] });
+    }
+    if (url.pathname === '/api/entity-merge') {
+      return reply({ kind: query.get('kind'), alias: '有冈みう',
+        current: { id: Number(query.get('id')), canonical_name: NAME, works: 4 },
+        other: { id: Number(query.get('other')), canonical_name: '有冈みう', works: 9 } });
+    }
     if (url.pathname === '/api/feeds/check') {
       const checks = plan.checks ?? ['idle'];
       return reply({ status: checks.length > 1 ? checks.shift() : checks[0] });
@@ -154,13 +173,13 @@ function shellProps(patch: Partial<EntityPageProps> = {}): EntityPageProps {
     helpers: {
       portraitImg: () => '', wireDrag: vi.fn(), wireScroller: vi.fn(), wireFeedRow: vi.fn(),
       feedRowHtml: (data) => `<div class="feednewrow">${(data?.items || []).map((one) => `<div data-feed-id="${one.id}"></div>`).join('')}</div>`,
-      receipt: vi.fn(), failure: vi.fn(), aliasForm: vi.fn(async () => {}),
+      receipt: vi.fn(), failure: vi.fn(), aliasForm: vi.fn(async () => undefined),
       sourceToolsHtml: () => '', wireSourceTools: vi.fn(), comboItems: () => [],
       sortKeys: vi.fn((sort: string) => [{ key: 'new', label: '入库时间', pressed: sort === 'new', dir: '' as const, ariaLabel: '' }]),
     },
     actions: {
       route: vi.fn(), toggleTag: vi.fn(), clearFilter: vi.fn(), clearAll: vi.fn(), setSort: vi.fn(),
-      reshuffleVideos: vi.fn(() => '77'), setJavLayout: vi.fn(), setPhotoLayout: vi.fn(), openEntity: vi.fn(),
+      reshuffleVideos: vi.fn(() => '77'), setJavLayout: vi.fn(), setPhotoLayout: vi.fn(), openEntity: vi.fn(), openIndex: vi.fn(),
       javContext: vi.fn(), painted: vi.fn(), missing: vi.fn(), avatarChanged: vi.fn(), openFollowAuthor: vi.fn(),
     },
     ...patch,
@@ -204,6 +223,14 @@ const pressedView = (props: EntityPageProps) =>
 const readout = (props: EntityPageProps) => props.hosts.filter.querySelector('[data-entity-readout]')?.textContent;
 
 describe('首屏', () => {
+  it('列头选择另一位出演者时保留资料页身份范围', async () => {
+    const served = serve();
+    await fetchItems('performer', NAME, { tag: '演示标签' }, { jav: true, seed: '42' },
+      0, new AbortController().signal, { limit: 20, filters: { performer: '共演者', library: 'local' } });
+    const params = served.calls('/api/items')[0]!.searchParams;
+    expect(Object.fromEntries(params)).toMatchObject({ scope_kind: 'performer', scope_name: NAME,
+      performer: '共演者', library: 'local', tag: '演示标签', jav: '1', limit: '20', offset: '0' });
+  });
   it('资料页表格按页取数、全集排序并保留人物与标签筛选', async () => {
     const served = serve();
     await fetchItems('performer', NAME, { tag: '演示标签', state: 'fresh' }, { jav: true, seed: '42' },
@@ -250,6 +277,19 @@ describe('首屏', () => {
     expect(cards(page.props)).toEqual(['1', '2', '3']);
     expect(readout(page.props)).toBe('视频 · 3');
     expect(page.props.hosts.feed.querySelector('[data-feed-id="31"]')).not.toBeNull();
+  });
+
+  it('设置关掉了新作行：不预取、不取数，宿主收着', async () => {
+    const { appSettingsStore } = await import('@peach/appearance');
+    appSettingsStore().value.feedNewRows = false;
+    try {
+      const page = await open({ feed: { items: [{ id: 31, has_cover: true }] } });
+      expect(page.calls('/api/feeds/discoveries')).toHaveLength(0);
+      expect(page.props.hosts.feed.hidden).toBe(true);
+      expect(page.props.hosts.feed.querySelector('[data-feed-id]')).toBeNull();
+    } finally {
+      appSettingsStore().value.feedNewRows = true;
+    }
   });
 
   it('路由已经取得的实体资料直接用于首屏，作品和照片仍并行取齐', async () => {
@@ -493,6 +533,25 @@ describe('创作者的在线视图', () => {
 });
 
 describe('写操作', () => {
+  it.each(['profile', 'trash', 'purge'])('名称菜单弹窗提供三个范围，执行 %s 后返回名册', async (mode) => {
+    const page = await open();
+    vi.spyOn(legacyUi, 'confirmModal').mockImplementation((async (options: {
+      choices: { key: string; onConfirm: () => Promise<unknown> }[];
+    }) => ({ confirmed: true, result: await options.choices.find(choice => choice.key === mode)!.onConfirm() })) as unknown as typeof legacyUi.confirmModal);
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-delete]'));
+    await settle();
+    expect(legacyUi.confirmModal).toHaveBeenCalledWith(expect.objectContaining({
+      title: '删除', items: [NAME], danger: true, body: expect.stringContaining('不能撤销'),
+      choices: [expect.objectContaining({ key: 'profile', holdToConfirm: true }),
+        expect.objectContaining({ key: 'trash', holdToConfirm: true }), expect.objectContaining({ key: 'purge', holdToConfirm: true })],
+    }));
+    expect(page.writes).toEqual([{ url: '/api/entity-batch',
+      body: { operation: 'delete', mode, entity_ids: [7001], token: 'profile-plan' } }]);
+    expect(page.props.actions.openIndex).toHaveBeenCalledTimes(1);
+    expect(page.props.helpers.receipt).toHaveBeenCalledWith(expect.stringContaining('已删除 1 项档案'));
+  });
+
   it('添加别名：表单在壳，写回在岛；写完资料卡与作品列表一起重取', async () => {
     const page = await open();
     await click(page.host.querySelector('[data-namepick-toggle]'));
@@ -506,6 +565,123 @@ describe('写操作', () => {
     expect(page.writes).toEqual([{ url: '/api/entity-alias', body: { kind: 'performer', name: NAME, alias: 'しのだゆう' } }]);
     expect(page.calls('/api/entity')).toHaveLength(entityBefore + 1);
     expect(page.calls('/api/items')).toHaveLength(itemsBefore + 1);
+  });
+
+  it('撞名后合并作品更多的一侧，并把页面直接换到保留档案', async () => {
+    const page = await open();
+    vi.mocked(page.props.helpers.aliasForm).mockResolvedValue({
+      added: false,
+      alias: '有冈みう',
+      conflict: {
+        kind: 'performer', alias: '有冈みう',
+        current: { id: 7001, canonical_name: NAME, works: 2 },
+        other: { id: 7002, canonical_name: '有冈みう', works: 5 },
+      },
+    });
+    vi.spyOn(legacyUi, 'confirmModal').mockImplementation((async (options: {
+      onConfirm: () => Promise<unknown>;
+    }) => ({ confirmed: true, result: await options.onConfirm() })) as unknown as typeof legacyUi.confirmModal);
+
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-alias]'));
+    await settle();
+
+    expect(legacyUi.confirmModal).toHaveBeenCalledWith(expect.objectContaining({
+      title: '合并重复档案',
+      confirmLabel: '合并',
+      body: expect.stringContaining('合并后保留「有冈みう」（5 部作品）'),
+    }));
+    expect(page.writes).toEqual([{
+      url: '/api/entity-merge',
+      body: { kind: 'performer', target_id: 7002, source_id: 7001 },
+    }]);
+    expect(page.props.helpers.receipt).toHaveBeenCalledWith(
+      `已把「${NAME}」合并到「有冈みう」`);
+    expect(page.props.actions.openEntity).toHaveBeenLastCalledWith('performer', '有冈みう', true);
+  });
+
+  it('撞上另一份档案的别名：别名照常添上，再问要不要合并', async () => {
+    const page = await open();
+    vi.mocked(page.props.helpers.aliasForm).mockResolvedValue({
+      added: true,
+      alias: 'ゆう',
+      conflict: {
+        kind: 'performer', alias: 'ゆう', shared: true,
+        current: { id: 7001, canonical_name: NAME, works: 4 },
+        other: { id: 7002, canonical_name: '有冈みう', works: 2 },
+      },
+    });
+    vi.spyOn(legacyUi, 'confirmModal').mockResolvedValue({ confirmed: false });
+
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-alias]'));
+    await settle();
+
+    expect(legacyUi.confirmModal).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.stringContaining('它也是「有冈みう」的别名。两份如果重复，合并后保留「篠田ゆう」（4 部作品）'),
+    }));
+    expect(page.writes).toEqual([]);
+  });
+
+  it('名字菜单直接合并：搜出另一份，弹层写明保留作品多的那份，确认后合并并打开它', async () => {
+    const page = await open();
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-merge]'));
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[data-entity-merge-dialog]')!;
+    expect(dialog.open).toBe(true);
+    await type(dialog.querySelector('[data-entity-picker] input') as HTMLInputElement, '有冈');
+    await settle();
+    expect([...dialog.querySelectorAll('[data-entity-option]')].map(node => node.textContent)).toEqual(['有冈みう']);
+    await click(dialog.querySelector('[data-entity-option="7002"]'));
+    await settle();
+    expect(dialog.querySelector('[data-entity-merge-summary]')?.textContent)
+      .toBe(`合并后保留「有冈みう」（9 部作品），并入「${NAME}」（4 部作品）的作品与别名；不能撤销，合并前会备份账本。`);
+    await click(dialog.querySelector('[data-modal-confirm]'));
+    await settle();
+    expect(page.writes).toEqual([{
+      url: '/api/entity-merge',
+      body: { kind: 'performer', target_id: 7002, source_id: 7001 },
+    }]);
+    expect(page.props.helpers.receipt).toHaveBeenCalledWith(`已把「${NAME}」合并到「有冈みう」`);
+    expect(page.props.actions.openEntity).toHaveBeenLastCalledWith('performer', '有冈みう', true);
+  });
+
+  it('名字菜单直接合并：没选另一份就点合并，原因留在弹层里，不发请求', async () => {
+    const page = await open();
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-merge]'));
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[data-entity-merge-dialog]')!;
+    await click(dialog.querySelector('[data-modal-confirm]'));
+    await settle();
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain('先选要合并的另一份档案');
+    expect(page.writes).toEqual([]);
+  });
+
+  it('撞名时作品数相同，保留当前页并从另一条档案迁入关系', async () => {
+    const page = await open();
+    vi.mocked(page.props.helpers.aliasForm).mockResolvedValue({
+      added: false,
+      alias: '有冈みう',
+      conflict: {
+        kind: 'performer', alias: '有冈みう',
+        current: { id: 7001, canonical_name: NAME, works: 4 },
+        other: { id: 7002, canonical_name: '有冈みう', works: 4 },
+      },
+    });
+    vi.spyOn(legacyUi, 'confirmModal').mockImplementation((async (options: {
+      onConfirm: () => Promise<unknown>;
+    }) => ({ confirmed: true, result: await options.onConfirm() })) as unknown as typeof legacyUi.confirmModal);
+
+    await click(page.host.querySelector('[data-namepick-toggle]'));
+    await click(document.querySelector('[data-namepick-alias]'));
+    await settle();
+
+    expect(page.writes).toEqual([{
+      url: '/api/entity-merge',
+      body: { kind: 'performer', target_id: 7001, source_id: 7002 },
+    }]);
+    expect(page.props.actions.openEntity).toHaveBeenLastCalledWith('performer', '有冈みう', true);
   });
 
   it('换完头像：资料卡与作品网格都按重取回来的数据重建，图地址换成新版本', async () => {

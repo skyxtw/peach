@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { fmtDur, fmtSize, icon, requestErrorMessage } from '@peach/legacy/core';
+import { appSettingsStore } from '@peach/appearance';
 import {
   coverUrl, mixLabel, performerLabel, queueAvatarHtml, queueThumbHtml,
 } from '@peach/card-art';
@@ -23,7 +24,7 @@ import { RiArrowDownSLine } from '@remixicon/react';
 import { CatalogGridPage } from '../catalog-grid/catalog-grid-page';
 import { patchCatalogItems, replaceCatalogItem } from '../catalog-grid/catalog-grid';
 import type { MediaItem } from '../catalog-grid/types';
-import { RetryNote } from '../components/grid-reveal';
+import { DetailFailure } from '../components/detail-failure';
 import { PendingWork, pendingRefetch, usePendingWorkRefetch } from '../components/pending-work';
 import { MixQueue, MixQueueRow } from '../components/mix-queue';
 import { RelatedSection } from '../components/related-section';
@@ -37,20 +38,22 @@ import { MediaCarousel } from '../components/media-carousel';
 import { CatalogPicture } from './catalog-picture';
 import { fetchJavDetail, javDetailKey } from '../jav-detail/jav-detail';
 import { busyProps } from '../settings/use-action';
+import { LIBRARY_PROCESSING_URL } from '../library-processing/library-processing';
 import { ExternalPlayback } from './external-playback';
 import { isPlayerGuidePreview } from '../../player/guide-preview';
 import { CoverCrop } from '../cover-crop/cover-crop-page';
 import { queryClient } from '../query';
 import { LibraryCompletionPrompt, missingPreviewIds } from '../library-processing/library-completion';
 import {
-  CAST_SHOWN, FEEDBACK_URL, ITEM_TAG_URL, PLAYLIST_URL, PREFERENCE_URL, QUALITY_GOAL_URL,
+  CAST_SHOWN, FEEDBACK_URL, PLAYLIST_URL, PREFERENCE_URL, QUALITY_GOAL_URL,
   RELATED_URL, WATCH_LATER_URL, chooseItem, clampRating, detailTags, feedbackReceipt, fetchItem, fetchQueue,
-  hasTag, identityGroups, isVanished, itemKey, mediaGate, movedOrder, nextPart, nextRating, editionLabel, partLabel, partLabelHtml, playlistQueue,
-  queueCopy, queueKey, ratingStars, ratingText, realWatched, relatedKey, rememberTag, sameOrder,
-  withPartLabel, withTag, withoutTag,
-  type DetailEntityRef, type DetailItem, type DetailQueue, type DetailTag, type ItemDetailActions,
+  identityGroups, isVanished, itemKey, mediaGate, movedOrder, nextRating, editionLabel, partLabel, partLabelHtml, playlistQueue,
+  queueCopy, queueKey, queueNext, ratingStars, ratingText, realWatched, relatedKey, sameOrder,
+  withPartLabel,
+  type DetailEntityRef, type DetailItem, type DetailQueue, type ItemDetailActions,
   type ItemDetailHelpers, type ItemDetailProps, type MediaGate, type PlaylistPayload,
 } from './item-detail';
+import { ItemEditButton, applySavedItem } from './item-edit';
 import { t } from '../../i18n';
 
 /** 字形原样取壳那一份 `icon()`：骨架与遗留详情画的就是它，换成别的字形接管那一拍会跳。 */
@@ -80,14 +83,21 @@ export function ItemDetailPage(props: ItemDetailProps) {
   usePendingWorkRefetch(result.data?.pending_work, itemKey(id ?? 0));
   if (!result.data || (ref && !queue)) {
     const error = result.error || queueResult.error;
+    // 整页没取到：不在黑色舞台里画红色横条，弹层正中一句说明加重试（与番号、关注详情同一个）。
+    if (error) return (
+      <div data-stage-grid="" data-item-detail="">
+        <div data-detail-failure="">
+          <CloseStage onClose={actions.close} />
+          <DetailFailure detail={requestErrorMessage(error)} busy={result.isFetching || queueResult.isFetching}
+            onRetry={() => { if (queueResult.error) void queueResult.refetch(); if (result.error) void result.refetch() }} />
+        </div>
+      </div>
+    );
     return (
       <div data-stage-grid="" data-item-detail="">
         <div data-stage-media="" data-item-media="none">
           <CloseStage onClose={actions.close} />
-          <div data-item-placeholder="">
-            {error ? <RetryNote message={requestErrorMessage(error)}
-              onRetry={() => { if (queueResult.error) void queueResult.refetch(); if (result.error) void result.refetch() }} /> : null}
-          </div>
+          <div data-item-placeholder="" />
         </div>
       </div>
     );
@@ -103,7 +113,7 @@ const CloseStage = ({ onClose }: { onClose(): void }) => (
 
 function Detail(props: ItemDetailProps & { item: DetailItem; queue: DetailQueue | null }) {
   const { item, queue, actions, helpers } = props;
-  const write = useDetailWrite(item, actions, helpers.tagLabel);
+  const write = useDetailWrite(item, actions);
 
   /* 画出来的是哪一条只报一次：写完换进来的是同一条的新对象，不能因此重推地址、重画顶栏。 */
   const presented = useRef(item);
@@ -115,15 +125,21 @@ function Detail(props: ItemDetailProps & { item: DetailItem; queue: DetailQueue 
   }, []);
 
   const gate = isPlayerGuidePreview() ? '' : mediaGate(item, helpers.sourceOffline(String(item.root_id || item.location || '')));
-  const next = nextPart(queue, item.id);
-  const continuePart = () => {
-    if (next && queue) actions.openQueueItem({ kind: queue.kind, seedId: queue.seedId, autoplay: true }, next.id);
+  /* 播完按「播完之后」接：下一卷、队列下一条，或同一条从头再播。 */
+  const continueQueue = (video: HTMLVideoElement | null) => {
+    const next = queueNext(queue, item.id, appSettingsStore().value.afterPlayback);
+    if (!next || !queue) return;
+    if (next.id === item.id) {
+      if (video) { video.currentTime = 0; void video.play()?.catch(() => {}) }
+      return;
+    }
+    actions.openQueueItem({ kind: queue.kind, seedId: queue.seedId, playlistId: queue.playlistId, autoplay: true }, next.id);
   };
   return (
     <>
       <div data-stage-grid="" data-with-queue={queue ? '' : undefined} data-item-detail="">
         <MediaFrame item={item} gate={gate} helpers={helpers} actions={actions}
-          autoplay={props.queue?.autoplay} onEnded={continuePart} />
+          autoplay={props.queue?.autoplay} onEnded={continueQueue} />
         <Side item={item} queue={queue} write={write} helpers={helpers} actions={actions} />
       </div>
       <DetailContinuation queueCards={queue?.kind === 'parts' || queue?.kind === 'editions' ? queue.items.length : undefined}
@@ -139,7 +155,7 @@ function Detail(props: ItemDetailProps & { item: DetailItem; queue: DetailQueue 
 
 function MediaFrame({ item, gate, helpers, actions, autoplay, onEnded }: {
   item: DetailItem; gate: MediaGate; helpers: ItemDetailHelpers; actions: ItemDetailActions;
-  autoplay?: boolean; onEnded(): void;
+  autoplay?: boolean; onEnded(video: HTMLVideoElement | null): void;
 }) {
   /* 计费来源先挡一层说明，点了才拉流；没挂载与在线拦截的那两种不挂播放器。 */
   const [started, setStarted] = useState<'auto' | 'clicked' | ''>(gate ? '' : 'auto');
@@ -171,11 +187,17 @@ function MediaFrame({ item, gate, helpers, actions, autoplay, onEnded }: {
   useLayoutEffect(() => {
     const node = frameRef.current;
     if (!node || !started) return;
-    const complete = () => ended.current();
+    const complete = (event: Event) =>
+      ended.current(event.target instanceof HTMLVideoElement ? event.target : node.querySelector('video'));
+    /* 单片循环交给 `<video loop>`：播放器菜单里的「循环播放」读写的是同一个属性，两处对得上。 */
+    const loop = (event: Event) => {
+      if (event.target instanceof HTMLVideoElement && appSettingsStore().value.afterPlayback === 'repeat-one') event.target.loop = true;
+    };
     node.addEventListener('ended', complete, true);
+    node.addEventListener('loadedmetadata', loop, true);
     const unmount = actions.mountPlayer(node, mounting.current, null,
       started === 'clicked' || autoplay ? { autoplay: true } : undefined);
-    return () => { node.removeEventListener('ended', complete, true); unmount() };
+    return () => { node.removeEventListener('ended', complete, true); node.removeEventListener('loadedmetadata', loop, true); unmount() };
   }, [actions, started]);
   const badge = helpers.badgeHtml(item.location || '', item.cost || '', 'srcbig');
   return (
@@ -407,7 +429,7 @@ function Side({ item, queue, write, helpers, actions }: {
         {(item.medium || 'video') === 'video' && !online && !String(item.name || '').toLowerCase().endsWith('.iso')
           ? <ExternalPlayback key={item.id} id={item.id} onOpened={() => actions.toast(t('catalog:detailGate.externalPlayerRequested'))} /> : null}
         <Identity item={item} helpers={helpers} actions={actions} />
-        <Tags item={item} write={write} helpers={helpers} actions={actions} />
+        <Tags item={item} helpers={helpers} actions={actions} />
         <LibraryCompletionPrompt assetIds={missingPreviewIds([item], helpers.javImage())}
           onComplete={() => { void queryClient.invalidateQueries({ queryKey: itemKey(item.id) }) }} />
         <Trace item={item} />
@@ -473,7 +495,11 @@ function DetailTitle({ item, queue, helpers, actions, onStatus }: {
                 }} />
             </span>
           ) : null}
-          {item.location === 'online' ? null : <SourceTools id={item.id} actions={actions} onStatus={onStatus} />}
+          {item.location === 'online' ? null : <SourceTools id={item.id} code={item.code || ''} actions={actions} onStatus={onStatus} />}
+          <ItemEditButton item={item} helpers={helpers} onSaved={(saved) => {
+            applySavedItem(saved);
+            actions.toast(t('catalog:itemEdit.saved'));
+          }} />
         </span>
       </div>
     </div>
@@ -481,8 +507,25 @@ function DetailTitle({ item, queue, helpers, actions, onStatus }: {
 }
 
 /** 定位源文件与核对目录。对账删掉的可能就是这一条，删了就没什么可停留的，直接退回列表。 */
-function SourceTools({ id, actions, onStatus }: { id: number; actions: ItemDetailActions; onStatus(text: string): void }) {
+function SourceTools({ id, code, actions, onStatus }: {
+  id: number; code: string; actions: ItemDetailActions; onStatus(text: string): void;
+}) {
   const [busy, setBusy] = useState('');
+  /* 这一部重新采集资料（#208）：不复用来源快照，已有字段也再核一遍；你改过、批准过的字段不被覆盖。
+     另一趟处理在跑时接口原样交回那一趟的状态，这里据 `recheck` 认出没排上。 */
+  const recollect = async () => {
+    if (busy) return;
+    setBusy('recollect');
+    onStatus('');
+    try {
+      const state = await apiSend<{ recheck?: boolean }>(LIBRARY_PROCESSING_URL,
+        { stage: 'metadata', asset_ids: [id], recheck: true });
+      onStatus(t(state.recheck ? 'catalog:detailSource.recollectStarted' : 'catalog:detailSource.recollectBusy'));
+    } catch (error) {
+      onStatus(requestErrorMessage(error));
+    }
+    setBusy('');
+  };
   const reveal = async () => {
     if (busy) return;
     setBusy('reveal');
@@ -508,6 +551,13 @@ function SourceTools({ id, actions, onStatus }: { id: number; actions: ItemDetai
         {...(busy === 'sync' ? { 'aria-busy': true, 'aria-disabled': true } : {})} onClick={() => void sync()}>
         <Glyph name="folder-sync" />
       </button>
+      {code ? (
+        <button type="button" data-recollect={id} title={t('catalog:detailSource.recollectTip')}
+          aria-label={t('catalog:detailSource.recollect')}
+          {...(busy === 'recollect' ? { 'aria-busy': true, 'aria-disabled': true } : {})} onClick={() => void recollect()}>
+          <Glyph name="refresh-cw" />
+        </button>
+      ) : null}
     </>
   );
 }
@@ -571,13 +621,11 @@ function Identity({ item, actions }: { item: DetailItem; helpers: ItemDetailHelp
 
 /* ── 标签 ── */
 
-function Tags({ item, write, helpers, actions }: {
-  item: DetailItem; write: DetailWrite; helpers: ItemDetailHelpers; actions: ItemDetailActions;
-}) {
+/* 侧栏只读：点开标签看同标签的片；增删在标题旁的「编辑资料」里做。 */
+function Tags({ item, helpers, actions }: { item: DetailItem; helpers: ItemDetailHelpers; actions: ItemDetailActions }) {
   return <div data-item-tags="">
     <DetailTags key={item.id} id="detailTags" tags={detailTags(item, helpers)} candidates={helpers.tagCandidates()} label={helpers.tagLabel}
-      adding={[...write.busy].some(key => key.startsWith('add:'))}
-      onOpen={actions.openTag} onAdd={write.addTag} onRemove={write.removeTag} busyAttrs={tag => write.busyAttrs(`tag:${tag}`)} />
+      onOpen={actions.openTag} />
   </div>;
 }
 
@@ -655,7 +703,7 @@ function Related(props: ItemDetailProps & { item: DetailItem }) {
 type DetailWrite = ReturnType<typeof useDetailWrite>;
 type Patch = Partial<DetailItem>;
 
-function useDetailWrite(item: DetailItem, actions: ItemDetailActions, label: (tag: string) => string) {
+function useDetailWrite(item: DetailItem, actions: ItemDetailActions) {
   const id = item.id;
   const key = itemKey(id);
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
@@ -765,40 +813,6 @@ function useDetailWrite(item: DetailItem, actions: ItemDetailActions, label: (ta
         const saved = current();
         actions.toast(saved.liked ? t('catalog:detailFeedback.likeSaved') : t('catalog:detailFeedback.likeRemoved'), {
           undo: async () => { paint(await post<Preference>(PREFERENCE_URL, before)) },
-        });
-      });
-    },
-
-    removeTag: (tag: DetailTag) => start(`tag:${tag.k}`, t('catalog:detailTags.remove'), async () => {
-      const result = await post<{ ok?: boolean }>(ITEM_TAG_URL, { operation: 'remove', tag: tag.k });
-      if (!result.ok) throw new Error(t('catalog:detailTags.notRemoved'));
-      apply((now) => withoutTag(now, tag.k));
-      actions.toast(t('catalog:detailTags.removed', { tag: label(tag.k) }), {
-        undo: async () => {
-          await post(ITEM_TAG_URL, { operation: 'add', tag: tag.k });
-          apply((now) => withTag(now, tag));
-        },
-      });
-    }),
-
-    addTag: (raw: string) => {
-      const tag = raw.trim();
-      if (!tag) return;
-      start(`add:${tag}`, t('catalog:detailTags.add'), async () => {
-        const result = await post<{ ok?: boolean; tag?: string }>(ITEM_TAG_URL, { operation: 'add', tag });
-        if (!result.ok) return;
-        const canonical = result.tag || tag;
-        if (hasTag(current(), canonical)) {
-          actions.toast(t('catalog:detailTags.alreadyTagged', { tag: label(canonical) }));
-          return;
-        }
-        apply((now) => withTag(now, { k: canonical, cat: 'general' }));
-        rememberTag(canonical);
-        actions.toast(t('catalog:detailTags.added', { tag: label(canonical) }), {
-          undo: async () => {
-            await post(ITEM_TAG_URL, { operation: 'remove', tag: canonical });
-            apply((now) => withoutTag(now, canonical));
-          },
         });
       });
     },

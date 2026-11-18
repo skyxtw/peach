@@ -36,6 +36,9 @@ it('创作者名片官方头像使用本机代理和归档回退，实体图优�
   expect(image.dataset.drop).toBe('self');
   expect(parse(avatarInner('创作者', { ...ref, has_image: true }, null, 'creator'))?.getAttribute('src'))
     .toBe('/entity-image?kind=creator&id=7&thumb=1');
+  expect(parse(avatarInner('创作者', { ...ref, has_avatar: true, rep: 41 }, null, 'creator'))?.getAttribute('src'))
+    .toBe('/avatar?id=41');
+  expect(parse(avatarInner('创作者', ref, 42, 'creator'))?.getAttribute('src')).toBe('/avatar?id=42');
 });
 
 describe('entityFaceImg：实体图优先，取不到退代表作头像', () => {
@@ -220,6 +223,17 @@ describe('coverImage：官方封面', () => {
     expect(manual.dataset.posterbox).toBeDefined();
     expect(parse(coverImage({ code: 'IENFE-5301' }, 'big'))!.dataset.coverLayout).toBe('still');
     expect(parse(coverImage({ code: 'IENFE-5301', cover_frame: { cy: .8 } }, 'big'))!.dataset.cy).toBe('0.8');
+  });
+  it('装了竖版正封的大图位用它，小图位仍取整张横图，两张地址都挂在元素上', () => {
+    const item = { code: 'START-404', cover_version: 'v1', cover_frame: { layout: 'still', front: true } };
+    const big = parse(coverImage(item, 'big'))!;
+    expect(big.getAttribute('src')).toBe('/cover?front=1&code=START-404&thumb=2&v=v1');
+    expect(big.dataset.coverWhole).toBe('/cover?code=START-404&thumb=2&v=v1');
+    expect(parse(coverImage(item, 'small'))!.getAttribute('src')).toBe('/cover?code=START-404&thumb=2&v=v1');
+    // 人手工框过的，用的是人定的那一块横图。
+    const manual = parse(coverImage({ ...item, poster_box: { x0: 0, y0: 0, x1: 300, y1: 600, px: [800, 600], method: 'manual' } }, 'big'))!;
+    expect(manual.getAttribute('src')).toBe('/cover?code=START-404&thumb=2&v=v1');
+    expect(manual.dataset.coverFront).toBeUndefined();
   });
   it('来源封面携带作品身份和明确的 Blu-ray 版次', () => {
     const img = parse(coverImage({ code: 'MIDA-122', title: '作品（ブルーレイディスク）' }, 'big'))!;

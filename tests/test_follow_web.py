@@ -204,6 +204,30 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row['source'] for row in scheduled['results']], [stale])
         self.assertEqual({row['source'] for row in manual['results']}, {stale, recent})
 
+    def test_a_round_that_stays_paused_does_not_hold_the_scheduler(self):
+        """这一轮在任务中心被暂停、一直不恢复：定时那一跳到期就回来，下一跳照常判忙，不再无限等。"""
+        source = self._seed()
+        entered, release = threading.Event(), threading.Event()
+        def paused(row, **kwargs):
+            entered.set()
+            release.wait(10)
+            return {'source': row['id'], 'ok': True, 'page': 0}
+        with mock.patch.object(web_follow, 'run_check', side_effect=paused), \
+                mock.patch.object(web_follow, '_check_payload', side_effect=lambda result: result), \
+                mock.patch.object(web_follow, 'CHECK_WAIT_SECONDS', 0.3):
+            try:
+                begun = time.monotonic()
+                scheduled = self._post('/api/follow/check', {'automatic': True})
+                self.assertLess(time.monotonic() - begun, 5, '定时那一跳一直等到这一轮跑完')
+                self.assertTrue(entered.is_set())
+                self.assertEqual(scheduled['status'], 'running')
+                self.assertTrue(self._post('/api/follow/check', {'automatic': True})['busy'])
+            finally:
+                release.set()
+                self.contract.follow_job.thread.join(5)
+        final = web_follow.q_follow_check(self.contract, {})
+        self.assertEqual((final['status'], [row['source'] for row in final['results']]), ('complete', [source]))
+
     def test_failed_numeric_source_has_a_readable_author(self):
         source = self._seed(ref='patreon/12387984', label='Pantsushi · patreon')
         with mock.patch.object(web_follow, 'build_connector') as factory:
@@ -252,6 +276,7 @@ class FollowContractTests(unittest.TestCase):
             # 题材圆标的取景从这个目录下的 sidecar 读。不给临时目录的话，判据变成
             # 「这台机器上碰巧缓存过哪些题材图」，同一份代码换台机器就是另一个结果。
             candidate_root=self.root / "generated",
+            avatar_root=self.root / 'generated' / 'avatars',
             # 状态根同理：创作者清单在那里，不给就会读到这台机器上的 42 万个名字，
             # 快慢和结果都由本机状态决定。
             follow_state_root=self.root / "state")
@@ -769,6 +794,25 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(item["media_needs_credential"])
         self.assertTrue(all("url" not in media for media in item["media_items"]))
 
+    def test_simpcity_floor_images_become_a_gallery_and_a_single_image_stays_single(self):
+        """SimpCity 楼层的几张图按正文顺序成为媒体清单，供详情页轮播；一张图的楼层照旧单图。"""
+        images = ["https://jpg6.su/img/one.jpg", "https://jpg6.su/img/two.jpg", "https://img.kiwi/three.png"]
+        self._seed(candidates=(
+            FollowCandidate(provider="simpcity", external_id="501", title="Thread",
+                            url="https://simpcity.cr/threads/t.9/post-501", media_url=images[0],
+                            thumb_url=images[0], extra={"images": images, "image_count": 3}),
+            FollowCandidate(provider="simpcity", external_id="502", title="Thread",
+                            url="https://simpcity.cr/threads/t.9/post-502", media_url=images[1],
+                            thumb_url=images[1], extra={"images": images[1:2], "image_count": 1}),
+        ), provider="simpcity", ref="t.9", semantics="release")
+        items = {group["primary"]["external_id"]: group["primary"] for group in self._get()["groups"]}
+        gallery = items["501"]["media_items"]
+        self.assertEqual([media["media_kind"] for media in gallery], ["image"] * 3)
+        self.assertEqual([media["index"] for media in gallery], [0, 1, 2])
+        self.assertTrue(all("url" not in media for media in gallery))
+        self.assertEqual(items["502"].get("media_items") or [], [])
+        self.assertEqual(items["502"]["media_kind"], "image")
+
     def test_confirmed_discussion_attachment_projects_a_gofile_placeholder(self):
         image = "https://attachments.f95zone.to/2026/09/6456143_attachment-3.gif"
         self._seed(candidates=(FollowCandidate(
@@ -1234,6 +1278,9 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(result["items"], items)
         self.assertEqual(self._get(status="seen")["counts"]["seen"], 2)
 
+        self._post("/api/follow/status", {"items": items, "previous": result["previous"]})
+        self.assertEqual(self._get(status="seen")["counts"]["seen"], 0, "撤销按回执里的原状态写回")
+
     def test_direct_online_play_counts_without_saving_an_asset(self):
         self._seed()
         item = self._get()["groups"][0]["primary"]["id"]
@@ -1438,6 +1485,20 @@ class FollowContractTests(unittest.TestCase):
         last = self._get("/api/follow/tags", limit=1, offset=2)
         self.assertEqual([row["k"] for row in last["items"]], ["pov"])
         self.assertFalse(last["has_more"])
+
+    def test_online_tag_vocabulary_is_built_once_until_follow_data_changes(self):
+        """整份词表要过一遍全部关注条目（生产一次 3 秒）：搜索、翻页只在算好的那份上切，关注数据变了才重算。"""
+        from unittest import mock
+        from peach import web_follow
+        self._seed(candidates=(self._tagged("1", ["anal", "pov"]), self._tagged("2", ["anal"])))
+        with mock.patch.object(web_follow, "_follow_facets", wraps=web_follow._follow_facets) as facets:
+            self._get("/api/follow/tags")
+            self._get("/api/follow/tags", q="po")
+            self._get("/api/follow/tags", limit=1, offset=1)
+            self.assertEqual(facets.call_count, 1)
+            self._seed(candidates=(self._tagged("3", ["blowjob"]),), ref="another", label="Another")
+            self.assertIn("blowjob", [row["k"] for row in self._get("/api/follow/tags")["items"]])
+            self.assertEqual(facets.call_count, 2)
 
     def _clip(self, external_id, *, duration=None, score=None, published_at=None):
         extra = {"tags": ["anal"], "tag_types": {"anal": "general"}}
@@ -2040,6 +2101,23 @@ class FollowContractTests(unittest.TestCase):
         self._seed()
         full = self._get()
         self.assertFalse(full["has_more"], "一页装得下时不该说还有下一页")
+
+    def test_sources_share_the_bound_entity_portrait_reference(self):
+        first = self._seed(ref='first')
+        second = self._seed(ref='second')
+        with self.contract.database.write_transaction() as connection:
+            entity_id = connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES('creator','Author','author',?,?)", (MOMENT.isoformat(), MOMENT.isoformat())
+            ).lastrowid
+            connection.execute("UPDATE follow_source SET entity_id=? WHERE id IN (?,?)",
+                               (entity_id, first, second))
+        portrait = {'id': entity_id, 'name': 'Author', 'has_image': True,
+                    'image_version': 'saved-photo', 'avatar_focus': {'axis': 'y', 'pct': 20}}
+        with mock.patch('peach.web_catalog.entity_ref', return_value=portrait) as reference:
+            payload = self._get(summary='1')
+        self.assertEqual([row['author_entity'] for row in payload['sources']], [portrait, portrait])
+        reference.assert_called_once_with(self.contract, 'creator', entity_id, 'Author')
 
     def test_paging_does_not_repeat_or_skip_items(self):
         """翻页靠 OFFSET，排序必须绝对稳定，否则两页之间会重复或漏掉条目。"""

@@ -26,7 +26,7 @@ from torznab.exceptions import TorznabAPIError
 from torznab.parser import parse_capabilities, parse_torznab
 
 from .catalog_rules import (
-    UNCENSORED_EDITIONS, jav_edition_badges, normalise_code_key, release_code_from_text, same_release_code,
+    UNCENSORED_EDITIONS, jav_edition_badges, normalise_code_key, release_code_from_product, same_release_code,
 )
 from .coded_text import Said, coded, parallel
 from .catalog_vocabulary import CHINESE_SUBTITLES, RESOURCE_CHINESE_SUBTITLES
@@ -208,7 +208,7 @@ def candidate(item, indexer: dict, code: str, filters: Filters,
             rejected[reason] += 1
 
     title = str(item.title or "")[:500]
-    if not same_release_code(scan_code(title), code):
+    if not (same_release_code(scan_code(title), code) or same_release_code(scan_code(title, product=True), code)):
         return reject("code")
     if item.size is None or not filters.min_size <= item.size <= filters.max_size:
         return reject("size")
@@ -298,7 +298,7 @@ class Search:
 
     def run(self, indexers: list[dict], code: str, filters: Filters, blocked=()) -> dict:
         code = normalise_code_key(code)
-        if not code or len(code) > 80 or not same_release_code(release_code_from_text(code), code):
+        if not code or len(code) > 80 or not same_release_code(release_code_from_product(code), code):
             raise UserValueError("errors.resourceSearch.invalidCode")
         active = [row for row in indexers if row.get("enabled")]
         if len(active) > MAX_INDEXERS:

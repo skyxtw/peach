@@ -57,6 +57,25 @@ it('新作来源共演头像直接按来源图片地址加载并在忽略后可�
   expect(mounted.host.querySelector('[data-feed-id]')).toBeNull();
 });
 
+it('新作加入与取消想要均单击执行，取消后可重新加入', async () => {
+  const host = document.createElement('section');
+  document.body.append(host);
+  const write = vi.fn().mockResolvedValue(undefined);
+  const html = '<div class="feednewrow"><article data-feed-id="1"><button data-feed-action="want">想要</button></article></div>';
+  const mounted = await mountRoot(<FeedNewRow host={host} feedNew={{items:[{id:1}],html}} wire={() => {}} act={write} />);
+  const button = mounted.host.querySelector<HTMLButtonElement>('[data-feed-action]')!;
+  await click(button);
+  expect(write).toHaveBeenLastCalledWith(1, 'want');
+  expect(button.dataset.feedAction).toBe('unwant');
+  await click(button);
+  expect(write).toHaveBeenCalledTimes(2);
+  expect(write).toHaveBeenLastCalledWith(1, 'unwant');
+  expect(button.dataset.feedAction).toBe('want');
+  await click(button);
+  expect(write).toHaveBeenCalledTimes(3);
+  expect(write).toHaveBeenLastCalledWith(1, 'want');
+});
+
 function props(patch: Partial<FeedNewProps> = {}): FeedNewProps {
   const host = document.createElement('section');
   host.hidden = true;

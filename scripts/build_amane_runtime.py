@@ -60,7 +60,7 @@ def corresponding_source(destination: Path, work: Path, facts: dict) -> None:
             output.write(path, "peach/" + path.relative_to(ROOT).as_posix())
         lock = tomllib.loads((BRIDGE / "uv.lock").read_text(encoding="utf-8"))
         for package in lock["package"]:
-            if package["name"] not in {"zhconv", "certifi"}:
+            if package["name"] != "certifi":
                 continue
             source = package["sdist"]
             with urllib.request.urlopen(source["url"], timeout=120) as response:
@@ -75,7 +75,7 @@ def corresponding_source(destination: Path, work: Path, facts: dict) -> None:
         f"revision：{facts['revision']}\n\n"
         "amane 按 GPL-3.0 分发，许可证见 LICENSE-amane.txt。完整对应源码位于 "
         "amane-corresponding-source.zip，包含原版 amane、Peach 桥、依赖锁与构建入口，"
-        "以及 zhconv（GPL-2.0-or-later）和 certifi（MPL-2.0）的固定源码。"
+        "以及 certifi（MPL-2.0）的固定源码。"
         "桥按 AGPL-3.0-or-later 分发，许可证位于源码归档 peach/LICENSE。"
         "依赖许可证保留于随包的 dist-info 目录；PyInstaller bootloader 适用其发行例外。\n",
         encoding="utf-8")

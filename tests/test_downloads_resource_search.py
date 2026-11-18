@@ -135,6 +135,12 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(self.requests[1].url.params["q"], "1234567")
         self.assertEqual(len(result["items"]), 1)
 
+    def test_a_product_code_with_a_trailing_letter_is_searched_and_keeps_its_letter(self):
+        """`DANDY-851C` 这类带尾字母的商品番号能查；不带尾字母的另一部作品照旧筛掉。"""
+        result = self.search(feed(item(title="DANDY-851 1080p"), item(title="DANDY-851C 1080p")), code="DANDY-851C")
+        self.assertEqual([row["name"] for row in result["items"]], ["DANDY-851C 1080p"])
+        self.assertEqual(result["rejected"], {"code": 1})
+
     def test_filters_reject_different_code_zero_seeders_size_and_blocked_hash(self):
         result = self.search(feed(item(title="ABC-124"), item(seeders=0), item(size=1), item()),
                              filters=Filters(min_size=100), blocked=[HASH])

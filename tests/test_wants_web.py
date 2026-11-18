@@ -42,6 +42,20 @@ class MagnetLookupTests(unittest.TestCase):
             self.assertEqual(refreshing['items'], found['items'])
         self.assertEqual(fetcher.call_count, 1)
 
+    def test_old_partial_failure_is_refetched_while_its_magnets_remain_settlement_evidence(self):
+        from peach.wants_magnets import MagnetSearch
+        now = 1_800_000_000.0
+        path = self.root / 'cache/want-resources.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'version': 1, 'entries': [{'code': 'DEMO-001', 'saved': now - 3600,
+            'result': {'state': 'ready', 'items': self.items, 'warnings': ['JavDB：未取得']}}]}), encoding='utf-8')
+        fetcher = Mock(return_value={'items': self.items, 'complete': True})
+        search = MagnetSearch(self.root, fetcher=fetcher, wallclock=lambda: now)
+        self.assertIsNotNone(search.known_candidate('DEMO-001'))
+        self.assertEqual(search.query('DEMO-001')['items'], self.items)
+        fetcher.assert_called_once()
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['version'], 2)
+
     def test_restart_keeps_resources_and_the_original_expiry(self):
         from peach.wants_magnets import MagnetSearch
         from unittest.mock import Mock
@@ -230,6 +244,11 @@ class WantWebFixture(unittest.TestCase):
             row = wants.add_code(connection, 'DEMO-001')
         with patch('peach.wants_magnets.search_for') as factory:
             factory.return_value.query.return_value = {"state": "ready", "items": []}
+            from peach.scraping_access import sends_cookie
+            def resource_result(*args, **kwargs):
+                self.assertTrue(sends_cookie('javdb'))
+                return {'state': 'ready', 'items': []}
+            factory.return_value.query.side_effect = resource_result
             self.get('/api/wants/magnets', id=str(row['id']))
             factory.return_value.query.assert_called_once_with('DEMO-001', refresh=False, released=None)
             self.get('/api/wants/magnets', id=str(row['id']), refresh='1')
@@ -242,6 +261,26 @@ class WantWebFixture(unittest.TestCase):
             self.get('/api/wants/magnets', id='-1')
         with self.assertRaises(KeyError):
             self.get('/api/wants/magnets', id='999999')
+
+    def test_cached_real_magnets_restore_given_up_wants_through_the_write_route(self):
+        from peach.wants_magnets import search_for
+        with self.contract.database.write_transaction() as connection:
+            row = wants.add_code(connection, 'DEMO-001')
+            missing = wants.add_code(connection, 'DEMO-002')
+            for _ in range(3):
+                wants.record_search(connection, row['id'], 'none')
+        search = search_for(self.contract.follow_secrets_root)
+        item = {'protocol': 'magnet', 'uri': 'magnet:?xt=urn:btih:' + 'a' * 40,
+                'name': '论坛@546DEMO-001J', 'source': 'JavBus', 'source_url': 'https://www.javbus.com/DEMO-001',
+                'size': '4 GB', 'attributes': []}
+        with patch.object(search, 'fetcher', return_value={'items': [item]}) as fetcher:
+            search.query('DEMO-001')
+            result = self.post('/api/wants', {'action': 'found', 'ids': [row['id'], missing['id']]})
+            self.assertEqual(result['affected'], 1)
+            restored = next(item for item in self.get()['items'] if item['id'] == row['id'])
+            self.assertEqual((restored['phase'], restored['search_count'], restored['last_search_outcome']), ('searching', 0, 'found'))
+            self.assertEqual(self.post('/api/wants', {'action': 'found', 'ids': [row['id']]})['affected'], 0)
+            self.assertEqual(fetcher.call_count, 1)
 
     def test_want_list_reports_known_magnets_without_searching_sources(self):
         from peach.wants_magnets import search_for
@@ -364,6 +403,94 @@ class WantListTests(WantWebFixture):
         self.assertEqual(self.post("/api/wants", {"action": "remove", "ids": [first]})["affected"], 1)
         self.assertEqual([(item["id"], item["phase"], item["search_count"]) for item in self.get()["items"]],
                          [(second, wants.SEARCHING, 0)])
+
+    def test_remove_and_reset_are_undone_from_the_receipt(self):
+        first = self.post("/api/wants", {"action": "add", "code": "ABP-100"})["want"]["id"]
+        second = self.post("/api/wants", {"action": "add", "code": "ABP-101"})["want"]["id"]
+        self.settle()
+        self.execute("UPDATE want_item SET state='given_up',search_count=3,given_up_at='x' WHERE id=?",
+                     (second,))
+        reset = self.post("/api/wants", {"action": "reset", "ids": [second]})
+        removed = self.post("/api/wants", {"action": "remove", "ids": [first]})
+        for receipt in (removed, reset):
+            self.post("/api/wants", {"action": "restore", "rows": receipt["previous"]})
+        listed = {item["id"]: item for item in self.get()["items"]}
+        self.assertEqual(set(listed), {first, second}, "移除的那条按原 id 回来")
+        self.assertEqual(listed[second]["search_count"], 3, "重置的计数原样写回")
+        with self.assertRaises(ValueError):
+            self.post("/api/wants", {"action": "restore", "rows": [{"code": "ABP-102"}]})
+
+
+class ScheduledSearchTests(WantWebFixture):
+    """定时查资源：按到期挑条目，查到与否按浏览器添加的番号判据，逐条记账，来源连续失败就歇。"""
+
+    def wanted(self, *codes):
+        # 查询换成按番号回答的假查询；只在本类的用例里换，基类继承来的资源查询用例照常走真的。
+        self.results: dict[str, dict] = {}
+        factory = self.enterContext(patch('peach.wants_magnets.search_for'))
+        factory.return_value.query.side_effect = lambda code, refresh=False, released=None: self.results[code]
+        factory.return_value.known_candidate.return_value = None
+        with self.contract.database.write_transaction() as connection:
+            return [wants.add_code(connection, code)['id'] for code in codes]
+
+    def answer(self, code, state='ready', names=(), **extra):
+        items = [{'protocol': 'magnet', 'uri': f'magnet:?xt=urn:btih:{index:040x}', 'name': name,
+                  'size': '4 GB', 'attributes': []} for index, name in enumerate(names, 1)]
+        self.results[code] = {'state': state, 'items': items, 'warnings': [], 'error': '',
+                              'checked_at': datetime.now(timezone.utc).isoformat(), **extra}
+
+    def run_round(self):
+        started = web_wants.start_search(self.contract)
+        thread = self.contract.want_search_job.thread
+        if thread is not None:
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+        return started
+
+    def outcomes(self):
+        with self.contract.database.read_connection() as connection:
+            return dict(connection.execute(
+                "SELECT code,last_search_outcome FROM want_item ORDER BY id").fetchall())
+
+    def test_a_round_records_found_none_and_source_errors(self):
+        self.wanted('DEMO-001', 'DEMO-002', 'DEMO-003')
+        self.answer('DEMO-001', names=['[HD] DEMO-001.mp4'])
+        self.answer('DEMO-002', names=['OTHER-999 完整版'])
+        self.answer('DEMO-003', state='error', error='来源连接失败')
+        self.assertIsNotNone(self.run_round())
+        self.assertEqual(self.outcomes(), {'DEMO-001': 'found', 'DEMO-002': 'none', 'DEMO-003': 'error'})
+        summary = self.contract.task_runs.query(task_key='want-search')[0].result_summary
+        self.assertEqual((summary['found'], summary['none'], summary['failed']), (1, 1, 1))
+        listed = {item['code']: item for item in self.get()['items']}
+        self.assertEqual(listed['DEMO-001']['last_search_outcome'], 'found')
+        self.assertFalse(self.get()['searching'])
+        self.assertIsNone(self.run_round())
+
+    def test_consecutive_source_failures_stop_the_round_and_pause_the_next(self):
+        self.wanted('DEMO-011', 'DEMO-012', 'DEMO-013', 'DEMO-014')
+        for code in ('DEMO-011', 'DEMO-012', 'DEMO-013', 'DEMO-014'):
+            self.answer(code, state='error')
+        self.run_round()
+        self.assertEqual(self.outcomes(), {'DEMO-011': 'error', 'DEMO-012': 'error', 'DEMO-013': 'error',
+                                           'DEMO-014': None})
+        self.assertIsNone(self.run_round())
+        self.contract.want_search_resume_at = 0
+        self.answer('DEMO-014')
+        self.run_round()
+        self.assertEqual(self.outcomes()['DEMO-014'], 'none')
+
+    def test_a_want_the_list_page_keeps_busy_is_left_for_the_next_round(self):
+        self.wanted('DEMO-021')
+        self.answer('DEMO-021', state='busy')
+        result = web_wants.search(self.contract, sleep=lambda seconds: None)
+        self.assertEqual((result['total'], result['none'], result['failed']), (1, 0, 0))
+        self.assertEqual(self.outcomes(), {'DEMO-021': None})
+
+    def test_the_scheduled_feed_tick_starts_the_search_even_without_due_sources(self):
+        from peach import web_feeds
+        with patch.object(web_wants, 'start_search') as start:
+            self.assertTrue(web_feeds.w_feed_check(self.contract, {'automatic': True})['idle'])
+            start.assert_called_once_with(self.contract)
 
 
 class FeedEntryTests(WantWebFixture):

@@ -12,10 +12,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import threading
 import time
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 from .catalog_rules import tag_cat
@@ -23,7 +23,8 @@ from .catalog_vocabulary import LENGTH_BANDS, QUALITY_BANDS
 from . import media_libraries, settings_file
 from .config import LOCATION_ROOT_DECLARATIONS
 from .fsutil import atomic_write_text
-from .platform import is_unmapped, root_online, system_volume, translate_ledger_path
+from .media_io import volume_usage
+from .platform import is_unmapped, system_volume, translate_ledger_path
 from .taste_history import (
     analyze_history,
     build_taste_dashboard,
@@ -376,6 +377,8 @@ def w_search_history(contract: WebContract, body):
 #: 有显示名的存储卷种类：`taste.volume.<种类>.name`，一个来源有几个根时用 `.numbered` 带序号。
 #: 不在这里的来源代号原样显示。
 STORAGE_KINDS = ("system", "local", "115", "pikpak")
+#: 每个根的在线与容量探测期限（秒）；网盘挂载卡住时这一行按离线显示。
+VOLUME_PROBE_SECONDS = 10.0
 REFRESH_WARNING_CODE = "taste.refreshWarning"
 #: 书签来源的资料名：「资料名 · 书签」，按界面语言写。
 BOOKMARK_PROFILE_CODE = "taste.bookmarkProfile"
@@ -390,17 +393,21 @@ def _volume_label(kind: str, index: int | None = None) -> dict:
     return phrase_fields("label", code=f"taste.volume.{kind}.numbered", params={"index": index})
 
 
-def _volume_key(root) -> tuple[object, ...]:
+def _volume_key(root, device) -> tuple[object, ...]:
     """根目录所在的那块卷：同一块卷上的几个根读到的是同一份容量，汇总时只算一次。
 
-    `st_dev` 在 Windows 上是卷序列号，网盘挂载没有卷 GUID 也有它；POSIX 上是设备号。
+    `device` 是 `st_dev`：Windows 上是卷序列号，网盘挂载没有卷 GUID 也有它；POSIX 上是设备号。
     读不到或为 0（有的挂载不报序列号）就认不出是哪块卷，按根各算一卷。
     """
-    try:
-        device = os.stat(root).st_dev
-    except OSError:
-        device = 0
     return ("device", device) if device else ("root", os.path.normcase(str(root)))
+
+
+def _probe_volume(root, is_system: bool) -> dict:
+    """在可终止的子进程里判在线、读容量；卡住或读不到都按离线，统计页和启动预热不跟着卡。"""
+    try:
+        return volume_usage(root, system=is_system, timeout=VOLUME_PROBE_SECONDS)
+    except OSError:
+        return {"online": False}
 
 
 def _storage_volumes() -> list[dict[str, object]]:
@@ -415,9 +422,14 @@ def _storage_volumes() -> list[dict[str, object]]:
         for location, roots in LOCATION_ROOT_DECLARATIONS.items()
         for index, root in enumerate(roots)
     ]
+    probing = [(root, is_system) for _kind, _label, root, is_system in declarations if not is_unmapped(root)]
+    # 各根并行探测，整页最多等一个期限。
+    with ThreadPoolExecutor(max_workers=max(len(probing), 1), thread_name_prefix="peach-volume") as pool:
+        probes = dict(zip(probing, pool.map(lambda item: _probe_volume(*item), probing)))
     volumes: list[dict[str, object]] = []
     for kind, label, root, is_system in declarations:
-        mounted = not is_unmapped(root) and (is_system or root_online(root))
+        probe = probes.get((root, is_system), {"online": False})
+        mounted = bool(probe.get("online"))
         row: dict[str, object] = {
             "kind": kind,
             **label,
@@ -427,17 +439,13 @@ def _storage_volumes() -> list[dict[str, object]]:
             "used": None,
             "total": None,
         }
-        if mounted:
-            try:
-                usage = shutil.disk_usage(root)
-                row.update(
-                    free=usage.free,
-                    used=max(usage.total - usage.free, 0),
-                    total=usage.total,
-                    _volume=_volume_key(root),
-                )
-            except OSError:
-                pass
+        if mounted and probe.get("total") is not None:
+            row.update(
+                free=probe["free"],
+                used=max(probe["total"] - probe["free"], 0),
+                total=probe["total"],
+                _volume=_volume_key(root, probe.get("device")),
+            )
         volumes.append(row)
     return volumes
 
@@ -524,26 +532,23 @@ def _replays(c, has_follow: bool) -> list[dict[str, int]]:
     return [{"k": plays, "n": n} for plays, n in sorted(counts.items())]
 
 
-#: 统计页账本那一段读到的表。`tag_not_hidden` 读标签偏好与标签实体的别名，
-#: `tag_is_not_a_performer_name` 读实体，在线播放读关注三张表。
-STATS_TABLES = ("asset", "asset_entity", "entity", "entity_alias", "asset_tag", "asset_tag_preference",
-                "asset_preference", "follow_playback", "follow_item", "follow_source")
+#: 库存聚合只依赖编目内容，起播更新的消费统计单独核验完整 asset 版本。
+STATS_TABLES = ("asset_catalog", "asset_entity", "entity", "entity_alias", "asset_tag", "asset_tag_preference")
+PLAY_STATS_TABLES = ("asset", "asset_preference", "follow_playback", "follow_item", "follow_source")
 
 
 def q_stats(contract: WebContract):
-    """统计页：库存 / 归属 / 标签 / 本地与在线播放 / 各存储卷。
-
-    账本那一段三十多条聚合 SQL 合计一秒多，按 `STATS_TABLES` 的版本缓存；媒体库划分取自设置，
-    热力图按本机时区分桶，两样作为输入进版本。存储卷读的是磁盘余量，与账本无关，按时间过期。
-    """
+    """库存、消费与存储卷分别按各自依赖缓存。"""
     config = settings_file.active()
     libraries = [(library, media_libraries.predicate(config, library["id"]))
                  for library in media_libraries.libraries(config)]
     out = dict(contract.cached_until_changed(
         "stats-ledger", lambda: _ledger_stats(contract, libraries),
-        repr(libraries), _utc_offset(datetime.now().astimezone()), tables=STATS_TABLES))
-    # 判定在线要读一次各挂载根的首条目录项，网盘挂载上不便宜，沿用 TTL 缓存。
-    out.update(contract.cached("stats-storage", _storage_stats))
+        repr(libraries), tables=STATS_TABLES))
+    out.update(contract.cached_until_changed(
+        "stats-playback", lambda: _playback_stats(contract),
+        _utc_offset(datetime.now().astimezone()), tables=PLAY_STATS_TABLES))
+    out.update(contract.cached_for("stats-storage", _storage_stats, ttl=CACHE_TTL))
     return out
 
 
@@ -598,6 +603,15 @@ def _ledger_stats(contract: WebContract, libraries) -> dict:
         out["tag_cov"] = one("SELECT count(DISTINCT t.asset_id) " + content_tags)
         out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
             "SELECT t.tag k, count(*) n " + content_tags + "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
+    return out
+
+
+def _playback_stats(contract: WebContract) -> dict:
+    with contract.read_connection() as c:
+        out = {}
+        def one(sql, *args):
+            row = c.execute(sql, args).fetchone()
+            return row[0] if row else 0
         tables = {row[0] for row in c.execute(
             "SELECT name FROM sqlite_schema WHERE type='table'"
         )}
@@ -683,23 +697,32 @@ def q_quality_goals(contract: WebContract, args):
     limit = min(max(int(args.get("limit", "60")), 1), 200)
     offset = max(int(args.get("offset", "0")), 0)
     with contract.read_connection() as connection:
-        total = connection.execute(
-            "SELECT count(*) FROM asset_quality_goal WHERE profile_id=? AND wanted=1",
-            (DEFAULT_PROFILE_ID,),
-        ).fetchone()[0]
         rows = [dict(row) for row in connection.execute(
             "SELECT a.id,a.name,a.code,a.location,a.path,a.size,a.duration,a.snapshot_path,"
             "g.reason,g.updated_at FROM asset_quality_goal g "
             "JOIN asset a ON a.id=g.asset_id "
             "WHERE g.profile_id=? AND g.wanted=1 "
-            "ORDER BY g.updated_at DESC,a.id DESC LIMIT ? OFFSET ?",
-            (DEFAULT_PROFILE_ID, limit, offset),
+            "ORDER BY g.updated_at DESC,a.id DESC",
+            (DEFAULT_PROFILE_ID,),
         )]
+    from .media_identity import ownership
+    config = settings_file.active()
+    for row in rows:
+        # 媒体库归属同作品列表（`web_catalog.attach_artwork_fields`）：按路径算，路径不下发。
+        row["library_id"] = ownership(config, row.get('path') or '').get("library_id", "")
+    from .table_filters import filter_rows
+    rows, facets = filter_rows(rows, args.get("column_filters"), {
+        "library": lambda row: [row["library_id"] or "none"],
+        "source": lambda row: [row["location"] or "none"],
+        "reason": lambda row: [part.strip() for part in (row["reason"] or "").split("/") if part.strip()],
+    })
+    total = len(rows)
+    rows = rows[offset:offset + limit]
     for row in rows:
         row["cost"] = cost_for(row['location'], row.pop('path', None))
         row["has_thumb"] = contract.has_snapshot(row["snapshot_path"])
         row["has_cover"] = contract.has_cover(row.get("code"))
         row["cover_version"] = contract.cover_version(row.get("code"))
         row.pop("snapshot_path", None)
-    return {"total": total, "items": rows, "offset": offset,
+    return {"total": total, "items": rows, "offset": offset, "column_facets": facets,
             "has_more": offset + len(rows) < total}

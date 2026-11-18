@@ -1,4 +1,8 @@
 {
+  "holdToConfirm": {
+    "label": "按住{{action}}",
+    "instruction": "按住鼠标、空格键或回车键 2 秒确认，提前松开取消。"
+  },
   "accessSetup": {
     "enterWithoutPassword": "免登录进入",
     "lanPasswordHint": "局域网访问建议设置密码，否则同一网络中的设备可直接进入。",
@@ -42,9 +46,12 @@
   },
   "batchCatalog": {
     "addToWatchLater": "加入稍后看",
-    "confirmBody": "将处理选中的 {{count, number}} 项。",
-    "confirmDelete": "将处理选中的 {{count, number}} 项。文件和馆藏记录会永久删除，无法恢复。",
-    "confirmDispose": "将处理选中的 {{count, number}} 项。馆藏记录可在回收站还原。",
+    "confirmDelete": "将永久删除选中 {{count, number}} 项的文件和馆藏记录。",
+    "confirmDispose": "将选中的 {{count, number}} 项移入回收站，文件保留在原处。",
+    "confirmLater": "将选中的 {{count, number}} 项加入稍后看。",
+    "confirmLike": "将选中的 {{count, number}} 项标为喜欢，已写的喜欢理由保留。",
+    "confirmRestore": "将选中的 {{count, number}} 项从回收站还原到馆藏。",
+    "confirmSeen": "将选中的 {{count, number}} 项标为看过。",
     "deleteSelected": "永久删除所选项目",
     "doneDelete": "已彻底删除 {{count, number}} 项",
     "doneDispose": "已移入回收站 {{count, number}} 项",
@@ -57,20 +64,28 @@
     "restoreSelected": "还原所选项目"
   },
   "batchFollow": {
-    "confirmBody": "将处理选中的 {{count, number}} 项关注作品。",
+    "confirmIgnore": "将忽略选中的 {{count, number}} 项关注作品，已加入想要但未入库的会移出想要。",
+    "confirmSave": "将选中的 {{count, number}} 项关注作品保存到数据库。",
+    "confirmSeen": "将选中的 {{count, number}} 项关注作品标为已看。",
     "doneIgnored": "已忽略 {{count, number}} 项",
     "doneSave": "已保存到数据库 {{count, number}} 项",
     "doneSeen": "已标为已看 {{count, number}} 项",
+    "ignoreRecovery": "完成后可撤销，移出的想要不会加回。",
     "ignoreSelected": "忽略所选作品",
     "saveSelected": "保存所选作品"
   },
   "batchJunk": {
-    "confirmBody": "将处理选中的 {{count, number}} 个文件。",
+    "confirmDispose": "将选中的 {{count, number}} 个文件移入回收站，文件保留在原处。",
+    "confirmDisposeAll": "将这一类待判断的 {{count, number}} 个文件全部移入回收站，文件保留在原处。",
+    "confirmNotJunk": "将选中的 {{count, number}} 个文件标为不是垃圾，移出待判断。",
+    "confirmRecheck": "将选中的 {{count, number}} 个文件放回待判断。",
     "dismissed": "已标记为不是垃圾",
+    "disposeAll": "全部移入回收站",
     "doneDispose": "已批量移入回收站：{{count, number}} 项",
     "doneNotJunk": "已批量标为不是垃圾：{{count, number}} 项",
     "doneRecheck": "已批量重新判断：{{count, number}} 项",
     "markNotJunk": "标记为非垃圾",
+    "queueChanged": "待判断的文件刚有变化，已重新读取，请再确认一次。",
     "recheckFiles": "重新检查文件",
     "reconsidered": "已重新加入垃圾判断"
   },
@@ -159,14 +174,14 @@
     "spacerColumn": "行空白区域",
     "toolbar": "{{label}}工具栏"
   },
+  "detailFailure": {
+    "title": "详情未取得"
+  },
   "detailTags": {
     "hideTag": "从此内容隐藏该标签",
     "moreCount": "还有 {{count, number}} 个",
     "optionsLoadFailed": "无法读取标签候选",
-    "removeTagNamed": "删除标签 {{tag}}",
-    "renameTag": "修改标签名称",
-    "renameTagNamed": "修改标签 {{tag}}",
-    "tagChanged": "标签已变化，请重新打开详情"
+    "removeTagNamed": "删除标签 {{tag}}"
   },
   "documentTitle": {
     "fallback": "Peach · 蜜桃"
@@ -190,6 +205,18 @@
     "removeAction": "撤销别名",
     "removeNamed": "撤销别名 {{alias}}",
     "removed": "已撤销别名 {{alias}}"
+  },
+  "entityMerge": {
+    "title": "合并重复档案",
+    "menu": "合并重复档案…",
+    "bodyTaken": "「{{alias}}」已是另一份档案的名字。合并后保留「{{keep}}」（{{keepWorks}} 部作品），并入「{{absorb}}」（{{absorbWorks}} 部作品）的作品与别名；不能撤销，合并前会备份账本。",
+    "bodyShared": "已添加别名「{{alias}}」，它也是「{{other}}」的别名。两份如果重复，合并后保留「{{keep}}」（{{keepWorks}} 部作品），并入「{{absorb}}」（{{absorbWorks}} 部作品）；不能撤销，合并前会备份账本。",
+    "summary": "合并后保留「{{keep}}」（{{keepWorks}} 部作品），并入「{{absorb}}」（{{absorbWorks}} 部作品）的作品与别名；不能撤销，合并前会备份账本。",
+    "pickLabel": "另一份档案",
+    "pickPlaceholder": "搜索名字或别名",
+    "pickFirst": "先选要合并的另一份档案",
+    "confirm": "合并",
+    "done": "已把「{{source}}」合并到「{{target}}」"
   },
   "entityMissing": {
     "agency": "找不到这个事务所",
@@ -376,6 +403,7 @@
   },
   "networkBanner": {
     "checkProxy": "检查 Peach 代理",
+    "dismiss": "关闭",
     "offline": "Peach 连不上外网，资料采集、关注更新和在线来源暂不可用；本地媒体照常使用。"
   },
   "objectOrder": {
@@ -680,7 +708,19 @@
   },
   "sourceLink": {
     "blog": "博客",
-    "officialSite": "官方网站"
+    "catalogList": "{{name}} 作品列表",
+    "catalogPage": "{{name}} 作品页",
+    "fanCommunity": "粉丝社区 {{name}}",
+    "labelPage": "{{name}} 厂牌页",
+    "linkHub": "链接集（{{name}}）",
+    "namedBlog": "博客 {{name}}",
+    "officialArchive": "官网存档（{{name}}）",
+    "officialBlog": "官方博客",
+    "officialChannel": "官方频道页",
+    "officialShop": "官方商店",
+    "officialSite": "官方网站",
+    "recruiting": "{{name}}（招募）",
+    "seriesPage": "{{name}} 系列页"
   },
   "sourcePicture": {
     "coverAlt": "{{code}} 封面",
@@ -773,7 +813,7 @@
   "trash": {
     "blockedItem": "{{path}}（{{reason}}）",
     "empty": "清空回收站",
-    "emptyConfirm": "回收站里的文件和馆藏记录将永久删除，无法恢复。",
+    "emptyConfirm": "回收站里 {{count, number}} 项的文件和馆藏记录将永久删除。",
     "emptyHint": "删掉的内容会先放在这里，清空后才真正删除。",
     "emptyTitle": "回收站是空的",
     "movedToTrash": "已移入回收站",
@@ -824,5 +864,9 @@
     "locationField": "服务端文件位置",
     "mediaRoot": "媒体目录",
     "relativePath": "目录内位置"
+  },
+  "bulkAction": {
+    "canUndo": "完成后可在回执里撤销。",
+    "cannotUndo": "不能撤销。"
   }
 }

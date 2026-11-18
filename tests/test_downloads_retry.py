@@ -81,7 +81,8 @@ class RetryUpgradeTests(unittest.TestCase):
                 connection.commit()
                 before = dict(connection.execute('SELECT * FROM download_task').fetchone())
             self.assertEqual([item.version for item in migrations.upgrade(database, directory)],
-                             ['0051', '0052', '0053', '0054', '0055', '0056', '0057', '9001', '9002', '9003', '9004'])
+                             ['0051', '0052', '0053', '0054', '0055', '0056', '0057', '0058',
+                              '9001', '9002', '9003', '9004'])
             with closing(sqlite3.connect(database)) as connection:
                 connection.row_factory = sqlite3.Row
                 after = dict(connection.execute('SELECT * FROM download_task').fetchone())

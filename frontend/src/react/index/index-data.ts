@@ -91,6 +91,8 @@ export interface IndexPerson {
   bust_cm?: number | null;
   cup?: string | null;
   kana?: string | null;
+  /** 编辑资料里新建的档案（ADR-0165）。 */
+  user_created?: boolean | number;
 }
 
 export interface IndexTag {
@@ -112,6 +114,8 @@ export interface IndexPage<T> {
   categories?: Record<string, number>;
   /** 本地艺人名册按五十音行的当前搜索/分类计数；其他名册没有。 */
   kana_counts?: Record<string, number>;
+  /** 本地名册里从名册隐藏的有几项，「已隐藏」那颗键按它出现。 */
+  hidden?: number;
 }
 
 /** 地址栏上的那几项。页面改它们只经 `IndexProps.route`，壳按这份拼地址。 */
@@ -144,7 +148,7 @@ export interface IndexProps extends IndexRoute {
   route(params: IndexRoute, options?: { replace?: boolean }): void;
   /** 版式偏好改了：存储归壳（`appSettings.peopleLayout`），资料页的名册读的也是它。 */
   savePreference(patch: { layout: PeopleLayout }): void;
-  /** 顶栏那枚选择键的状态。只在本地标签页有意义：所选标签拼成目录筛选。键归壳，关掉时
+  /** 顶栏那枚选择键的状态：本地标签拼目录筛选，在线标签与本地名册做批量动作。键归壳，关掉时
    *  壳经 `updateManagedRoute` 把 `false` 推进来，页面随之清空所选。 */
   selectMode: boolean;
   /** 页面自己要退出选择模式的两处：按所选标签显示结果，和艺人页切到在线名册。 */
@@ -175,7 +179,9 @@ export function indexRoute(route: IndexRoute): IndexRoute {
   const scope = route.kind === 'tags' || route.kind === 'performers' ? route.scope : 'local';
   const categories = route.kind === 'tags' ? (scope === 'online' ? ONLINE_TAG_CATEGORIES : TAG_CATEGORIES)
     : route.kind === 'performers' && scope === 'local' ? IDENTITY_CATEGORIES : [];
-  const known = categories.some(([key]) => key === route.category);
+  // 「已隐藏」是本地名册共有的一档，不在各自的分类表里。
+  const known = categories.some(([key]) => key === route.category)
+    || (route.kind !== 'tags' && scope === 'local' && route.category === 'hidden');
   return { ...route, scope, category: known ? route.category : 'all',
     ...normalizePeopleSort(route.kind, route.sort, route.dir),
     kana: normalizeKanaRow(route.kind, scope, route.kana) };

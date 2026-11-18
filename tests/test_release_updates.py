@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import httpx
 
-from peach import distribution, docker_update, release_updates
+from peach import distribution, docker_update, interface_text, release_updates
 from peach.http import HttpResponse
 from peach.versioning import VersionManager
 
@@ -108,6 +108,50 @@ class ReleaseUpdateTests(unittest.TestCase):
         self.assertEqual(result["state"], "current")
         self.assertEqual(self.check([release("0.8.0")])["state"], "ahead")
         self.assertEqual(self.check([])["state"], "empty")
+
+    BODY = ("> Lead. / ignored\n\n### Highlights\n\n- **Subtitles**: Follow the [interface](https://x/y) language (#9).\n\n"
+            "### Added\n\n- **Playback**: A full changelog entry (#9).\n\n<details>\n<summary>Downloads</summary>\n\n"
+            "### Highlights\n\n- not a change\n\n</details>\n\n"
+            "<details>\n<summary>简体中文</summary>\n\n> 导语。\n\n### 重点\n\n- **字幕**：跟随界面语言（#9）。\n\n"
+            "### 新增\n\n- **播放**：完整变更条目（#9）。\n\n"
+            "<details>\n<summary>下载</summary>\n\n### 重点\n\n- 不是条目\n\n</details>\n\n</details>\n\n"
+            "[Full Changelog](https://x/compare)\n")
+
+    def test_an_available_update_carries_only_the_highlights_of_every_newer_release(self):
+        """检查到新版本时带上本机之后每一版的重点，新的在前；英文是正文、中文取折叠段，完整变更与下载段都不带。"""
+        rows = [release("0.9.0", body=self.BODY), release("0.10.0", body=self.BODY), release("0.11.0", body=self.BODY)]
+        notes = self.check(rows)["notes"]
+        self.assertEqual([row["version"] for row in notes], ["0.11.0", "0.10.0"])
+        self.assertEqual(notes[0]["url"], release_updates.RELEASES_URL + "/tag/v0.11.0")
+        self.assertEqual(notes[0]["en"], [{"title": "Subtitles", "text": "Follow the interface language (#9)."}])
+        self.assertEqual(notes[0]["zh-CN"], [{"title": "字幕", "text": "跟随界面语言（#9）。"}])
+        self.assertNotIn("notes", self.check([release("0.9.0", body=self.BODY)]))
+
+    def test_releases_without_highlights_are_left_out(self):
+        """只有修复的版本和 0.59.0 之前的旧正文没有重点分组，不进检查结果。"""
+        fixes_only = "### Fixed\n\n- **Interface**: One fix.\n\n<details>\n<summary>简体中文</summary>\n\n### 修复\n\n- x\n\n</details>\n"
+        legacy = "### 修复\n\n- **界面**：修好一处。\n\n## 下载选择\n\n| 平台 |\n"
+        for body in (None, "", fixes_only, legacy):
+            self.assertIsNone(release_updates.changelog_notes(body))
+        rows = [release("0.10.0", body=fixes_only), release("0.11.0", body=self.BODY)]
+        self.assertEqual([row["version"] for row in self.check(rows)["notes"]], ["0.11.0"])
+
+    def test_notes_follow_the_format_the_release_script_writes(self):
+        """应用拆的就是 `changelog.py --notes` 生成的正文：重点就是那一版公告的 features，两边改格式要一起改。"""
+        from scripts import changelog
+        from scripts.package_windows_release import download_sections
+        from peach import release_notices
+        document = (Path(changelog.ROOT) / changelog.CHANGELOG).read_text(encoding="utf-8")
+        version = "0.58.0"
+        body = changelog.notes(document, version, download_sections(version, lite_installer=True))
+        notes = release_updates.changelog_notes(body)
+        features = release_notices.NOTICES[version]["features"]
+        base = f"server:releaseNotes.v{version.replace('.', '-')}.items"
+        for language in ("en", "zh-CN"):
+            self.assertEqual([item["title"] for item in notes[language]],
+                             [interface_text.text(f"{base}.{row['id']}.title", language=language) for row in features])
+        for item, row in zip(notes["en"], features):
+            self.assertTrue(all(ref in item["text"] for ref in row.get("refs", [])), item)
 
     def test_prefers_app_update_when_all_tool_assets_are_uploaded(self):
         row = release("1.0.0")
@@ -456,3 +500,54 @@ class ReleaseNoticeFactsTests(unittest.TestCase):
         facts = routes_configuration._release_notice_facts(request, connection)
         self.assertEqual(facts, {'system_files': {'count': 2}, 'garbled_performers': {'count': 1},
                                  'javdb_entries': {'count': 3}})
+
+
+class ReleaseNoticeContentRuleTests(unittest.TestCase):
+    """公告只放使用者能明显感知的几条，图标按登记的含义挑（`release_notices` 模块说明）。"""
+
+    def setUp(self):
+        from peach import release_notice, release_notices
+        self.notice, self.notices = release_notice, release_notices
+        self.checked = {version: entry for version, entry in release_notices.NOTICES.items()
+                        if release_notice.version_key(version) >= release_notice.version_key(release_notices.RULES_SINCE)}
+        self.assertIn(release_notices.RULES_SINCE, self.checked)
+
+    def test_the_frontend_draws_exactly_the_registered_icons(self):
+        import re
+        source = (Path(__file__).resolve().parents[1] / 'frontend/src/react/release-notice.tsx').read_text(encoding='utf-8')
+        block = re.search(r'const ICONS: Record<string, RemixiconComponentType> = \{(.*?)\};', source, re.S)
+        self.assertIsNotNone(block)
+        self.assertEqual(set(re.findall(r'(\w+): Ri\w+', block[1])), set(self.notices.ICON_MEANINGS))
+
+    def test_every_notice_icon_is_registered_and_new_ones_avoid_generic_icons(self):
+        for version, entry in self.notices.NOTICES.items():
+            for group in ('features', 'automatic', 'attention'):
+                for item in entry.get(group, []):
+                    if 'icon' not in item:
+                        continue
+                    with self.subTest(version=version, item=item['id']):
+                        self.assertIn(item['icon'], self.notices.ICON_MEANINGS)
+                        if version in self.checked:
+                            self.assertNotIn(item['icon'], self.notices.GENERIC_ICONS)
+
+    def test_no_platform_sees_more_features_than_the_limit(self):
+        systems, installs = ('windows', 'macos', 'linux'), ('docker', 'standalone', 'source')
+        for version, entry in self.checked.items():
+            for tokens in ({system, install} for system in systems for install in installs):
+                shown = [item for item in entry.get('features', []) if self.notice.applies(item, tokens, {})]
+                with self.subTest(version=version, tokens=sorted(tokens)):
+                    self.assertLessEqual(len(shown), self.notices.FEATURE_LIMIT)
+
+    def test_feature_refs_are_issue_or_pull_request_numbers(self):
+        """`refs` 进 Release 正文的重点，GitHub 和检查更新页都按 `#123`、`owner/repo#123` 认链接。"""
+        import re
+        for version, entry in self.notices.NOTICES.items():
+            for item in entry.get('features', []):
+                with self.subTest(version=version, item=item['id']):
+                    self.assertTrue(all(re.fullmatch(r'(?:[\w.-]+/[\w.-]+)?#[1-9]\d*', ref) for ref in item.get('refs', [])))
+
+    def test_automatic_items_only_show_where_the_upgrade_changed_data(self):
+        for version, entry in self.checked.items():
+            for item in entry.get('automatic', []):
+                with self.subTest(version=version, item=item['id']):
+                    self.assertIn(item.get('when'), self.notice.FACTS)

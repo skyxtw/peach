@@ -1,8 +1,13 @@
 import json
+import os
 import pathlib
+import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import ExitStack, closing, contextmanager
 from dataclasses import replace
@@ -10,12 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from peach import catalog_rules, interface_text, jav_poster_crop, web_batch, web_catalog, web_entity, web_playlists, web_search, web_stats
+from peach import catalog_rules, interface_text, jav_poster_crop, media_io, web_batch, web_catalog, web_entity, web_playlists, web_search, web_stats
 from peach import web_contract as rm_web
 from peach.kana import kana_row
 from peach.previews import entity_image_key, logo_key
 from peach.web_catalog import q_editions, q_items, q_parts
 from support.ledger import fresh_ledger
+from support.processes import finishes_within
+from support.stalls import stalled_mount
 
 
 # 调用点继续走 `rm_web`（`web_contract` 现在只是再导出层），但 **patch 必须打在真的
@@ -26,6 +33,100 @@ from support.ledger import fresh_ledger
 
 
 class WebDataTests(unittest.TestCase):
+    def test_scalar_column_filters_match_displayed_stars_and_resolution(self):
+        with self.contract.write_transaction() as connection:
+            connection.execute("UPDATE asset SET rating=80,width=1920,height=1080 WHERE id=1")
+            connection.execute("UPDATE asset SET rating=NULL,width=NULL,height=NULL WHERE id=2")
+        selected = json.dumps({'rating': ['4'], 'resolution': ['1920x1080']})
+        result = q_items(self.contract, {'column_filters': selected})
+        self.assertEqual([row['id'] for row in result['items']], [1])
+        self.assertEqual(q_items(self.contract, {'column_filters': '{"rating":["0"]}'})['total'], 1)
+        self.assertEqual(q_items(self.contract, {'column_filters': '{"resolution":{"exclude":["none"]}}'})['total'], 1)
+        options = rm_web.dispatch_api_get(self.contract, '/api/facets', {'column': 'rating'})
+        self.assertEqual({row['k']: row['n'] for row in options['items']}, {'0': 1, '4': 1})
+
+    def test_queue_facets_intersect_columns_and_count_each_row_once(self):
+        from peach.table_filters import filter_rows
+        rows = [{'id': 1, 'library': ['a'], 'why': ['x', 'x', 'y']},
+                {'id': 2, 'library': ['b'], 'why': ['x']}, {'id': 3, 'library': ['a'], 'why': []}]
+        filtered, facets = filter_rows(rows, '{"library":["a"],"why":{"exclude":["y"]}}',
+                                      {'library': lambda row: row['library'], 'why': lambda row: row['why']})
+        self.assertEqual([row['id'] for row in filtered], [3])
+        self.assertEqual(facets['why'], [{'id': 'none', 'count': 1}, {'id': 'x', 'count': 1}, {'id': 'y', 'count': 1}])
+        self.assertEqual(facets['library'], [{'id': 'a', 'count': 1}, {'id': 'b', 'count': 1}])
+        with self.assertRaises(ValueError):
+            filter_rows(rows, '{"unknown":[]}', {'library': lambda row: row['library']})
+
+    def test_quality_column_filters_apply_before_the_returned_page_limit(self):
+        with self.contract.write_transaction() as connection:
+            connection.executemany("INSERT INTO asset(id,location,path,name,medium,size) VALUES(?,'local',?,?,'video',1)",
+                                   [(1000 + i, f'R:/Media/filter-{i}.mp4', f'filter-{i}.mp4') for i in range(205)])
+            connection.executemany("INSERT INTO asset_quality_goal(profile_id,asset_id,wanted,reason,updated_at) VALUES('local-default',?,1,?,'now')",
+                                   [(1000 + i, 'tail' if i == 0 else 'common') for i in range(205)])
+        with mock.patch.object(web_stats.settings_file, 'active', return_value=object()), \
+                mock.patch('peach.media_identity.ownership', return_value={'library_id': 'a'}):
+            result = rm_web.q_quality_goals(self.contract, {'limit': '200', 'column_filters': '{"reason":["tail"]}'})
+        self.assertEqual(result['total'], 1)
+        self.assertEqual([row['id'] for row in result['items']], [1000])
+        self.assertEqual(result['column_facets']['reason'], [{'id': 'common', 'count': 204}, {'id': 'tail', 'count': 1}])
+
+    def test_column_facets_page_scoped_people_and_search_aliases(self):
+        with self.contract.write_transaction() as connection:
+            connection.executemany(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?,'performer',?,?,'now','now')",
+                [(9000 + index, f'Person {index}', f'person {index}') for index in range(25)])
+            connection.executemany(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(1,?,'performer','test',1)", [(9000 + index,) for index in range(25)])
+            connection.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+                               "VALUES(11,'Alicia','alicia','test',1)")
+        people = rm_web.dispatch_api_get(self.contract, '/api/facets', {'column': 'people', 'loc': 'local'})
+        self.assertEqual(len(people['items']), 24)
+        self.assertEqual(people['next_offset'], 24)
+        tail = rm_web.dispatch_api_get(self.contract, '/api/facets', {
+            'column': 'people', 'loc': 'local', 'column_offset': '24'})
+        self.assertFalse(tail['has_more'])
+        self.assertIsNone(tail['next_offset'])
+        self.assertFalse({row['id'] for row in people['items']} & {row['id'] for row in tail['items']})
+        people['items'].extend(tail['items'])
+        self.assertEqual(len([row for row in people['items'] if row['kind'] == 'performer']), 26)
+        self.assertTrue(all(row['n'] == 1 for row in people['items']))
+        self.assertIn('Alicia', next(row for row in people['items'] if row['id'] == 11)['aliases'])
+        alias = rm_web.dispatch_api_get(self.contract, '/api/facets', {
+            'column': 'people', 'loc': 'local', 'column_q': 'Alicia'})
+        self.assertEqual([row['id'] for row in alias['items']], [11])
+        other = rm_web.dispatch_api_get(self.contract, '/api/facets', {'column': 'people', 'loc': '115'})
+        self.assertEqual([(row['kind'], row['k'], row['n']) for row in other['items']],
+                         [('creator', 'Canonical Creator', 1)])
+        self.assertIn('has_image', other['items'][0])
+        tags = rm_web.dispatch_api_get(self.contract, '/api/facets', {'column': 'tags', 'loc': 'local'})
+        self.assertEqual([(row['kind'], row['k'], row['n']) for row in tags['items']], [('tag', '足交', 1)])
+        self.assertIn('stats', rm_web.dispatch_api_get(self.contract, '/api/facets', {'loc': 'local'}))
+        with self.assertRaisesRegex(ValueError, 'invalid facet column'):
+            rm_web.dispatch_api_get(self.contract, '/api/facets', {'column': 'unknown'})
+
+    def test_table_column_filter_intersects_the_entity_scope(self):
+        query = {'scope_kind': 'creator', 'scope_name': 'Canonical Creator', 'performer': 'Canonical Alice'}
+        self.assertEqual([row['id'] for row in q_items(self.contract, query)['items']], [1])
+        self.assertEqual(q_items(self.contract, {**query, 'loc': '115'})['total'], 0)
+        with self.assertRaisesRegex(ValueError, 'invalid catalog scope'):
+            q_items(self.contract, {'scope_kind': 'unknown', 'scope_name': 'Canonical Creator'})
+
+    def test_column_multiselect_unions_each_column_and_intersects_columns(self):
+        selected = {'people': ['performer:Canonical Alice', 'creator:Canonical Creator']}
+        self.assertEqual(q_items(self.contract, {'column_filters': json.dumps(selected)})['total'], 2)
+        selected['tags'] = ['足交', '不存在的标签']
+        self.assertEqual([row['id'] for row in q_items(self.contract, {'column_filters': json.dumps(selected)})['items']], [1])
+        self.assertEqual(q_items(self.contract, {'loc': '115', 'column_filters': json.dumps(selected)})['total'], 0)
+        self.assertEqual(q_items(self.contract, {'column_filters': '{"people":[]}'})['total'], 0)
+        self.assertEqual(q_items(self.contract, {'column_filters': '{}'})['total'], 2)
+        self.assertEqual(q_items(self.contract, {'column_filters': json.dumps({
+            'people': {'exclude': ['performer:Canonical Alice']}})})['total'], 1)
+        for malformed in ('[]', 'broken', '{"people":"Alice"}', '{"people":["unknown:Alice"]}'):
+            with self.subTest(value=malformed), self.assertRaises(ValueError):
+                q_items(self.contract, {'column_filters': malformed})
+
     def test_catalog_summary_preserves_filters_without_projecting_cards(self):
         for filters in ({}, {'loc': '115'}, {'year': '2024'}, {'year': '1900'}):
             with self.subTest(filters=filters):
@@ -598,6 +699,28 @@ class WebDataTests(unittest.TestCase):
         unique = {key for key in self.contract.cache if key.startswith("('index'")}
         self.assertEqual(len(unique), 3)
 
+    def test_starting_playback_keeps_inventory_and_storage_aggregates_and_refreshes_watched_state(self):
+        from peach import web_activity, web_folders
+        with mock.patch.object(web_stats, '_storage_volumes', return_value=[]), \
+                mock.patch.object(web_stats, '_ledger_stats', wraps=web_stats._ledger_stats) as inventory, \
+                mock.patch.object(web_stats, '_storage_stats', wraps=web_stats._storage_stats) as storage, \
+                mock.patch('peach.media_folders.directory_index', return_value={}) as folders, \
+                mock.patch.object(web_batch, '_scored_junk', return_value=([], frozenset())) as junk:
+            def load():
+                web_folders.q_folders(self.contract, {})
+                web_batch.q_ads(self.contract)
+                return web_stats.q_stats(self.contract)
+            before = load()
+            unseen = q_items(self.contract, {'state': 'fresh'})
+            with self.contract.read_connection() as connection:
+                target = connection.execute("SELECT id FROM asset WHERE medium='video' AND COALESCE(play_count,0)=0 "
+                                            "AND feedback IS NULL AND disposal IS NULL LIMIT 1").fetchone()[0]
+            web_activity.w_play(self.contract, {'id': target})
+            after = load()
+            self.assertEqual(after['consumption']['library_played'], before['consumption']['library_played'] + 1)
+            self.assertEqual(q_items(self.contract, {'state': 'fresh'})['total'], unseen['total'] - 1)
+            self.assertEqual([inventory.call_count, storage.call_count, folders.call_count, junk.call_count], [1, 1, 1, 1])
+
     def test_creator_card_and_detail_share_available_entity_image(self):
         (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
         row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
@@ -889,10 +1012,10 @@ class WebDataTests(unittest.TestCase):
                          [("Media", 1, 100), ("Media-more", 0, 0)])
 
     def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
-        usage = type("Usage", (), {"free": 20, "total": 100})
-        with mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), mock.patch(
-            "shutil.disk_usage", return_value=usage,
-        ):
+        def probe(root, *, system, timeout):
+            return {"online": True, "free": 20, "total": 100, "device": 0} if system else {"online": False}
+        with mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
+                mock.patch.object(web_stats, "volume_usage", side_effect=probe):
             stats = rm_web.q_stats(self.contract)
         # 断言的是「用了 platform 给的系统卷」，不是盘符的字符串写法：
         # `Path("X:/")` 在 Windows 上渲染成 `X:\`、在 POSIX 上渲染成 `X:/`，
@@ -903,15 +1026,27 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertIs(stats["disk_c"], stats["system_disk"])
 
+    @staticmethod
+    def _probe(device=None):
+        """子进程探测的替身：每个根都在线、读到同一份 20/100 容量；卷号默认按真实 `st_dev`，读不到为 0。"""
+        def probe(root, *, system, timeout):
+            if device is not None:
+                number = device(root)
+            else:
+                try:
+                    number = os.stat(root).st_dev
+                except OSError:
+                    number = 0
+            return {"online": True, "free": 20, "total": 100, "device": number}
+        return probe
+
     def test_stats_report_system_resource_and_cloud_volumes(self):
-        usage = type("Usage", (), {"free": 20, "total": 100})
         declarations = {"local": ("R:/media", "S:/more"), "115": ("B:/",), "pikpak": ("A:/",)}
         with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations), \
                 mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
                 mock.patch.object(web_stats, "translate_ledger_path",
                                   side_effect=lambda value: Path(value)), \
-                mock.patch.object(web_stats, "root_online", return_value=True), \
-                mock.patch("shutil.disk_usage", return_value=usage):
+                mock.patch.object(web_stats, "volume_usage", side_effect=self._probe()):
             stats = rm_web.q_stats(self.contract)
 
         # 同一来源的几个根各占一行，用序号区分；单根来源不带序号。
@@ -931,18 +1066,14 @@ class WebDataTests(unittest.TestCase):
             "free": 100, "used": 400, "total": 500,
         })
 
-    def _storage_stats_for(self, system, declarations, volume_key=None):
+    def _storage_stats_for(self, system, declarations, device=None):
         """按给定的系统卷与来源根算一次存储卷汇总；每个根都在线、读到同一份 20/100 容量。"""
-        usage = type("Usage", (), {"free": 20, "total": 100})
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations))
             stack.enter_context(mock.patch.object(web_stats, "system_volume", return_value=system))
             stack.enter_context(mock.patch.object(
                 web_stats, "translate_ledger_path", side_effect=lambda value: Path(value)))
-            stack.enter_context(mock.patch.object(web_stats, "root_online", return_value=True))
-            stack.enter_context(mock.patch("shutil.disk_usage", return_value=usage))
-            if volume_key is not None:
-                stack.enter_context(mock.patch.object(web_stats, "_volume_key", side_effect=volume_key))
+            stack.enter_context(mock.patch.object(web_stats, "volume_usage", side_effect=self._probe(device)))
             stats = rm_web.q_stats(self.contract)
         for row in stats["storage_volumes"]:
             self.assertEqual(set(row), {"kind", "label", "label_code", "label_params",
@@ -979,12 +1110,50 @@ class WebDataTests(unittest.TestCase):
         declarations = {"local": ("R:/media", "R:/more", "S:/media"), "115": ("B:/",)}
         stats = self._storage_stats_for(
             Path("X:/"), declarations,
-            volume_key=lambda root: ("device", str(root)[0]))
+            device=lambda root: str(root)[0])
         self.assertEqual(len(stats["storage_volumes"]), 5)
         self.assertEqual(stats["storage_summary"], {
             "volumes": 4, "online": 4, "measured": 4,
             "free": 80, "used": 320, "total": 400,
         })
+
+    def test_a_mount_that_hangs_in_process_does_not_hold_the_stats(self):
+        """探测在子进程里做：本进程里读这个根会卡住时，统计照样在期限内返回且读得到它。"""
+        import threading
+        release = threading.Event()
+        self.addCleanup(release.set)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            scandir, disk_usage = os.scandir, shutil.disk_usage
+
+            def hang(original):
+                def call(path, *args, **kwargs):
+                    if str(root).casefold() in os.fspath(path).casefold():
+                        release.wait(60)
+                    return original(path, *args, **kwargs)
+                return call
+            with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", {"local": (str(root),)}), \
+                    mock.patch.object(web_stats, "translate_ledger_path", side_effect=lambda value: Path(value)), \
+                    mock.patch("os.scandir", hang(scandir)), mock.patch("shutil.disk_usage", hang(disk_usage)):
+                rows = finishes_within(web_stats._storage_volumes, 40)
+        local = next(row for row in rows if row["kind"] == "local")
+        self.assertTrue(local["online"])
+        self.assertIsNotNone(local["total"])
+
+    def test_a_probe_that_never_returns_shows_the_root_offline_within_the_deadline(self):
+        def blocked(_command, **options):
+            return original_run([sys.executable, "-c", "import time; time.sleep(60)"], **options)
+        original_run = subprocess.run
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", {"local": (tmp, tmp + "-2")}), \
+                mock.patch.object(web_stats, "translate_ledger_path", side_effect=lambda value: Path(value)), \
+                mock.patch.object(web_stats, "VOLUME_PROBE_SECONDS", 1), \
+                mock.patch.object(media_io.subprocess, "run", side_effect=blocked):
+            started = time.monotonic()
+            rows = finishes_within(web_stats._storage_volumes, 30)
+        # 几个根并行探测，整页只等一个期限。
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertEqual([row["online"] for row in rows], [False, False, False])
 
     def test_items_support_duration_range(self):
         result = rm_web.q_items(
@@ -1871,7 +2040,7 @@ class WebDataTests(unittest.TestCase):
             "/api/thumbnail-jobs", "/api/timeline", "/api/media-repair",
             "/api/scraping", "/api/scraping/cover", "/api/scraping/amane-bridge",
             "/api/scraping/check-all",
-            "/api/items", "/api/item", "/api/entity", "/api/entity/shapes", "/api/entity/latest", "/api/photos", "/api/photo-set",
+            "/api/items", "/api/item", "/api/entity", "/api/entity-merge", "/api/entity/shapes", "/api/entity/latest", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/suggest",
@@ -1879,6 +2048,7 @@ class WebDataTests(unittest.TestCase):
             "/api/playlists", "/api/playlist",
             "/api/post-setup-tutorial",
             "/api/tutorial-progress", "/api/performer/delete-candidates", "/api/performer/delete-plan",
+            "/api/entity-batch/plan",
             "/api/library-shortcuts", "/api/folders",
             "/api/custom-metadata",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
@@ -1894,6 +2064,7 @@ class WebDataTests(unittest.TestCase):
             "/api/jav/detail", "/api/jav/reviews", "/api/jav/resources", "/api/jav/discoveries", "/api/jav/releases",
             "/api/jav/discoveries/metadata",
             "/api/result-updates",
+            "/api/taste/signals",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/tag-management", "/api/tag-management/preview", "/api/follow/tag",
@@ -1905,11 +2076,11 @@ class WebDataTests(unittest.TestCase):
             "/api/scraping/amane-bridge/check", "/api/scraping/amane-bridge/rebuild",
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",
-            "/api/tutorial-progress", "/api/performer/delete",
+            "/api/tutorial-progress", "/api/performer/delete", "/api/entity-batch",
             "/api/library-shortcuts", "/api/folders/preview", "/api/folders/rule",
             "/api/custom-metadata",
-            "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
-            "/api/search-history", "/api/trash/empty",
+            "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/item-edit", "/api/batch",
+            "/api/ads/dispose-all", "/api/ads/restore-all", "/api/search-history", "/api/trash/empty",
             "/api/review/decision", "/api/review/genre", "/api/review/auto-landings/revert",
             "/api/purge-missing", "/api/orphan-records/attach",
             "/api/links/check", "/api/links/prune",
@@ -1919,9 +2090,9 @@ class WebDataTests(unittest.TestCase):
             "/api/follow/play", "/api/follow/activity",
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/creator", "/api/follow/schedule",
-            "/api/follow/schedule/run", "/api/feeds/schedule/run",
+            "/api/follow/schedule/run", "/api/feeds/schedule", "/api/feeds/schedule/run",
             "/api/taste/refresh", "/api/taste/source", "/api/settings",
-            "/api/entity-name", "/api/entity-alias",
+            "/api/entity-name", "/api/entity-alias", "/api/entity-merge",
             "/api/organize/preview", "/api/organize/apply", "/api/organize/rollback",
             "/api/feeds/check", "/api/feeds/source", "/api/feeds/bind-studio", "/api/feeds/discovery",
             "/api/wants", "/api/face-models",
@@ -2163,8 +2334,10 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(finished.is_set(), "第二次写入没能在 10 秒内拿到写锁，写锁没被释放")
 
     def stage_media(self, aid, name="clip.mp4"):
-        """把某条资产指向真实的临时文件，物理删除才有东西可删。"""
-        path = Path(self.tmp.name) / name
+        """把某条资产指向真实的临时文件，物理删除才有东西可删。
+
+        和 `setUp` 声明的来源根一样取 `resolve()` 后的路径：CI 的临时目录是 8.3 短名，不解析就不在来源根下。"""
+        path = Path(self.tmp.name).resolve() / name
         path.write_bytes(b"media")
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET path=?,snapshot_path=NULL WHERE id=?", (str(path), aid))
@@ -2354,30 +2527,97 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(kept.exists(), "不在回收站的媒体一个都不能碰")
         self.assertIsNotNone(self.row(2))
 
-    def test_empty_trash_moves_media_outside_the_write_lock_and_spares_rows_restored_meanwhile(self):
-        """网盘上逐个 stat、改名不占写锁；这期间被还原出回收站的，事务里复核时留下、文件放回原处。"""
+    def test_empty_trash_finishes_within_the_deadline_when_the_drive_is_stuck(self):
+        """网盘答不上：这一条记删不了、文件和账本行都留着，整趟按期限做完，任务不停在运行中。"""
+        folder = Path(self.tmp.name).resolve() / "stuck"
+        folder.mkdir()
+        binned = folder / "binned.mp4"
+        binned.write_bytes(b"media")
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.execute("UPDATE asset SET path=?,snapshot_path=NULL WHERE id=1", (str(binned),))
+            connection.commit()
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+        with stalled_mount(folder), mock.patch.object(media_io, "TIMEOUT_SECONDS", 0.2):
+            started = time.monotonic()
+            result = rm_web.w_empty_trash(self.contract)
+            self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual(result["purged"], 0)
+        self.assertEqual([item["id"] for item in result["blocked"]], [1])
+        self.assertEqual(binned.read_bytes(), b"media")
+        self.assertIsNotNone(self.row(1))
+
+    def test_a_quarantine_that_lands_after_its_deadline_is_put_back(self):
+        """隔离改名卡住、过了期限才做成：请求已把这一行记成删不了，文件要回到原名，不落在隐藏的临时名下。"""
+        original = Path(self.tmp.name).resolve() / "late.mp4"
+        original.write_bytes(b"media")
+        release, landed = threading.Event(), []
+
+        def slow_quarantine():
+            release.wait(10)
+            moved = web_batch._quarantine_media(original, location="local")
+            landed.append(moved)
+            return moved
+        with mock.patch.object(media_io, "TIMEOUT_SECONDS", 0.1):
+            with self.assertRaises(TimeoutError):
+                web_batch._changed_within_deadline(
+                    f"late-{id(self)}", slow_quarantine, lambda moved: web_batch._restore_one(original, moved))
+        release.set()
+        deadline = time.monotonic() + 5
+        while (not landed or landed[0].exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(landed)
+        self.assertFalse(landed[0].exists())
+        self.assertEqual(original.read_bytes(), b"media")
+
+    def test_empty_trash_moves_media_outside_the_write_lock_and_refuses_restores_meanwhile(self):
+        """网盘上逐个 stat、改名或直接删除不占写锁；这期间还原出回收站被拒，不会留下没有文件的行。"""
         binned = self.stage_media(1, "binned.mp4")
-        restored = self.stage_media(2, "restored.mp4")
+        other = self.stage_media(2, "other.mp4")
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
         rm_web.w_feedback(self.contract, {"id": 2, "kind": "dispose"})
         quarantine = web_batch._quarantine_media
-        locked = []
+        locked, refused = [], []
 
         def outside_lock(original, **kwargs):
             locked.append(self.contract.database.write_lock.locked())
             moved = quarantine(original, **kwargs)
-            if original == restored and not locked[-1]:
-                rm_web.w_feedback(self.contract, {"id": 2, "kind": "dispose"})
+            if original == other:
+                for restore in (lambda: rm_web.w_feedback(self.contract, {"id": 2, "kind": "dispose"}),
+                                lambda: rm_web.w_batch(self.contract, {"ids": [2], "operation": "restore"})):
+                    with self.assertRaisesRegex(ValueError, "正在永久删除"):
+                        restore()
+                    refused.append(True)
             return moved
         with mock.patch.object(web_batch, "_quarantine_media", side_effect=outside_lock):
             result = rm_web.w_empty_trash(self.contract)
 
-        self.assertEqual(locked, [False, False])
+        self.assertEqual((locked, refused), ([False, False], [True, True]))
+        self.assertEqual((result["purged"], result["blocked"]), (2, []))
+        self.assertFalse(binned.exists() or other.exists())
+        self.assertIsNone(self.row(1))
+        self.assertIsNone(self.row(2))
+        self.assertFalse(web_batch.being_purged([1, 2]), "删完就撤下登记")
+
+    def test_a_row_restored_just_before_the_purge_starts_is_left_alone(self):
+        """读完回收站、登记之前就被还原的那一条：动文件前按最新的行再筛一遍，文件一下都不碰。"""
+        binned = self.stage_media(1, "binned.mp4")
+        restored = self.stage_media(2, "restored.mp4")
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+        rm_web.w_feedback(self.contract, {"id": 2, "kind": "dispose"})
+        register = web_batch.purging
+
+        def restore_first(ids):
+            rm_web.w_feedback(self.contract, {"id": 2, "kind": "dispose"})
+            return register(ids)
+        with mock.patch.object(web_batch, "purging", side_effect=restore_first), \
+                mock.patch.object(web_batch, "_quarantine_media", wraps=web_batch._quarantine_media) as moved:
+            result = rm_web.w_empty_trash(self.contract)
+
         self.assertEqual(result["purged"], 1)
         self.assertEqual([item["id"] for item in result["blocked"]], [2])
+        self.assertEqual([call.args[0] for call in moved.call_args_list], [binned])
         self.assertFalse(binned.exists())
-        self.assertIsNone(self.row(1))
-        self.assertTrue(restored.is_file(), "隔离期间被还原的，文件放回原处")
+        self.assertTrue(restored.is_file())
         self.assertIsNone(self.row(2)["disposal"])
 
     def test_a_purge_cleans_only_what_the_deleted_rows_left_behind(self):
@@ -2562,6 +2802,24 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["changed"], 2)
         self.assertEqual(rm_web.q_item(self.contract, 1)["like_reason"], "保留原文")
 
+    def test_batch_like_seen_and_later_revert_to_what_they_were(self):
+        rm_web.w_preference(self.contract, {"id": 1, "liked": False, "reason": "保留原文"})
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dislike"})
+        rm_web.w_watch_later(self.contract, {"id": 1})
+        for operation in ("like", "seen", "later"):
+            receipt = rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": operation})
+            rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": f"revert-{operation}",
+                                           "previous": receipt["previous"]})
+        self.assertFalse(rm_web.q_item(self.contract, 1)["liked"])
+        self.assertEqual(rm_web.q_item(self.contract, 1)["like_reason"], "保留原文")
+        self.assertEqual((self.row(1)["feedback"], self.row(2)["feedback"]), ("dislike", None))
+        with closing(sqlite3.connect(self.db_path)) as con:
+            self.assertEqual([row[0] for row in con.execute("SELECT asset_id FROM watch_queue")], [1],
+                             "原本就在稍后看里的那条留下")
+            self.assertIsNone(con.execute("SELECT 1 FROM asset_preference WHERE asset_id=2").fetchone())
+        with self.assertRaises(ValueError):
+            rm_web.w_batch(self.contract, {"ids": [1], "operation": "revert-seen", "previous": {"2": None}})
+
     def test_better_version_goal_is_independent_and_reversible(self):
         saved = rm_web.w_quality_goal(self.contract, {
             "id": 1, "wanted": True, "reason": "有水印，寻找高清无水印版",
@@ -2576,9 +2834,13 @@ class WebDataTests(unittest.TestCase):
 
     def test_better_version_targets_have_a_management_read_surface(self):
         rm_web.w_quality_goal(self.contract, {"id": 1, "wanted": True})
-        queue = rm_web.q_quality_goals(self.contract, {"limit": "20"})
+        with mock.patch.object(web_stats.settings_file, "active", return_value=object()), \
+                mock.patch("peach.media_identity.ownership", return_value={"library_id": "lib-a"}):
+            queue = rm_web.q_quality_goals(self.contract, {"limit": "20"})
         self.assertEqual(queue["total"], 1)
         self.assertEqual(queue["items"][0]["id"], 1)
+        # 所属媒体库同作品列表，按路径算；路径本身不下发。
+        self.assertEqual(queue["items"][0]["library_id"], "lib-a")
         self.assertNotIn("path", queue["items"][0])
         self.assertFalse(queue["has_more"])
         rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": "dispose"})
@@ -3042,18 +3304,199 @@ class WebDataTests(unittest.TestCase):
                 "kind": "performer", "name": "飯岡かなこ", "alias": "森泽佳奈", "remove": True})
         self.assertIn("森泽佳奈", self._names_of()[1])
 
-    def test_a_name_that_already_belongs_to_another_entity_is_refused(self):
-        """撞上另一条实体的统称时只报冲突：那是该合并还是同名不同人，得人来判。"""
+    def test_a_name_that_already_belongs_to_another_entity_is_reported_for_merge(self):
+        """撞上另一条实体的统称时不写别名，但把两边身份交给界面发起成对合并。"""
         self._performer_with_two_names()
         con = sqlite3.connect(self.db_path)
         con.execute(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
             " VALUES(23,'performer','三上悠亜','三上悠亜','2026-01-01','2026-01-01')")
         con.commit(); con.close()
-        with self.assertRaises(ValueError):
-            rm_web.w_entity_alias(self.contract, {
-                "kind": "performer", "name": "飯岡かなこ", "alias": "三上悠亜"})
+        result = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "三上悠亜"})
+        self.assertFalse(result["added"])
+        self.assertEqual(
+            (result["conflict"]["current"]["id"], result["conflict"]["other"]["id"]),
+            (20, 23))
+        self.assertEqual(
+            (result["conflict"]["current"]["works"], result["conflict"]["other"]["works"]),
+            (1, 0))
         self.assertEqual(sorted(self._names_of()[1]), ["森泽佳奈"])
+
+    def test_alias_taken_by_another_creator_offers_a_merge_instead_of_refusing(self):
+        with self.contract.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES(24,'creator','Another Creator','another creator','2026-01-01','2026-01-01')")
+        result = rm_web.w_entity_alias(self.contract, {
+            "kind": "creator", "name": "Canonical Creator", "alias": "Another Creator"})
+        self.assertFalse(result["added"])
+        self.assertEqual(result["conflict"]["other"], {"id": 24, "canonical_name": "Another Creator", "works": 0})
+        self.assertNotIn("shared", result["conflict"])
+
+    def test_alias_shared_with_another_profile_is_added_and_offers_a_merge(self):
+        self._two_entities_for_merge("performer", (60, "甲"), (61, "乙"))
+        with self.contract.write_transaction() as connection:
+            connection.execute("INSERT INTO entity_alias VALUES(61,'共名','共名','test',1.0)")
+        result = rm_web.w_entity_alias(self.contract, {"kind": "performer", "name": "甲", "alias": "共名"})
+        self.assertTrue(result["added"])
+        self.assertTrue(result["conflict"]["shared"])
+        self.assertEqual(result["conflict"]["other"]["id"], 61)
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT entity_id FROM entity_alias WHERE normalized_alias='共名' ORDER BY entity_id").fetchall(),
+                [(60,), (61,)])
+
+    def test_merge_plan_names_both_sides_with_their_direct_works(self):
+        self._two_entities_for_merge("series", (62, "Series A"), (63, "Series B"))
+        plan = rm_web.q_entity_merge(self.contract, {"kind": "series", "id": "62", "other": "63"})
+        self.assertEqual(plan["current"], {"id": 62, "canonical_name": "Series A", "works": 1})
+        self.assertEqual(plan["other"], {"id": 63, "canonical_name": "Series B", "works": 1})
+        for args in ({"kind": "performer", "id": "62", "other": "63"}, {"kind": "series", "id": "62", "other": "62"},
+                     {"kind": "tag", "id": "62", "other": "63"}, {"kind": "series", "id": "62"}):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                rm_web.q_entity_merge(self.contract, args)
+
+    def _two_entities_for_merge(self, kind: str, left: tuple[int, str],
+                                right: tuple[int, str]) -> None:
+        with self.contract.write_transaction() as connection:
+            connection.executemany(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+                [(left[0], kind, left[1], rm_web.normalize_entity_name(left[1])),
+                 (right[0], kind, right[1], rm_web.normalize_entity_name(right[1]))],
+            )
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                " VALUES(1,?,?,'test',1.0)", (left[0], kind))
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                " VALUES(2,?,?,'test',1.0)", (right[0], kind))
+
+    def test_merging_a_colliding_performer_keeps_old_names_and_redirects_old_ids(self):
+        self._two_entities_for_merge(
+            "performer", (30, "有岡みう"), (31, "有冈みう"))
+        with self.contract.write_transaction() as connection:
+            connection.executemany(
+                "INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,'performer')",
+                [(1, "performer:有岡みう"), (2, "performer:有冈みう")],
+            )
+        conflict = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "有岡みう", "alias": "有冈みう"})
+        self.assertEqual(conflict["conflict"]["other"]["canonical_name"], "有冈みう")
+
+        merged = rm_web.w_entity_merge(self.contract, {
+            "kind": "performer", "target_id": 30, "source_id": 31})
+        self.assertEqual(merged["target"]["canonical_name"], "有岡みう")
+        self.assertEqual(merged["source"]["canonical_name"], "有冈みう")
+        self.assertTrue((Path(self.db_path).parent / merged["backup"]).is_file())
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(DISTINCT asset_id) FROM asset_entity WHERE entity_id=30"
+                ).fetchone()[0], 2)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT target_id FROM entity_redirect WHERE old_id=31").fetchone()[0],
+                30)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT alias FROM entity_alias WHERE entity_id=30"
+                    " AND source='user:identity-merge:performer'").fetchone()[0],
+                "有冈みう")
+            self.assertEqual(
+                connection.execute(
+                    "SELECT DISTINCT tag FROM asset_tag WHERE asset_id IN (1,2)"
+                    " AND tag IN ('performer:有岡みう','performer:有冈みう')"
+                ).fetchall(),
+                [("performer:有岡みう",)])
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual(
+            rm_web.q_entity(self.contract, {
+                "kind": "performer", "name": "有冈みう"})["id"], 30)
+
+    def test_merging_a_colliding_studio_rewrites_the_flat_studio_field(self):
+        self._two_entities_for_merge(
+            "studio", (32, "Prestige"), (33, "プレステージ"))
+        with self.contract.write_transaction() as connection:
+            connection.execute("UPDATE asset SET studio='Prestige' WHERE id=1")
+            connection.execute("UPDATE asset SET studio='プレステージ' WHERE id=2")
+        conflict = rm_web.w_entity_alias(self.contract, {
+            "kind": "studio", "name": "Prestige", "alias": "プレステージ"})
+        self.assertEqual(conflict["conflict"]["other"]["id"], 33)
+
+        merged = rm_web.w_entity_merge(self.contract, {
+            "kind": "studio", "target_id": 32, "source_id": 33})
+        self.assertEqual(merged["flat_rewritten"], 1)
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT DISTINCT studio FROM asset WHERE id IN (1,2)").fetchall(),
+                [("Prestige",)])
+            self.assertEqual(
+                connection.execute(
+                    "SELECT json_extract(field_owners,'$.studio') FROM asset WHERE id=2"
+                ).fetchone()[0],
+                "user:entity-merge")
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_merging_series_and_creators_rewrites_their_flat_fields_as_user_owned(self):
+        for kind, keep, absorb in (("series", (64, "S-Keep"), (65, "S-Gone")),
+                                   ("creator", (66, "C-Keep"), (67, "C-Gone"))):
+            with self.subTest(kind=kind):
+                self._two_entities_for_merge(kind, keep, absorb)
+                with self.contract.write_transaction() as connection:
+                    connection.execute(f"UPDATE asset SET {kind}=? WHERE id=1", (keep[1],))
+                    connection.execute(f"UPDATE asset SET {kind}=? WHERE id=2", (absorb[1],))
+                merged = rm_web.w_entity_merge(self.contract, {
+                    "kind": kind, "target_id": keep[0], "source_id": absorb[0]})
+                self.assertEqual(merged["flat_rewritten"], 1)
+                with closing(sqlite3.connect(self.db_path)) as connection:
+                    self.assertEqual(connection.execute(
+                        f"SELECT DISTINCT {kind} FROM asset WHERE id IN (1,2)").fetchall(), [(keep[1],)])
+                    self.assertEqual(connection.execute(
+                        f"SELECT json_extract(field_owners,'$.{kind}') FROM asset WHERE id=2").fetchone()[0],
+                        "user:entity-merge")
+                    self.assertEqual(connection.execute(
+                        "SELECT target_id FROM entity_redirect WHERE old_id=?", (absorb[0],)).fetchone()[0], keep[0])
+
+    def test_entity_merge_refuses_cross_kind_and_third_party_name_ambiguity(self):
+        with self.contract.write_transaction() as connection:
+            connection.executemany(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+                [(34, "performer", "甲", rm_web.normalize_entity_name("甲")),
+                 (35, "studio", "乙", rm_web.normalize_entity_name("乙")),
+                 (36, "performer", "丙", rm_web.normalize_entity_name("丙")),
+                 (37, "performer", "旧名", rm_web.normalize_entity_name("旧名")),
+                 (38, "performer", "丁", rm_web.normalize_entity_name("丁"))],
+            )
+            connection.execute(
+                "INSERT INTO entity_alias VALUES(38,'旧名','旧名','test',1.0)")
+        with self.assertRaisesRegex(ValueError, "same kind"):
+            rm_web.w_entity_merge(self.contract, {
+                "kind": "performer", "target_id": 34, "source_id": 35})
+        with self.assertRaises(ValueError) as caught:
+            rm_web.w_entity_merge(self.contract, {
+                "kind": "performer", "target_id": 36, "source_id": 37})
+        self.assertEqual(caught.exception.code, "api.entityMerge.thirdParty")
+        self.assertEqual(caught.exception.params, {"names": "丁"})
+        self.assertEqual(list(Path(self.db_path).parent.glob("ledger.pre-entity-merge-*.db")), [])
+
+    def test_entity_merge_backup_failure_leaves_both_entities_untouched(self):
+        self._two_entities_for_merge(
+            "performer", (40, "有岡みう"), (41, "有冈みう"))
+        with mock.patch("peach.web_entity.sqlite_backup", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                rm_web.w_entity_merge(self.contract, {
+                    "kind": "performer", "target_id": 40, "source_id": 41})
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM entity WHERE id IN (40,41)").fetchone()[0], 2)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM entity_redirect WHERE old_id=41").fetchone()[0], 0)
 
     def test_an_empty_alias_is_refused(self):
         self._performer_with_two_names()
@@ -3682,6 +4125,31 @@ class JavModeAndCoverTests(unittest.TestCase):
                 rm_web.q_items(self.contract, {"jav": "1", "limit": "20"})["items"]}
         self.assertIsNone(rows[1]["poster_box"])
 
+    def test_a_whole_picture_and_its_front_image_reach_the_card_frame(self):
+        """竖版图证明不是封套时人脸边车不一定在，卡片仍得知道不能切、大图位改用竖版正封。"""
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.poster.json").write_text(json.dumps({
+            "version": jav_poster_crop.ALGORITHM_VERSION, "px": [2184, 1542], "layout": "still",
+            "front": [1536, 2184], "box": {"x0": 0, "y0": 0, "x1": 2184, "y1": 1542, "method": "none"},
+        }), encoding="utf-8")
+        self.contract.cache_bust()
+        # 竖版正封文件不在：页面照旧用横图，不去取一张 404。
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"layout": "still"})
+        version = self.covers.stat().st_mtime_ns
+        (self.covers / "front").mkdir()
+        (self.covers / "front" / "ABW-232.jpg").write_bytes(b"x")
+        # 这条只核对投影，显式推进目录版本，避免连续写入落在同一 NTFS 时钟刻度。
+        os.utime(self.covers, ns=(0, version + 1_000_000))
+        self.contract.cache_bust()
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"layout": "still", "front": True})
+        self.assertIsNone(self.contract.poster_box("ABW-232"))
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.42,"face":{"cx":0.3,"cy":0.2}}', encoding="utf-8")
+        os.utime(self.covers, ns=(0, version + 2_000_000))
+        self.contract.cache_bust()
+        self.assertEqual(self.contract.cover_frame("ABW-232"),
+                         {"cx": 0.3, "cy": 0.2, "layout": "still", "front": True})
+
     def test_a_stale_or_corrupt_poster_sidecar_is_ignored(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.poster.json").write_text("{not json", encoding="utf-8")
@@ -3951,6 +4419,25 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["groups"][0]["count"], 2)
 
+    def test_duplicate_files_read_current_cover_without_mutating_cached_groups(self):
+        self.add('ABW-232', 7200, 5_000_000_000)
+        self.add('ABW-232', 7200, 3_000_000_000)
+        self.con.execute("UPDATE asset SET path=?,name='clip.strm' WHERE id=1", (r'R:\Media\clip.strm',))
+        self.con.commit()
+        with mock.patch.object(self.contract, 'has_cover', return_value=True) as available, \
+                mock.patch.object(self.contract, 'cover_version', return_value='cover-v1'), \
+                mock.patch.object(self.contract, 'cover_frame', return_value=None), \
+                mock.patch.object(self.contract, 'poster_box', return_value=None):
+            files = self.groups()['groups'][0]['files']
+            self.assertTrue(all(item['has_cover'] for item in files))
+            self.assertEqual(files[0]['cover_key'], 'ABW-232')
+            self.assertEqual(files[0]['cover_version'], 'cover-v1')
+            self.assertEqual(files[0]['size'], 5_000_000_000)
+            available.return_value = False
+            files = self.groups()['groups'][0]['files']
+            self.assertTrue(all(not item['has_cover'] for item in files))
+            self.assertNotIn('cover_version', files[0])
+
     def test_shared_filename_rips_with_missing_duration_are_candidates(self):
         """同名且已知时长在容差内的副本进入重复候选，缺测量的一份保留。"""
         kept = self.add("SSIS-001", 7200, 9_000_000_000, name="SSIS-001.mp4")
@@ -4065,6 +4552,44 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(self.groups()["total"], 2, "撤销后这组回到列表")
         with self.assertRaises(ValueError):
             rm_web.w_batch(self.contract, {"ids": other[:1], "operation": "keep-duplicates"})
+
+    def test_kept_group_stays_hidden_after_a_member_leaves(self):
+        first = self.add("SSIS-057", 7200, 5_000_000_000, drive="A")
+        second = self.add("SSIS-057", 7200, 4_000_000_000, drive="B")
+        third = self.add("SSIS-057", 7200, 3_000_000_000, drive="C")
+        rm_web.w_batch(self.contract, {"ids": [first, second, third], "operation": "keep-duplicates"})
+        rm_web.w_batch(self.contract, {"ids": [third], "operation": "dispose"})
+        result = self.groups()
+        self.assertEqual((result["total"], result["kept"]), (0, 1), "少了一份不该让保留过的组回来")
+        kept = rm_web.q_duplicates(self.contract, {"view": "kept"})
+        self.assertEqual([{f["id"] for f in g["files"]} for g in kept["groups"]], [{first, second}])
+
+        rm_web.w_batch(self.contract, {"ids": [first, second], "operation": "reconsider-duplicates"})
+        self.assertEqual((self.groups()["total"], self.groups()["kept"]), (1, 0),
+                         "取消保留要撤掉藏住这组的那条更大的记录")
+
+    def test_a_new_copy_brings_a_kept_group_back_marked_as_new(self):
+        first = self.add("SSIS-057", 7200, 5_000_000_000, drive="A")
+        second = self.add("SSIS-057", 7200, 4_000_000_000, drive="B")
+        rm_web.w_batch(self.contract, {"ids": [first, second], "operation": "keep-duplicates"})
+        newcomer = self.add("SSIS-057", 7200, 3_000_000_000, drive="C")
+        group = self.groups()["groups"][0]
+        self.assertEqual(group["new_files"], 1)
+        self.assertEqual({f["id"]: f["is_new"] for f in group["files"]},
+                         {first: False, second: False, newcomer: True})
+
+    def test_several_groups_are_kept_and_released_in_one_request(self):
+        one = [self.add("SSIS-057", 7200, 5_000_000_000), self.add("SSIS-057", 7200, 4_000_000_000)]
+        two = [self.add("ABW-232", 7200, 5_000_000_000), self.add("ABW-232", 7200, 3_000_000_000)]
+        rm_web.w_batch(self.contract, {"groups": [one, two], "operation": "keep-duplicates"})
+        self.assertEqual((self.groups()["total"], self.groups()["kept"]), (0, 2))
+        rm_web.w_batch(self.contract, {"groups": [one, two], "operation": "reconsider-duplicates"})
+        self.assertEqual((self.groups()["total"], self.groups()["kept"]), (2, 0))
+        for bad in ([one[:1]], [one, one]):
+            with self.assertRaises(ValueError):
+                rm_web.w_batch(self.contract, {"groups": bad, "operation": "keep-duplicates"})
+        with self.assertRaises(ValueError):
+            rm_web.w_batch(self.contract, {"groups": [one], "operation": "dispose"})
 
     def test_duplicate_rows_keep_the_full_path_for_review(self):
         self.add("SSIS-057", 7200, 5_000_000_000, drive="A")

@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import sqlite3
 import tempfile
 import unittest
 from contextlib import closing, redirect_stdout
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from peach import scan, wants
@@ -58,11 +59,12 @@ class WantFixture(unittest.TestCase):
         return scan.ingest_path(self.db, "local", path, declared_roots=DECLARED, mounts=self.mounts,
                                 windows=False)
 
-    def add_asset(self, asset_id, code, *, disposal=None):
+    def add_asset(self, asset_id, code, *, disposal=None, medium="video"):
+        suffix = "mp4" if medium == "video" else "jpg"
         self.write(lambda connection: connection.execute(
             "INSERT INTO asset(id,location,path,name,medium,size,code,disposal)"
-            " VALUES(?,'local',?,?,'video',10,?,?)",
-            (asset_id, f"R:\\media\\old\\{code}.mp4", f"{code}.mp4", code, disposal)))
+            " VALUES(?,'local',?,?,?,10,?,?)",
+            (asset_id, f"R:\\media\\old\\{code}.{suffix}", f"{code}.{suffix}", medium, code, disposal)))
 
     def add_follow_item(self, item_id=9, status="new"):
         def insert(connection):
@@ -97,6 +99,10 @@ class RegisterTests(WantFixture):
         with self.assertRaisesRegex(ValueError, "已经在库里"):
             self.write(lambda connection: wants.add_code(connection, "abp123"))
         self.assertTrue(self.write(lambda connection: wants.add_code(connection, "ABP-124"))["created"])
+
+    def test_a_leftover_cover_image_does_not_count_as_in_the_library(self):
+        self.add_asset(1, "ABP-125", medium="image")
+        self.assertTrue(self.write(lambda connection: wants.add_code(connection, "ABP-125"))["created"])
 
     def test_wanting_a_feed_shell_takes_its_details_and_lifts_its_ignore(self):
         self.write(lambda connection: connection.execute(
@@ -139,6 +145,14 @@ class ReconcileTests(WantFixture):
             "SELECT state,acquired_asset_id,acquired_source,acquired_batch FROM want_item")[0]
         self.assertEqual((state, acquired_asset, source), ("acquired", asset_id, wants.AUTO_SOURCE))
         self.assertTrue(batch.startswith(wants.AUTO_SOURCE + "@"))
+
+    def test_a_cover_image_landing_first_does_not_mark_the_want_acquired(self):
+        self.write(lambda connection: wants.add_code(connection, "ABW-359"))
+        self.assertEqual(self.ingest(self.put("ABW-359/ABW-359.jpg")).acquired, 0)
+        self.assertEqual(self.query("SELECT state FROM want_item"), [("wanted",)])
+        result = self.ingest(self.put("ABW-359/ABW-359.mp4"))
+        self.assertEqual(self.query("SELECT state,acquired_asset_id FROM want_item"),
+                         [("acquired", result.asset_id)])
 
     def test_push_discovery_ingest_marks_the_want_acquired_too(self):
         self.write(lambda connection: wants.add_code(connection, "ABW-358"))
@@ -252,6 +266,55 @@ class SearchStateTests(WantFixture):
         self.assertEqual([target.fresh for target in targets], [True, True, False])
         self.assertEqual((targets[1].code, targets[1].follow_url),
                          (None, "https://rule34video.com/video/9/x/"))
+
+    def test_due_targets_space_searches_by_age_and_last_outcome(self):
+        now = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+
+        def searched(want_id, outcome, hours_ago):
+            self.write(lambda connection: connection.execute(
+                "UPDATE want_item SET last_search_at=?,last_search_outcome=? WHERE id=?",
+                (wants.stamp(now - timedelta(hours=hours_ago)), outcome, want_id)))
+        never = self.want("ABP-120", "2025-01-01")
+        fresh_today, fresh_yesterday = self.want("ABP-121", "2026-09-15"), self.want("ABP-122", "2026-09-15")
+        old_this_week, old_last_week = self.want("ABP-123", "2025-01-01"), self.want("ABP-124", "2025-01-01")
+        failed = self.want("ABP-125", "2025-01-01")
+        searched(fresh_today, "none", 3)
+        searched(fresh_yesterday, "none", 25)
+        searched(old_this_week, "none", 24 * 6)
+        searched(old_last_week, "found", 24 * 7)
+        searched(failed, "error", 7)
+        self.add_follow_item()
+        self.write(lambda connection: wants.add_follow(connection, 9))
+        with closing(sqlite3.connect(self.db)) as connection:
+            due = wants.due_targets(connection, now=now, today=TODAY)
+        self.assertEqual([target.id for target in due], [never, fresh_yesterday, old_last_week, failed])
+
+    def test_stored_cadence_changes_spacing_and_give_up_count(self):
+        def configure(connection):
+            changed = connection.execute(
+                "UPDATE profile SET settings_json=? WHERE id='local-default'",
+                (json.dumps({"wantStaleSearchDays": 3, "wantStaleAttemptLimit": 0}),)).rowcount
+            self.assertEqual(changed, 1)
+        self.write(configure)
+        now = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+        recent, older = self.want("ABP-130", "2025-01-01"), self.want("ABP-131", "2025-01-01")
+        for want_id, days in ((recent, 2), (older, 3)):
+            self.write(lambda connection, want_id=want_id, days=days: connection.execute(
+                "UPDATE want_item SET last_search_at=?,last_search_outcome='none' WHERE id=?",
+                (wants.stamp(now - timedelta(days=days)), want_id)))
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual(wants.cadence(connection), wants.Cadence(timedelta(days=3), 0))
+            self.assertEqual([target.id for target in wants.due_targets(connection, now=now, today=TODAY)], [older])
+        self.assertEqual({self.record(recent, "none") for _ in range(12)}, {wants.SEARCHING})
+        self.assertEqual(self.query("SELECT state,search_count FROM want_item WHERE id=?", (recent,)),
+                         [("wanted", 12)])
+
+    def test_a_broken_stored_cadence_falls_back_to_the_defaults(self):
+        self.write(lambda connection: connection.execute(
+            "UPDATE profile SET settings_json=? WHERE id='local-default'",
+            (json.dumps({"wantStaleSearchDays": 2, "wantStaleAttemptLimit": True}),)))
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual(wants.cadence(connection), wants.Cadence())
 
     def test_the_list_carries_the_follow_provider(self):
         self.add_follow_item()

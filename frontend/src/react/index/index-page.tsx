@@ -16,7 +16,7 @@ import { indexSkeletonHtml, spinnerHtml } from '@peach/legacy/ui';
 
 import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { IndexSearch } from './index-search';
-import { SortKeys } from '../entity-filter/entity-filter-page';
+import { IconSwap } from '../components/icon-swap';
 import type { EntitySortKey } from '../entity-filter/entity-filter';
 import { DataTableFooter } from '../components/table-controls';
 import { tagSkeletonHtml, TAG_PAGE_SIZE, TAG_PAGE_SIZES } from '../../tag-skeleton';
@@ -41,10 +41,14 @@ import {
   type IndexRoute, type IndexScope, type IndexTag, type PeopleLayout,
 } from './index-data';
 import { OnlineAuthors, PeopleGrid } from './index-people';
+import { RosterDock, useRosterSelection } from './roster-selection';
+import { OnlineTagDock } from './online-tag-dock';
 import { TagAlphabet, TagCloud, TagDock, TagFilters, type TagEntry } from './index-tags';
 import { TagManager } from './tag-manager';
 import { PEOPLE_SORTS, nextPeopleSort, normalizePeopleSort, peopleSortAria } from '../../people-sort';
 import { KANA_ROWS, normalizeKanaRow } from '../../identity-filter';
+import { TagEditor, useTagStatusCounts } from './tag-operations';
+import { FilterActionButton } from '../components/filter-glass';
 import { t } from '../../i18n';
 
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人。所以这个开关切的
@@ -67,6 +71,8 @@ const PEOPLE_TABS: BoardTab<'performers' | 'creators' | 'online'>[] = [
 
 /* 公司那一格摆的是标识而不是脸，沿用艺人那套词就是提示说着「竖幅头像」、屏幕上摆着方标识。
    档位仍是同一个设置值，分开的只有说法。 */
+const SortUpIcon = spriteGlyph('arrow-up'), SortDownIcon = spriteGlyph('arrow-down');
+
 const LAYOUTS: Record<'people' | 'company' | 'series', readonly (readonly [PeopleLayout, string, string])[]> = {
   people: [['big', t('catalog:peopleIndex.layoutLargePortrait'), 'maximize'], ['compact', t('catalog:peopleIndex.layoutCompactRound'), 'layout-grid']],
   company: [['big', t('catalog:peopleIndex.layoutLargeLogo'), 'maximize'], ['compact', t('catalog:peopleIndex.layoutCompactLogo'), 'layout-grid']],
@@ -96,6 +102,9 @@ type Item = IndexPerson | IndexTag | OnlineAuthor | OnlineTag;
 
 export function IndexPage(props: IndexProps) {
   const [managing, setManaging] = useState(false);
+  const [addingBlockedTag, setAddingBlockedTag] = useState(false);
+  /* 标签页平时那排状态药丸点「已隐藏」「已屏蔽内容」：进标签管理，直接落在那一档。 */
+  const [managerState, setManagerState] = useState<'active' | 'hidden' | 'blocked'>('active');
   const [route, setRoute] = useState<IndexRoute>(() => indexRoute(
     { kind: props.kind, q: props.q, scope: props.scope, view: props.view, category: props.category,
       sort: props.sort, dir: props.dir, kana: props.kana },
@@ -130,6 +139,8 @@ export function IndexPage(props: IndexProps) {
 
   /* 选择键归壳：关掉时所选跟着清空，下次打开从零开始，同目录页的多选。 */
   useEffect(() => { if (!props.selectMode) setPicked(new Set()) }, [props.selectMode]);
+  /* 本地名册的多选：进了多选模式才显示勾选与浮条，选择集按实体 id 记。在线创作者那一档不在内。 */
+  const rosterKind = isPeople(kind) && !onlineAuthors ? kind : null;
 
   /* 换筛选、词表或类型时保留控件，只在结果区显示等待态。 */
   const go = (patch: Partial<IndexRoute>, replace = false) => {
@@ -192,6 +203,20 @@ export function IndexPage(props: IndexProps) {
   const kanaCount = (key: string) => key === 'all'
     ? (kanaCounts ? Object.values(kanaCounts).reduce((sum, count) => sum + count, 0) : undefined)
     : kanaCounts?.[key];
+  /* 从名册隐藏的那几项收在「已隐藏」里：有隐藏的、或正看着这一档时才摆出这颗键。 */
+  const hiddenCount = result.data?.pages[0]?.hidden ?? 0;
+  const hiddenView = category === 'hidden';
+  const hiddenButton = rosterKind && (hiddenCount > 0 || hiddenView) ? (
+    <Button variant={hiddenView ? 'primary' : 'secondary'} size="small" aria-pressed={hiddenView} data-roster-hidden=""
+      onClick={() => go({ category: hiddenView ? 'all' : 'hidden' })}>{t('catalog:rosterActions.hiddenView', { count: hiddenCount })}</Button>
+  ) : null;
+  /* 「已隐藏」里的都恢复了就回到全部，不停在一页空结果上。 */
+  useEffect(() => {
+    if (hiddenView && !pending && !result.isError && hiddenCount === 0) go({ category: 'all' }, true);
+  }, [hiddenView, pending, hiddenCount]);
+  const roster = useRosterSelection(!!rosterKind && props.selectMode, rosterKind ? items as IndexPerson[] : []);
+  /* 在线标签的多选按标签 id 写，页面上按名字记选中，这里换一次。 */
+  const onlinePicked = onlineTags ? (items as IndexTag[]).filter((tag) => picked.has(tag.k)) : [];
 
   /* 框换了大小，「这张图要不要补底」和人脸放大都得重算：图早加载完了，不会再自己发一次 load。
      赶在绘制之前，否则换版式那一帧是按旧框算的几何。 */
@@ -215,8 +240,13 @@ export function IndexPage(props: IndexProps) {
           onChange={(next) => go({ kind: next })} />
         : null;
 
+  const tagCounts = useTagStatusCounts(scope, kind === 'tags' && !managing);
+  const openManager = (state: 'hidden' | 'blocked') => {
+    props.exitSelectMode(); setPicked(new Set()); setManagerState(state); setManaging(true);
+  };
+
   const pressTag = (tag: string) => {
-    if (onlineTags) { props.openFollowTag(tag); return }
+    if (onlineTags && !props.selectMode) { props.openFollowTag(tag); return }
     if (!props.selectMode) {
       const identity = tags.find(item => item.k === tag);
       if (identity?.entity_id) props.openEntity('tag', tag);
@@ -248,7 +278,7 @@ export function IndexPage(props: IndexProps) {
       online={onlineTags || onlineAuthors} onClear={() => go({ q: '', category: 'all', kana: '' })} />;
     if (onlineAuthors) return <OnlineAuthors items={items as OnlineAuthor[]} layout={layout} props={props} />;
     if (isPeople(kind)) return <PeopleGrid kind={kind} items={items as IndexPerson[]} layout={layout} props={props}
-      actions sort={kind === 'performers' ? orderedSort.sort : 'n'}
+      picks={roster.picks} actions sort={kind === 'performers' ? orderedSort.sort : 'n'}
       kana={kind === 'performers' ? activeKana : ''} />;
     const actions = { online: onlineTags, picked, press: pressTag };
     return view === 'alphabet' ? <TagAlphabet groups={groups} actions={actions} /> : <TagCloud tags={tags} actions={actions} />;
@@ -271,7 +301,7 @@ export function IndexPage(props: IndexProps) {
         <LibraryShortcuts kind={kind === 'tags' ? 'tag' : kind === 'series' ? 'series' : kind === 'studios' ? 'studio' : kind === 'agencies' ? 'agency' : kind === 'creators' ? 'creator' : 'performer'} />
         {kind === 'tags' ? <Button variant={managing ? 'primary' : 'ghost'} iconOnly className="flex-none" data-tag-mode=""
           leadingIcon={spriteGlyph('pencil')} aria-label={managing ? t('catalog:peopleIndex.backToTags') : t('catalog:peopleIndex.manageTags')} title={managing ? t('catalog:peopleIndex.backToTags') : t('catalog:peopleIndex.manageTags')} aria-pressed={managing}
-          onClick={() => { props.exitSelectMode(); setPicked(new Set()); setManaging(!managing) }} /> : null}
+          onClick={() => { props.exitSelectMode(); setPicked(new Set()); setManagerState('active'); setManaging(!managing) }} /> : null}
         <IndexSearch label={t('catalog:peopleIndex.filterTitle', { title: noun })} value={q} onQuery={(next) => { if (next !== q) go({ q: next }, !!next) }} />
       </div>
       {kind === 'performers' || kind === 'creators' ? (
@@ -283,7 +313,7 @@ export function IndexPage(props: IndexProps) {
           }} />
       ) : null}
       {tabs}
-      {managing && kind === 'tags' ? <TagManager key={scope} scope={scope} search={q} category={category} view={view}
+      {managing && kind === 'tags' ? <TagManager key={`${scope}:${managerState}`} scope={scope} state={managerState} search={q} category={category} view={view}
         onCategory={next => go({ category: next })} onView={next => go({ view: next })}
         onJump={at => root.current?.querySelector(`[data-alpha-group="${at}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })} /> : <>
       {kind === 'performers' && scope === 'local' ? (
@@ -293,6 +323,7 @@ export function IndexPage(props: IndexProps) {
               <Button key={key} variant={category === key ? 'primary' : 'secondary'} size="small"
                 aria-pressed={category === key} onClick={() => go({ category: key })}>{label}</Button>
             ))}
+            {hiddenButton}
           </div>
           <div aria-label={t('catalog:peopleIndex.kanaRow')} className={IDENTITY_ROW_CLASS}>
             {KANA_ROWS.map(([key, label]) => {
@@ -315,12 +346,27 @@ export function IndexPage(props: IndexProps) {
           </div>
           <div data-index-sorts="" role="group" aria-label={t('catalog:peopleIndex.sortLabel')}
             className="mb-4 flex min-w-0 flex-wrap items-center gap-1">
-            <SortKeys sorts={peopleSorts} onSort={changeSort} />
+            {peopleSorts.map((sort) => (
+              <button key={sort.key} type="button" data-entity-sort={sort.key} data-entity-press=""
+                aria-pressed={sort.pressed} aria-label={sort.ariaLabel || undefined} onClick={() => changeSort(sort.key)}>
+                {sort.label}{sort.pressed && sort.dir ? <IconSwap a={SortUpIcon} b={SortDownIcon} state={sort.dir === 'asc' ? 'a' : 'b'} className="size-(--icon-inline)" /> : null}
+              </button>
+            ))}
           </div>
         </>
+      ) : hiddenButton ? (
+        <div className={IDENTITY_ROW_CLASS}>
+          <Button variant={hiddenView ? 'secondary' : 'primary'} size="small" aria-pressed={!hiddenView}
+            onClick={() => go({ category: 'all' })}>{t('catalog:shared.all')}</Button>
+          {hiddenButton}
+        </div>
       ) : null}
       {kind === 'tags' ? (
-        <TagFilters categories={categories} category={category} online={onlineTags} readout={readout}
+        <TagFilters categories={categories} category={category} online={onlineTags}
+          actions={onlineTags ? <FilterActionButton onPress={() => setAddingBlockedTag(true)}>{t('catalog:tagManager.blockByName')}</FilterActionButton> : undefined}
+          readout={result.isPending ? undefined : readout}
+          status={{ hidden: false, blocked: false, ...tagCounts, onChange: (hidden) => { if (hidden) openManager('hidden') },
+            ...(onlineTags ? { onBlocked: () => openManager('blocked') } : {}) }}
           letters={groups.map(([letter]) => letter)} view={view}
           onCategory={(next) => go({ category: next })}
           onView={(next) => go({ view: next })}
@@ -347,12 +393,18 @@ export function IndexPage(props: IndexProps) {
           </Button>
         </div>
       ) : null}
+      {rosterKind ? <RosterDock kind={rosterKind} hiddenView={hiddenView} selection={roster} total={items.length}
+        visible={props.selectMode} exit={props.exitSelectMode} /> : null}
+      {onlineTags ? <OnlineTagDock tags={onlinePicked} visible={props.selectMode} pageTags={items as IndexTag[]}
+        onPick={(keys) => setPicked(new Set(keys))} exit={props.exitSelectMode} /> : null}
       {kind === 'tags' && !onlineTags && props.selectMode ? (
         <TagDock count={picked.size} match={match} onMatch={setMatch}
           onClear={() => setPicked(new Set())}
           onApply={() => { const chosen = [...picked]; setPicked(new Set()); props.showTags(chosen, match) }} />
       ) : null}
       </>}
+      {addingBlockedTag ? <TagEditor operation="block" selected={[]} scope="online"
+        close={() => setAddingBlockedTag(false)} done={() => setPicked(new Set())} /> : null}
     </div>
   );
 }

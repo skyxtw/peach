@@ -4,9 +4,39 @@
 
 ## amane 桥
 
+### 采用稳定版 v0.28.0
+
+2026-11-18 复核官方 [v0.28.0](https://github.com/sqzw-x/amane/releases/tag/v0.28.0)，固定到标签提交 `391af4fdc9fec4c7eb279ce8de53fbf693f09d5a`。[相对现有 v0.27.1 的差集](https://github.com/sqzw-x/amane/compare/ffaedbcdfa170c158bf457128f534f5b59365ec7...391af4fdc9fec4c7eb279ce8de53fbf693f09d5a)共 9 个提交。
+
+桥的来源链消费两处修复。freejavbt 从 canonical 或 og:url 提取页面番号并与请求核对，拦住素人日期号重定向到另一来源作品的错配。makers（上游 official）增加 `_2.jpg` 横版封面到 `_1.jpg` 竖版海报的推导，继续支持 `-pl.jpg` 到 `-ps.jpg`，哈希文件名与其他序号不推导。Peach 继续把海报写入候选 extra，不更改身份核对、字段优先级与复核规则。
+
+avbase、javdb 与 gfriends 的变更由 Peach 自有来源或演员层负责，桥只在自检中载入前两站。演员推送、图片裁切、桌面与 Docker 构建变化没有桥调用方。上游清单仅改版本并移除 only-managed 解释器偏好，字段模型、失败枚举及依赖约束相同。桥继续排除语义模型依赖，watchdog 受上游 `<7` 约束。
+
+存量缓存没有绑定 amane 版本：正向快照只记 `PROVIDER_EVIDENCE`，无结果按站记在格式 3 的文件中。旧 freejavbt 从请求 URL 回报番号，日期号跨来源重定向后仍能通过客户端身份检查。升级补修 `amane-source-cache-1` 单独失效 freejavbt 下划线日期号快照、makers 缺少 `_2.jpg` 对应海报的快照及相应来源和封面缺失记忆，其他缓存保留；正文保留，未批准的旧 freejavbt 候选撤下并原样记入回执，人工候选和批准结果保留。已有升级回执也执行该规则，以独立任务键重新派发受影响作品，强制重采产生候选，真相字段继续按现有复核规则处理。回执先保存计划，文件处理失败后继续同一计划，随后取得的新快照与人工批准保留。平台制品和完整回归仍待安全审计通过后验证。
+
+### 采用稳定版 v0.27.1
+
+2026-11-14 固定到官方 [v0.27.1](https://github.com/sqzw-x/amane/releases/tag/v0.27.1)，提交 `ffaedbcdfa170c158bf457128f534f5b59365ec7`。[相对 v0.22.1 的差集](https://github.com/sqzw-x/amane/compare/fd9294fbe5b4aa88ce1df84d534f6816ad9460d5...ffaedbcdfa170c158bf457128f534f5b59365ec7)含 96 个提交。按桥开放给来源链的九站逐站读 diff：
+
+| 站 | 上游改动 | Peach 侧 |
+| --- | --- | --- |
+| makers（`official`） | 新增 `plot`、`directors`（去掉 `---` 占位）、`extrafanart`；旧图片目录按 `-pl.jpg` → `-ps.jpg` 推导 `poster_urls`；单图条目从 `img/@src` 取封面 | 映射不变：导演进 `director`，剧情、海报、剧照进 `extra`，剧照可作样张来源 |
+| mgstage | 前导数字番号检索落空时按尾号再检；`number` 仍取详情页地址里的品番 | 映射不变；`529STCV-605` 对 `STCV-605` 照常过身份核对 |
+| airav | 番号比对与取值前剥除 caribbeancom、1pondo 等来源名前缀 | 映射不变；`number` 不再带来源名 |
+| avsox、faleno、dahlia | 响应模型改用容忍 null 的 `ResponseModel` | 无影响 |
+| prestige、fc2club、freejavbt | 无改动 | 无影响 |
+
+桥另外登记的 11 站（dmm、giga、jav321、javbus、javlibrary、xcity 等）只在自检时载入类，不在来源链上。`MediaMetadata` 字段不变；`FailureReason` 取值不变，新增的 `EgressRejected` 只在 URL 协议不是 http(s) 时抛出，归 `unexpected`。桥不带浏览器后端，挑战页仍报 `cloudflare_challenge`。
+
+运行依赖：numpy、onnxruntime、tokenizers 与 macOS CoreML 只被 `amane.semantic` 与 `amane.db.embeddings` 导入，桥清单用 uv 的 `exclude-dependencies` 排除；Windows 实测桥 venv 约 125 MB，与 v0.22.1 持平，不排除时为 242 MB。zhconv 换成 amane 包内字典，`scripts/amane_bridge.spec` 不再收集 zhconv，对应源码不再附 zhconv 的 sdist。watchdog 保持 6.0.0。
+
+存量：受影响的采集字段只来自 mgstage、airav 的番号匹配。旧的「没有」记忆与来源快照都在 7 天后到期重问，不另做升级补修。
+
+验证：清空 PATH 后离线自检载入全部 20 个站点类；真实查询 SSIS-001（makers、airav、avsox）与 STCV-605（mgstage），经 `split_report` 后 makers 给出导演、10 张剧照与剧情，mgstage 由尾号检索取回 `529STCV-605`。macOS 与 Docker 制品未在本机构建。
+
 ### 稳定版 v0.27.1 暂不采用
 
-2026-11-14 复核官方 [v0.27.1](https://github.com/sqzw-x/amane/releases/tag/v0.27.1)，提交 `028cdc6eb45ce1a47d85a38abb43fc059e965479`。[相对 v0.26.0 的差集](https://github.com/sqzw-x/amane/compare/v0.26.0...v0.27.1)含 25 个提交。桥消费的站点类中，上文记为只在 main 分支头的修复已进入稳定版：makers（`official`）补剧情、导演、剧照与单图封面回退，mgstage 前导数字番号按尾号反查；javbus 改了无码海报，Peach 的 JavBus 走自有来源。运行依赖与 v0.26.0 相同，numpy、onnxruntime（macOS 以外）、tokenizers 与 macOS CoreML 仍为强制依赖，watchdog 仍为 `<7`。
+2026-11-14 复核官方 [v0.27.1](https://github.com/sqzw-x/amane/releases/tag/v0.27.1)，提交 `ffaedbcdfa170c158bf457128f534f5b59365ec7`。[相对 v0.26.0 的差集](https://github.com/sqzw-x/amane/compare/v0.26.0...v0.27.1)含 25 个提交。桥消费的站点类中，上文记为只在 main 分支头的修复已进入稳定版：makers（`official`）补剧情、导演、剧照与单图封面回退，mgstage 前导数字番号按尾号反查；javbus 改了无码海报，Peach 的 JavBus 走自有来源。运行依赖与 v0.26.0 相同，numpy、onnxruntime（macOS 以外）、tokenizers 与 macOS CoreML 仍为强制依赖，watchdog 仍为 `<7`。
 
 继续固定 v0.22.1，恢复条件同 v0.26.0。本次在约束内更新桥锁：fastapi 0.162.7、anthropic 2.8.0、openai 3.51.0、pydantic-ai-slim 与 pydantic-graph 2.68.0、genai-prices 0.2.3、logfire-api 5.6.0、regex 2026.11.9、pydantic-settings 2.16.3、sqlmodel 0.0.50、annotated-doc 0.0.6；croniter 升到 7.0.0（MIT）。croniter 7 的大版本改的是调度表达式语义，只有 amane 调度器使用，桥自检路径不导入 croniter、watchdog、anthropic 或 openai。watchdog 保持 6.0.0。Windows 上按新锁构建独立可执行文件，清空 PATH 后离线自检载入全部 20 个站点类；macOS 与 Docker 制品未在本机构建。
 

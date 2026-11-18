@@ -1,4 +1,8 @@
 {
+  "holdToConfirm": {
+    "label": "Hold to {{action}}",
+    "instruction": "Hold the mouse button, Space or Enter for 2 seconds to confirm. Release early to cancel."
+  },
   "accessSetup": {
     "enterWithoutPassword": "Continue without sign-in",
     "lanPasswordHint": "Recommended for LAN access. Without one, any device on the same network can get in.",
@@ -42,12 +46,18 @@
   },
   "batchCatalog": {
     "addToWatchLater": "Add to watch later",
-    "confirmBody_one": "This applies to the {{count, number}} selected item.",
-    "confirmBody_other": "This applies to the {{count, number}} selected items.",
-    "confirmDelete_one": "Files and collection records for the {{count, number}} selected item will be deleted permanently. This can't be undone.",
-    "confirmDelete_other": "Files and collection records for the {{count, number}} selected items will be deleted permanently. This can't be undone.",
-    "confirmDispose_one": "The {{count, number}} selected item will move to the trash, where you can restore it.",
-    "confirmDispose_other": "The {{count, number}} selected items will move to the trash, where you can restore them.",
+    "confirmDelete_one": "Deletes the files and collection records of the {{count, number}} selected item permanently.",
+    "confirmDelete_other": "Deletes the files and collection records of the {{count, number}} selected items permanently.",
+    "confirmDispose_one": "Moves the {{count, number}} selected item to the trash. The file stays where it is.",
+    "confirmDispose_other": "Moves the {{count, number}} selected items to the trash. The files stay where they are.",
+    "confirmLater_one": "Adds the {{count, number}} selected item to watch later.",
+    "confirmLater_other": "Adds the {{count, number}} selected items to watch later.",
+    "confirmLike_one": "Likes the {{count, number}} selected item. Existing like reasons are kept.",
+    "confirmLike_other": "Likes the {{count, number}} selected items. Existing like reasons are kept.",
+    "confirmRestore_one": "Restores the {{count, number}} selected item from the trash to the collection.",
+    "confirmRestore_other": "Restores the {{count, number}} selected items from the trash to the collection.",
+    "confirmSeen_one": "Marks the {{count, number}} selected item as watched.",
+    "confirmSeen_other": "Marks the {{count, number}} selected items as watched.",
     "deleteSelected": "Delete selected permanently",
     "doneDelete_one": "Deleted {{count, number}} item permanently",
     "doneDelete_other": "Deleted {{count, number}} items permanently",
@@ -66,21 +76,33 @@
     "restoreSelected": "Restore selected"
   },
   "batchFollow": {
-    "confirmBody_one": "This applies to the {{count, number}} selected video from Following.",
-    "confirmBody_other": "This applies to the {{count, number}} selected videos from Following.",
+    "confirmIgnore_one": "Ignores the {{count, number}} selected video from Following. If it's on your wants and not in the collection yet, it's removed from wants.",
+    "confirmIgnore_other": "Ignores the {{count, number}} selected videos from Following. Any on your wants that aren't in the collection yet are removed from wants.",
+    "confirmSave_one": "Saves the {{count, number}} selected video from Following to the database.",
+    "confirmSave_other": "Saves the {{count, number}} selected videos from Following to the database.",
+    "confirmSeen_one": "Marks the {{count, number}} selected video from Following as seen.",
+    "confirmSeen_other": "Marks the {{count, number}} selected videos from Following as seen.",
     "doneIgnored_one": "Ignored {{count, number}} item",
     "doneIgnored_other": "Ignored {{count, number}} items",
     "doneSave_one": "Saved {{count, number}} item to the database",
     "doneSave_other": "Saved {{count, number}} items to the database",
     "doneSeen_one": "Marked {{count, number}} item as seen",
     "doneSeen_other": "Marked {{count, number}} items as seen",
+    "ignoreRecovery": " You can undo this, but removed wants won't come back.",
     "ignoreSelected": "Ignore selected videos",
     "saveSelected": "Save selected videos"
   },
   "batchJunk": {
-    "confirmBody_one": "This applies to the {{count, number}} selected file.",
-    "confirmBody_other": "This applies to the {{count, number}} selected files.",
+    "confirmDisposeAll_one": "Moves the {{count, number}} undecided file in this category to the trash. The file stays where it is.",
+    "confirmDisposeAll_other": "Moves all {{count, number}} undecided files in this category to the trash. The files stay where they are.",
+    "confirmDispose_one": "Moves the {{count, number}} selected file to the trash. The file stays where it is.",
+    "confirmDispose_other": "Moves the {{count, number}} selected files to the trash. The files stay where they are.",
+    "confirmNotJunk_one": "Marks the {{count, number}} selected file as not junk and takes it out of the queue.",
+    "confirmNotJunk_other": "Marks the {{count, number}} selected files as not junk and takes them out of the queue.",
+    "confirmRecheck_one": "Sends the {{count, number}} selected file back to the junk queue.",
+    "confirmRecheck_other": "Sends the {{count, number}} selected files back to the junk queue.",
     "dismissed": "Set as not junk",
+    "disposeAll": "Move all to trash",
     "doneDispose_one": "Moved {{count, number}} item to trash",
     "doneDispose_other": "Moved {{count, number}} items to trash",
     "doneNotJunk_one": "Marked {{count, number}} item as not junk",
@@ -88,6 +110,7 @@
     "doneRecheck_one": "Sent {{count, number}} item back for junk check",
     "doneRecheck_other": "Sent {{count, number}} items back for junk check",
     "markNotJunk": "Mark as not junk",
+    "queueChanged": "The undecided files just changed and were reloaded. Please confirm again.",
     "recheckFiles": "Recheck files",
     "reconsidered": "Sent back for junk check"
   },
@@ -182,15 +205,15 @@
     "spacerColumn": "Empty space",
     "toolbar": "{{label}} toolbar"
   },
+  "detailFailure": {
+    "title": "Couldn't get the details"
+  },
   "detailTags": {
     "hideTag": "Hide this tag on this video",
     "moreCount_one": "{{count, number}} more",
     "moreCount_other": "{{count, number}} more",
     "optionsLoadFailed": "Couldn't load tag suggestions",
-    "removeTagNamed": "Remove tag {{tag}}",
-    "renameTag": "Rename tag",
-    "renameTagNamed": "Rename tag {{tag}}",
-    "tagChanged": "This tag has changed. Reopen the details."
+    "removeTagNamed": "Remove tag {{tag}}"
   },
   "documentTitle": {
     "fallback": "Peach"
@@ -216,6 +239,18 @@
     "removeAction": "Alias removal",
     "removeNamed": "Remove alias {{alias}}",
     "removed": "Removed alias {{alias}}"
+  },
+  "entityMerge": {
+    "title": "Merge duplicate profiles",
+    "menu": "Merge duplicate profile…",
+    "bodyTaken": "“{{alias}}” is already the name of another profile. Merging keeps “{{keep}}” ({{keepWorks}} titles) and moves in the titles and aliases of “{{absorb}}” ({{absorbWorks}} titles). This can't be undone; the database is backed up first.",
+    "bodyShared": "Added alias “{{alias}}”, which is also an alias of “{{other}}”. If they're duplicates, merging keeps “{{keep}}” ({{keepWorks}} titles) and moves in “{{absorb}}” ({{absorbWorks}} titles). This can't be undone; the database is backed up first.",
+    "summary": "Merging keeps “{{keep}}” ({{keepWorks}} titles) and moves in the titles and aliases of “{{absorb}}” ({{absorbWorks}} titles). This can't be undone; the database is backed up first.",
+    "pickLabel": "Other profile",
+    "pickPlaceholder": "Search names or aliases",
+    "pickFirst": "Pick the other profile first",
+    "confirm": "Merge",
+    "done": "Merged “{{source}}” into “{{target}}”"
   },
   "entityMissing": {
     "agency": "This agency couldn't be found",
@@ -412,6 +447,7 @@
   },
   "networkBanner": {
     "checkProxy": "Check Peach proxy",
+    "dismiss": "Dismiss",
     "offline": "Peach can't reach the internet. Fetching, Following updates, and online sources are unavailable; local media still works."
   },
   "objectOrder": {
@@ -472,10 +508,10 @@
     "viewReason": "Why this is recommended: {{reason}}"
   },
   "region": {
-    "china": "China",
+    "china": "Chinese",
     "clear": "Clear region",
-    "japan": "Japan",
-    "korea": "Korea",
+    "japan": "Japanese",
+    "korea": "Korean",
     "other": "Other",
     "western": "Western"
   },
@@ -726,7 +762,19 @@
   },
   "sourceLink": {
     "blog": "Blog",
-    "officialSite": "Official site"
+    "catalogList": "{{name}} title list",
+    "catalogPage": "{{name}} title page",
+    "fanCommunity": "Fan community {{name}}",
+    "labelPage": "{{name}} label page",
+    "linkHub": "Link hub ({{name}})",
+    "namedBlog": "Blog: {{name}}",
+    "officialArchive": "Official site archive ({{name}})",
+    "officialBlog": "Official blog",
+    "officialChannel": "Official channel",
+    "officialShop": "Official shop",
+    "officialSite": "Official site",
+    "recruiting": "{{name}} (recruiting)",
+    "seriesPage": "{{name}} series page"
   },
   "sourcePicture": {
     "coverAlt": "{{code}} cover",
@@ -827,7 +875,8 @@
   "trash": {
     "blockedItem": "{{path}} ({{reason}})",
     "empty": "Empty trash",
-    "emptyConfirm": "Files and collection records in the trash will be deleted permanently. This can't be undone.",
+    "emptyConfirm_one": "The file and collection record of {{count, number}} item in the trash will be deleted permanently.",
+    "emptyConfirm_other": "Files and collection records of {{count, number}} items in the trash will be deleted permanently.",
     "emptyHint": "Deleted items stay here until you empty the trash.",
     "emptyTitle": "Trash is empty",
     "movedToTrash": "Moved to trash",
@@ -880,5 +929,9 @@
     "locationField": "File location on the server",
     "mediaRoot": "Media directory",
     "relativePath": "Location in the directory"
+  },
+  "bulkAction": {
+    "canUndo": " You can undo this from the receipt.",
+    "cannotUndo": " This can't be undone."
   }
 }

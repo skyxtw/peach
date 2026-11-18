@@ -2,8 +2,10 @@
 import hashlib
 import io
 import json
+import os
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,7 +17,7 @@ from PIL import Image
 from peach.http import HttpResponse
 from peach.javdb_public import PublicAPI, PublicSourceUnavailable, decode_image, preview_video_url, public_signature_parts
 from peach.javdb_public import PublicBudgetExceeded, PublicNotFound, PublicRequestBudget, PublicSourcePaused, actor_gender
-from peach.javdb_public import API_HOSTS, APP_HEADERS, APP_QUERY, APP_SIGNATURE, WEB
+from peach.javdb_public import API_HOSTS, APP_HEADERS, APP_QUERY, APP_SIGNATURE, PUBLIC_API, WEB
 from peach.web_jav_detail import (JAV_ACTOR_IMAGE_MAX_AGE, JAV_IMAGE_MAX_AGE, jav_image, q_jav_detail,
                                   q_jav_reviews, q_jav_resources)
 from peach.web_state import WebContract
@@ -201,6 +203,64 @@ class PublicProtocolTests(unittest.TestCase):
             self.assertEqual(same.result(timeout=1), 'pixels')
         self.assertEqual(calls, [1])
         self.assertEqual(api.pending, {})
+
+    def test_a_paused_task_does_not_keep_the_source_or_its_pending_answer(self):
+        from peach import task_control
+        from peach.task_runs import TaskRunStore
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        database = Path(temporary.name).resolve() / 'database'
+        database.mkdir()
+        store = TaskRunStore(fresh_ledger(database))
+        run = store.start('demo', trigger='manual')
+        api = PublicAPI()
+        entered, requested = threading.Event(), threading.Event()
+
+        def fetch():
+            entered.set()
+            self.assertTrue(requested.wait(3))
+            # 传输层发请求前的停点（`http` 的 `@controlled`）。
+            task_control.checkpoint(None)
+            return {'id': 'Exact'}
+
+        def paused_owner():
+            with task_control.bind(store, run.id):
+                return api._cached('movie:EXM-001:Exact', fetch)
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            owner = pool.submit(paused_owner)
+            try:
+                self.assertTrue(entered.wait(3))
+                task_control.request(store, run.id, 'pause')
+                requested.set()
+                same = pool.submit(api._cached, 'movie:EXM-001:Exact', fetch)
+                other = pool.submit(api._cached, 'movie:EXM-002:Other', lambda: {'id': 'Other'})
+                self.assertEqual(same.result(timeout=3), {'id': 'Exact'})
+                self.assertEqual(other.result(timeout=3), {'id': 'Other'})
+            finally:
+                requested.set()
+                task_control.request(store, run.id, 'resume')
+            self.assertEqual(owner.result(timeout=5), {'id': 'Exact'})
+        self.assertEqual(api.pending, {})
+
+    def test_waiting_on_a_stuck_request_for_the_same_key_gives_up(self):
+        api = PublicAPI()
+        entered, release = threading.Event(), threading.Event()
+
+        def fetch():
+            entered.set()
+            release.wait(5)
+            return 'pixels'
+
+        with patch('peach.javdb_public.PENDING_WAIT_SECONDS', 0.1), ThreadPoolExecutor(max_workers=1) as pool:
+            owner = pool.submit(api._cached, 'image:Exact:0', fetch)
+            try:
+                self.assertTrue(entered.wait(3))
+                with self.assertRaises(PublicSourceUnavailable):
+                    api._cached('image:Exact:0', fetch)
+            finally:
+                release.set()
+            self.assertEqual(owner.result(timeout=3), 'pixels')
 
     def test_images_use_three_slots_and_leave_api_interval_intact(self):
         api = PublicAPI(lambda *_: HttpResponse(200, {}, b'pixels'))
@@ -393,6 +453,81 @@ class PublicProtocolTests(unittest.TestCase):
         self.assertEqual(api.paused_until, 0.0, '评论与磁链端点不跟着冷却')
         with api.page_reader(self.pages):
             self.assertEqual(api.movie('EXM-001')['id'], 'Exact')
+
+    def test_login_walled_resource_api_uses_the_work_page_and_recognises_an_explicit_empty_list(self):
+        from peach.javdb_public import PublicLoginRequired
+        api = self.login_walled_api()
+        detail = self.LOGIN_DETAIL.replace('短評(3)', '短評(0)') + (
+            '<div id="magnets-content">此影片暫無網友分享磁鏈, 請耐心等待。</div>')
+        with api.page_reader(lambda path: self.LOGIN_SEARCH if path.startswith('/search') else detail), \
+                patch.object(api, 'magnets', side_effect=PublicLoginRequired('errors.javdbPublic.unavailable')):
+            result = api.resources('EXM-001')
+        self.assertEqual((result['items'], result['warnings']), ([], []))
+        self.assertFalse(result['magnet_failed'])
+        self.assertFalse(result['comments_failed'])
+
+    def test_login_walled_resource_api_keeps_page_magnets_and_reports_an_unrecognised_magnet_section(self):
+        from peach.javdb_public import PublicLoginRequired
+        api = self.login_walled_api()
+        detail = self.LOGIN_DETAIL.replace('短評(3)', '短評(0)')
+        magnet = ('<div id="magnets-content"><div class="item"><a href="magnet:?xt=urn:btih:'
+                  + 'a' * 40 + '"><span class="name">EXM-001 HD</span></a><span class="meta">4 GB, 2 個文件</span>'
+                  '<span class="tag">高清</span><span class="time">2026-01-02</span></div></div>')
+        with api.page_reader(lambda path: self.LOGIN_SEARCH if path.startswith('/search') else detail + magnet), \
+                patch.object(api, 'magnets', side_effect=PublicLoginRequired('errors.javdbPublic.unavailable')):
+            result = api.resources('EXM-001')
+        self.assertEqual(result['items'][0]['info_hash'], 'a' * 40)
+        self.assertEqual(result['items'][0]['attributes'], ['high-definition'])
+        self.assertEqual(result['warnings'], [])
+        with api.page_reader(lambda path: detail), \
+                patch.object(api, 'magnets', side_effect=PublicLoginRequired('errors.javdbPublic.unavailable')):
+            failed = api.resources('EXM-001')
+        self.assertTrue(failed['magnet_failed'])
+        self.assertEqual(failed['items'], [])
+
+    def test_page_resources_reports_missing_comment_entry_without_losing_magnets(self):
+        from peach.sources.javdb import page_resources
+        detail = self.LOGIN_DETAIL + ('<div id="magnets-content"><div class="item">'
+                 '<a href="magnet:?xt=urn:btih:' + 'a' * 40 + '"><span class="name">EXM-001 HD</span></a>'
+                 '</div></div>')
+        read = Mock(return_value=detail)
+        result = page_resources('EXM-001', {'id': 'Exact'}, read, review_pages=8)
+        self.assertEqual(result['items'][0]['info_hash'], 'a' * 40)
+        self.assertFalse(result['magnet_failed'])
+        self.assertTrue(result['comments_failed'])
+        self.assertEqual(len(result['warnings']), 1)
+        read.assert_called_once_with('/v/Exact?locale=zh')
+
+    def test_page_resources_follows_comment_pages_and_preserves_partial_links(self):
+        from peach.sources.javdb import page_resources
+        detail = self.LOGIN_DETAIL.replace('class="review-tab"', 'class="review-tab" data-url="/v/Exact/reviews/1"')
+        detail += '<div id="magnets-content">此影片暫無網友分享磁鏈</div>'
+        first = ('<div class="review-items"><div class="review-item" id="review-item-1">'
+                 '<div class="content">magnet:?xt=urn:btih:' + 'b' * 40 + '</div></div></div>'
+                 '<a rel="next" href="/v/Exact/reviews/2">下一页</a>')
+        second = ('<div class="review-items"><div class="review-item" id="review-item-2">'
+                  '<div class="content">https://example.test/resource</div></div></div>')
+        for last, failed in ((second, False), ('<main>未取得评论列表</main>', True)):
+            with self.subTest(failed=failed):
+                read = Mock(side_effect=[detail, first, last])
+                result = page_resources('EXM-001', {'id': 'Exact'}, read, review_pages=8)
+                self.assertEqual([call.args[0] for call in read.call_args_list],
+                                 ['/v/Exact?locale=zh', '/v/Exact/reviews/1', '/v/Exact/reviews/2'])
+                self.assertEqual(result['comments_failed'], failed)
+                self.assertEqual(result['items'][0]['origins'],
+                                 ['https://javdb.com/v/Exact/reviews/1#review-item-1'])
+                self.assertEqual(len(result['items']), 1 if failed else 2)
+
+    def test_page_resources_stops_at_the_comment_page_budget(self):
+        from peach.sources.javdb import page_resources
+        detail = self.LOGIN_DETAIL.replace('class="review-tab"', 'class="review-tab" data-url="/v/Exact/reviews/1"')
+        detail += '<div id="magnets-content">此影片暫無網友分享磁鏈</div>'
+        read = Mock(side_effect=[detail, '<div class="review-items"></div><a rel="next" href="/v/Exact/reviews/2">下一页</a>',
+                                '<div class="review-items"></div><a rel="next" href="/v/Exact/reviews/3">下一页</a>'])
+        result = page_resources('EXM-001', {'id': 'Exact'}, read, review_pages=2)
+        self.assertEqual(read.call_count, 3)
+        self.assertFalse(result['comments_failed'])
+        self.assertEqual(result['warnings'], ['已查询前 2 页评论资源。'])
 
     def test_missing_search_result_and_cooldown_have_their_own_kinds(self):
         with self.assertRaises(PublicNotFound):
@@ -631,6 +766,29 @@ class DetailProjectionTests(unittest.TestCase):
         self.assertEqual(result['title'], movie['origin_title'])
         self.assertEqual(movie['title'], '自动翻译标题')
 
+    def test_detail_is_partial_while_the_login_walled_page_source_cools_down(self):
+        from contextlib import contextmanager
+        from peach.scraping_access import SourcePaused
+
+        def transport(request, *_):
+            payload = {'success': 0, 'action': 'JWTVerificationError', 'message': '請登錄帳號', 'data': None}
+            return HttpResponse(200, {}, json.dumps(payload).encode())
+
+        def cooling(path):
+            raise SourcePaused('errors.scrapingAccess.coolingDown')
+
+        @contextmanager
+        def pages(_contract):
+            yield cooling
+
+        api = PublicAPI(transport, sleeper=lambda _: None)
+        api.signature_parts, api.signature_until = APP_SIGNATURE, float('inf')
+        with patch('peach.web_jav_detail.PUBLIC_API', api), patch('peach.web_jav_detail._jav_pages', pages):
+            result = q_jav_detail(self.contract, {'code': 'EXM-001'})
+        self.assertEqual(result['state'], 'partial')
+        self.assertTrue(result['ok'])
+        self.assertTrue(result['message'])
+
     def test_legacy_image_bytes_cannot_bypass_ambiguous_source_and_new_ids_have_distinct_bytes(self):
         from peach.remote_media_cache import cache_for
         cache_for(self.contract).bytes('jav:MIKR-023:image:cover', lambda: b'old wrong work')
@@ -645,6 +803,40 @@ class DetailProjectionTests(unittest.TestCase):
                 self.assertEqual(jav_image(self.contract, {'code': 'MIKR-023'})[0],
                                  b'first' if identity == 'XeYkdb' else b'second')
             image.assert_called_once_with('MIKR-023', 'cover', movie=source)
+
+    def test_confirmed_source_images_are_read_without_requesting_movie_metadata(self):
+        from peach.javdb_identity import RULE
+        from peach.jav_discovery_metadata import discovery_metadata
+        from peach.remote_media_cache import cache_for
+        discovery_metadata(self.contract).remember('EXM-001',
+            {'id': 'Exact', 'number': 'EXM-001', 'javdb_rule': RULE})
+        cache = cache_for(self.contract)
+        for index in ('cover', '0'):
+            cache.bytes(f'jav:EXM-001:Exact:image:{index}', lambda: b'cached-image')
+        api = PublicAPI()
+        with patch('peach.web_jav_detail.PUBLIC_API', api), \
+                patch.object(api, 'movie', side_effect=AssertionError('cached image requested metadata')) as movie:
+            for index in ('cover', '0'):
+                self.assertEqual(jav_image(self.contract, {'code': 'EXM-001', 'image': index}),
+                                 (b'cached-image', JAV_IMAGE_MAX_AGE))
+        movie.assert_not_called()
+
+    def test_observed_ambiguous_identity_prevents_reusing_an_older_bound_image(self):
+        from peach.javdb_identity import RULE
+        from peach.jav_discovery_metadata import discovery_metadata
+        from peach.javdb_public import PublicIdentityAmbiguous, public_cache_scope
+        from peach.remote_media_cache import cache_for
+        discovery_metadata(self.contract).remember('EXM-001',
+            {'id': 'Exact', 'number': 'EXM-001', 'javdb_rule': RULE})
+        cache_for(self.contract).bytes('jav:EXM-001:Exact:image:cover', lambda: b'cached-image')
+        api = PublicAPI()
+        with public_cache_scope(self.contract.cover_root.parent / 'jav-public'):
+            api._remember('movie-id:EXM-001', ['Exact', 'Other'])
+        with patch('peach.web_jav_detail.PUBLIC_API', api), patch.object(api, 'movie',
+                side_effect=PublicIdentityAmbiguous('errors.javdbPublic.identityAmbiguous',
+                                                   {'identities': 'Exact、Other'})):
+            with self.assertRaises(PublicIdentityAmbiguous):
+                jav_image(self.contract, {'code': 'EXM-001'})
 
     def test_browser_people_projects_local_actor_rules_without_writes(self):
         from peach.web_jav_browser_people import cached_people
@@ -749,11 +941,32 @@ class DetailProjectionTests(unittest.TestCase):
         movie.assert_not_called()
         image.assert_called_once_with('https://tp.spfcas.com/actor.jpg')
 
+    def test_expired_actor_portrait_is_served_before_deferred_refresh(self):
+        from peach.remote_media_cache import AVATAR_REFRESH_SECONDS, cache_for
+        cache = cache_for(self.contract)
+        key = 'jav:actor:Person'
+        cache.bytes(key, lambda: b'cached-portrait')
+        path, = cache.folder(key).glob('*.data')
+        past = time.time() - AVATAR_REFRESH_SECONDS - 1
+        os.utime(path, (past, past))
+        deferred = []
+        with patch('peach.web_jav_detail._fetch_image', return_value='data:image/jpeg;base64,ZnJlc2g=') as fetch:
+            response = jav_image(self.contract, {'code': 'EXM-001', 'image': 'actor:Person'}, defer=deferred.append)
+            self.assertEqual(response[0], b'cached-portrait')
+            fetch.assert_not_called()
+            self.assertEqual(len(deferred), 1)
+            deferred[0]()
+        self.assertEqual(path.read_bytes(), b'fresh')
+        fetch.assert_called_once()
+
     def setUp(self):
         for name in ('dmm_preview', 'javdb_preview'):
             patcher = patch('peach.jav_official_preview.' + name, return_value='')
             patcher.start()
             self.addCleanup(patcher.stop)
+        # JavDB 失败时的官方目录退路会联网；用例默认按「没有」处理，要它的用例自己给值。
+        self.official = patch('peach.jav_discovery_metadata.official_movie', return_value=None).start()
+        self.addCleanup(patch.stopall)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name).resolve()
@@ -826,6 +1039,20 @@ class DetailProjectionTests(unittest.TestCase):
             self.assertEqual(connection.execute('SELECT COUNT(*) FROM entity_alias').fetchone()[0], 1)
 
 
+    def test_official_catalogue_fills_the_detail_when_javdb_does_not_answer(self):
+        self.official.return_value = {'number': 'SSIS-001', 'title': '官方标题', 'release_date': '2021-02-19',
+                                      'maker_name': 'エスワン', 'duration': 150, 'tags': ['単体作品'],
+                                      'actors': [{'name': '葵つかさ', 'gender': 'female'}], 'fallback_source': 'dmm'}
+        with patch('peach.web_jav_detail.PUBLIC_API.movie', side_effect=PublicSourceUnavailable('errors.javdbPublic.unavailable')):
+            result = q_jav_detail(self.contract, {'code': 'SSIS-001'})
+            again = q_jav_detail(self.contract, {'code': 'SSIS-001'})
+        self.assertEqual((result['state'], result['title'], result['studio']), ('partial', '官方标题', 'エスワン'))
+        self.assertEqual(result['tags'], ['単体作品'])
+        self.assertEqual(result['message'], '作品资料未取得，请稍后重试')
+        # 第二次直接用边车里的那份，不再问官方目录。
+        self.assertEqual(again['title'], '官方标题')
+        self.official.assert_called_once()
+
     def test_source_failure_keeps_usable_detail_and_reviews_failure_is_explicit(self):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', side_effect=PublicSourceUnavailable('errors.javdbPublic.unavailable')):
             result = q_jav_detail(self.contract, {'code': 'EXM-001'})
@@ -843,6 +1070,20 @@ class DetailProjectionTests(unittest.TestCase):
                 jav_image(self.contract, {'code': 'EXM-001', 'image': '-1'})
             movie.assert_not_called()
 
+    def test_work_resources_ask_every_magnet_source_through_the_wants_search(self):
+        found = {'state': 'ready', 'items': [{'id': 'magnet:' + 'a' * 40, 'source': 'JavBus'}],
+                 'warnings': ['JavDB 未取得'], 'error': '', 'checked_at': None}
+        search = Mock()
+        search.query.return_value = found
+        with patch('peach.wants_magnets.search_for', return_value=search) as search_for:
+            result = q_jav_resources(self.contract, {'code': 'exm-001', 'refresh': '1'})
+        search_for.assert_called_once_with(self.contract.follow_secrets_root)
+        search.query.assert_called_once_with('EXM-001', refresh=True)
+        self.assertEqual(result['items'], found['items'])
+        # 交出去的是副本，共享缓存里那一份不跟着改。
+        result['warnings'].append('x')
+        self.assertEqual(found['warnings'], ['JavDB 未取得'])
+
     def test_resources_normalize_and_deduplicate_valid_magnets(self):
         fingerprint = 'a' * 40
         rows = [{'hash': fingerprint, 'name': '示例资源', 'cnsub': True, 'hd': True,
@@ -851,9 +1092,8 @@ class DetailProjectionTests(unittest.TestCase):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', return_value={'id': 'Exact'}), \
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', return_value=rows) as magnets, \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', return_value=[]):
-            result = q_jav_resources(self.contract, {'code': 'EXM-001', 'refresh': '1'})
+            result = PUBLIC_API.resources('EXM-001', refresh=True)
         magnets.assert_called_once_with('EXM-001', refresh=True, movie={'id': 'Exact'})
-        self.assertEqual(result['state'], 'ready')
         self.assertEqual(len(result['items']), 1)
         self.assertEqual(result['items'][0]['info_hash'], fingerprint)
         self.assertTrue(result['items'][0]['uri'].startswith('magnet:?'))
@@ -866,7 +1106,7 @@ class DetailProjectionTests(unittest.TestCase):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', return_value={'id': 'Exact'}), \
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', return_value=rows), \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', return_value=[]):
-            result = q_jav_resources(self.contract, {'code': 'EXM-001'})
+            result = PUBLIC_API.resources('EXM-001')
         self.assertEqual([item['size'] for item in result['items']], ['4.12GB', '700MB', '', '3 GB'])
 
     def test_resources_include_comment_ed2k_magnets_and_urls_with_origins(self):
@@ -877,7 +1117,7 @@ class DetailProjectionTests(unittest.TestCase):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', return_value={'id': 'Exact'}), \
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', return_value=[{'hash': digest, 'size': '3 GB'}]), \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', side_effect=[first, second]) as reviews:
-            result = q_jav_resources(self.contract, {'code': 'MIKR-096', 'refresh': '1'})
+            result = PUBLIC_API.resources('MIKR-096', refresh=True)
         self.assertEqual([item['protocol'] for item in result['items']], ['magnet', 'ed2k', 'url'])
         link = result['items'][1]
         self.assertEqual(link['uri'], ed2k)
@@ -891,15 +1131,15 @@ class DetailProjectionTests(unittest.TestCase):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', return_value={'id': 'Exact'}), \
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', return_value=[{'hash': 'a' * 40}]), \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', side_effect=PublicSourceUnavailable('errors.javdbPublic.sourcePaused')):
-            result = q_jav_resources(self.contract, {'code': 'EXM-001'})
+            result = PUBLIC_API.resources('EXM-001')
         self.assertEqual(len(result['items']), 1)
-        self.assertEqual(result['warnings'], ['评论资源未取得：作品资料来源暂时不可用，请稍后重试'])
+        self.assertEqual(result['warnings'], ['JavDB 评论区查询未完成：作品资料来源暂时不可用，请稍后重试'])
 
     def test_comment_resource_scan_has_a_page_limit(self):
         with patch('peach.web_jav_detail.PUBLIC_API.movie', return_value={'id': 'Exact'}), \
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', return_value=[]), \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', return_value=[{'content': '正文'}] * 10) as reviews:
-            result = q_jav_resources(self.contract, {'code': 'EXM-001'})
+            result = PUBLIC_API.resources('EXM-001')
         self.assertEqual(reviews.call_count, 8)
         self.assertEqual(result['warnings'], ['已查询前 8 页评论资源。'])
 
@@ -908,10 +1148,10 @@ class DetailProjectionTests(unittest.TestCase):
                 patch('peach.web_jav_detail.PUBLIC_API.magnets', side_effect=PublicSourceUnavailable('errors.javdbPublic.unavailable')), \
                 patch('peach.web_jav_detail.PUBLIC_API.reviews', return_value=[{
                     'id': 5, 'content': 'ed2k://|file|demo.mp4|123|' + 'b' * 32 + '|/'}]):
-            result = q_jav_resources(self.contract, {'code': 'EXM-001'})
-        self.assertEqual(result['state'], 'ready')
+            result = PUBLIC_API.resources('EXM-001')
+        self.assertTrue(result['magnet_failed'])
         self.assertEqual([item['protocol'] for item in result['items']], ['ed2k'])
-        self.assertEqual(result['warnings'], ['磁链区资源未取得：作品资料未取得，请稍后重试'])
+        self.assertEqual(result['warnings'], ['JavDB 磁链区查询未完成：作品资料未取得，请稍后重试'])
 
     def test_source_avatars_and_studio_logos_preserve_each_identity(self):
         movie = {'id': 'Exact', 'actors': [
@@ -991,9 +1231,14 @@ class DetailProjectionTests(unittest.TestCase):
                          [('淫乱真实', '淫乱真实'), ('出轨', '白天出轨'), ('剧情', '戏剧'),
                           ('深喉', '深喉'), ('巨根', '巨大阴茎')])
 
-    def test_resource_source_failure_is_explicit(self):
-        with patch('peach.web_jav_detail.PUBLIC_API.movie', side_effect=PublicSourceUnavailable('errors.javdbPublic.unavailable')):
+    def test_javdb_failure_still_lists_the_other_magnet_sources(self):
+        from peach.magnet_chain import Fetcher, Source, _normalise
+        other = _normalise({'uri': 'magnet:?xt=urn:btih:' + 'b' * 40, 'name': 'EXM-001', 'size': '3 GB'},
+                           Source('javbus', 'JavBus'), 'EXM-001')
+        with patch('peach.web_jav_detail.PUBLIC_API.movie', side_effect=PublicSourceUnavailable('errors.javdbPublic.unavailable')), \
+                patch.object(Fetcher, 'manko', return_value=[]), patch.object(Fetcher, 'sukebei', return_value=[]), \
+                patch.object(Fetcher, 'javbus', return_value=[other]):
             result = q_jav_resources(self.contract, {'code': 'EXM-001'})
-        self.assertEqual(result['state'], 'error')
-        self.assertEqual(result['items'], [])
-        self.assertEqual(result['error'], '作品资料未取得，请稍后重试')
+        self.assertEqual(result['state'], 'ready')
+        self.assertEqual([(item['source'], item['info_hash']) for item in result['items']], [('JavBus', 'b' * 40)])
+        self.assertTrue(any('JavDB' in warning for warning in result['warnings']))

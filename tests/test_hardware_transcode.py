@@ -42,6 +42,28 @@ class HardwareDetectionTests(unittest.TestCase):
         self.assertTrue(all("format=nv12,hwupload" in command for command in commands))
         self.assertTrue(all(command[-2:] == ("null", "-") for command in commands))
 
+    def test_playback_diagnostics_do_not_wait_for_a_running_probe(self):
+        """起播计划要记硬件诊断；首次探测还在跑时报「探测中」，不陪它等。"""
+        import threading
+        started, release = threading.Event(), threading.Event()
+
+        def run(command, **kwargs):
+            started.set()
+            release.wait(5)
+            return subprocess.CompletedProcess(command, 1, stderr=b"no device")
+
+        hardware = HardwareTranscoder()
+        with patch("peach.hardware_transcode.sys.platform", "linux"),                 patch.object(Path, "exists", return_value=False),                 patch.object(Path, "glob", return_value=[Path("/dev/dri/renderD128")]),                 patch("peach.hardware_transcode.subprocess.run", side_effect=run):
+            probe = threading.Thread(target=hardware.encoders, args=(Path("ffmpeg"),))
+            probe.start()
+            self.assertTrue(started.wait(5))
+            try:
+                self.assertEqual(hardware.diagnostic_snapshot()["probe_status"], "probing")
+            finally:
+                release.set()
+                probe.join(5)
+        self.assertEqual(hardware.diagnostic_snapshot()["probe_status"], "cached")
+
     def test_explicit_device_and_backend_are_probed_without_gpu_listing(self):
         with patch.dict(os.environ, {"PEACH_TRANSCODE_BACKEND": "vaapi", "PEACH_VAAPI_DEVICE": "/dev/dri/renderD130"}):
             hardware = HardwareTranscoder()
@@ -191,6 +213,34 @@ class WindowsBackendTests(unittest.TestCase):
         self.assertEqual(attempts[0].before_input, ("-hwaccel", "d3d11va", "-hwaccel_device", "1"))
         self.assertEqual(attempts[1].before_input, ())
         self.assertEqual([attempt.name for attempt in HardwareEncoder("amf", "1").attempts("vc1")], ["amf"])
+
+    def test_qsv_keeps_frames_on_the_intel_gpu_when_the_session_allows(self):
+        hardware = HardwareTranscoder()
+        with patch("peach.hardware_transcode.subprocess.run", side_effect=self._machine(("h264_qsv",))):
+            self.assertEqual(hardware.encoders(Path("ffmpeg")), (HardwareEncoder("qsv", gpu_frames=True),))
+        attempts = HardwareEncoder("qsv", gpu_frames=True).attempts("hevc")
+        self.assertEqual([attempt.name for attempt in attempts], ["qsv-full", "d3d11va-qsv", "qsv"])
+        full = " ".join(attempts[0].before_input + attempts[0].output)
+        self.assertIn("d3d11va=peach_d3d11:,vendor=0x8086", full)
+        self.assertIn("-hwaccel_output_format d3d11", full)
+        self.assertIn("hwmap=derive_device=qsv,vpp_qsv=format=nv12", full)
+        self.assertNotIn("-pix_fmt", attempts[0].output)
+        self.assertEqual(attempts[1].before_input, ("-hwaccel", "d3d11va"))
+        self.assertEqual(attempts[2].before_input, ())
+        self.assertEqual([attempt.name for attempt in HardwareEncoder("qsv", gpu_frames=True).attempts("vc1")],
+                         ["qsv"])
+
+    def test_qsv_without_a_derived_session_decodes_to_memory_first(self):
+        hardware = HardwareTranscoder()
+        machine = self._machine(("h264_qsv",))
+
+        def session_zero(command, **kwargs):
+            if "qsv=peach_qsv@peach_d3d11" in command:
+                return subprocess.CompletedProcess(command, 1, stderr=b"Error creating a MFX session: -9.")
+            return machine(command, **kwargs)
+        with patch("peach.hardware_transcode.subprocess.run", side_effect=session_zero):
+            self.assertEqual(hardware.encoders(Path("ffmpeg")), (HardwareEncoder("qsv"),))
+        self.assertEqual([attempt.name for attempt in HardwareEncoder("qsv").attempts("hevc")], ["d3d11va-qsv", "qsv"])
 
     def test_d3d11_decode_feeds_libx264_when_no_encoder_works(self):
         with tempfile.TemporaryDirectory() as directory, \
@@ -382,9 +432,127 @@ class VaapiConsumerTests(unittest.TestCase):
             with self.subTest(failures=failures):
                 asyncio.run(drive(failures))
 
+    def test_whole_file_software_transcode_leaves_cores_for_playback(self):
+        with patch.dict(os.environ, {"PEACH_TRANSCODE_BACKEND": "software"}):
+            service = TranscodeService(self.resolver, self.root / "cache-sw")
+        (attempt,) = service._attempts(Path("ffmpeg"), self.source, self.root / "out.mp4",
+                                       _MediaProfile("hevc", "yuv420p", "aac"))
+        threads = int(attempt.command[attempt.command.index("-threads") + 1])
+        self.assertGreaterEqual(threads, 2)
+        self.assertLessEqual(threads, max(2, (os.cpu_count() or 4) // 2))
+
     def test_hls_remux_does_not_probe_hardware(self):
         service = HlsSegmentService(self.resolver, self.root / "hls", hardware=HardwareTranscoder())
         with patch.object(service.hardware, "encoders") as encoders:
             attempts = service._attempts(Path("ffmpeg"), self.source, 0, 6, False)
         encoders.assert_not_called()
         self.assertEqual([name for name, _ in attempts], ["copy"])
+
+
+SCALE_720 = "w='if(gt(iw,ih),-2,min(iw,720))':h='if(gt(iw,ih),min(ih,720),-2)'"
+
+
+class QualityCapTests(unittest.TestCase):
+    """画质上限给每种编码器生成的参数。本机实跑见 PR 说明；这里钉住命令本身。"""
+
+    def outputs(self, encoder: HardwareEncoder, max_height: int, codec: str = "hevc") -> dict:
+        return {attempt.name: attempt.output for attempt in encoder.attempts(codec, max_height)}
+
+    def test_original_quality_keeps_every_encoder_command_unchanged(self):
+        for encoder in (HardwareEncoder("nvenc"), HardwareEncoder("amf", "1"), HardwareEncoder("qsv"),
+                        HardwareEncoder("qsv", gpu_frames=True), HardwareEncoder("videotoolbox"), HardwareEncoder("vaapi", "/dev/dri/renderD128")):
+            with self.subTest(backend=encoder.backend):
+                self.assertEqual(encoder.attempts("hevc", 0), encoder.attempts("hevc"))
+                joined = " ".join(item for attempt in encoder.attempts("hevc") for item in attempt.output)
+                self.assertNotIn("-maxrate", joined)
+                self.assertNotIn("min(", joined)
+        from peach.hardware_transcode import software_video_output
+        self.assertEqual(software_video_output(0), ("-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+                                                    "-pix_fmt", "yuv420p"))
+
+    def test_libx264_scales_in_software_and_caps_the_peak_rate(self):
+        from peach.hardware_transcode import software_video_output
+        self.assertEqual(software_video_output(720, threads="2"), (
+            "-vf", f"scale={SCALE_720}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+            "-maxrate", "4M", "-bufsize", "8M", "-pix_fmt", "yuv420p", "-threads", "2"))
+        self.assertIn("-maxrate", software_video_output(480))
+        self.assertEqual(software_video_output(480)[software_video_output(480).index("-maxrate") + 1], "2M")
+
+    def test_nvenc_scales_on_the_gpu_when_cuda_decodes_and_in_software_otherwise(self):
+        outputs = self.outputs(HardwareEncoder("nvenc"), 720)
+        rate = ("-c:v", "h264_nvenc", "-preset", "p1", "-tune", "hq", "-rc", "vbr", "-cq", "21", "-b:v", "0",
+                "-maxrate", "4M", "-bufsize", "8M")
+        self.assertEqual(outputs["cuda-nvenc"], ("-vf", f"scale_cuda={SCALE_720}:format=nv12", *rate))
+        self.assertEqual(outputs["nvenc"], ("-vf", f"scale={SCALE_720}", *rate, "-pix_fmt", "yuv420p"))
+        self.assertEqual(list(self.outputs(HardwareEncoder("nvenc"), 720, "vc1")), ["nvenc"])
+
+    def test_amf_and_qsv_switch_to_peak_limited_vbr_after_a_software_scale(self):
+        amf = self.outputs(HardwareEncoder("amf", "1"), 720)
+        self.assertEqual(amf["d3d11va-amf"], amf["amf"])
+        self.assertEqual(amf["amf"], ("-vf", f"scale={SCALE_720}", "-c:v", "h264_amf", "-quality", "speed",
+                                      "-rc", "vbr_peak", "-b:v", "3M", "-maxrate", "4M", "-pix_fmt", "nv12"))
+        qsv = self.outputs(HardwareEncoder("qsv"), 1080)
+        self.assertEqual(qsv["qsv"][:2], ("-vf", f"scale={SCALE_720.replace('720', '1080')}"))
+        self.assertEqual(qsv["qsv"][2:], ("-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "6M",
+                                          "-maxrate", "8M", "-pix_fmt", "nv12"))
+
+    def test_qsv_full_chain_scales_inside_vpp_qsv_and_keeps_the_fallbacks(self):
+        """全硬件链在 `vpp_qsv` 里缩放，帧不回内存；两级回退照旧在内存里软件缩放。"""
+        qsv = self.outputs(HardwareEncoder("qsv", gpu_frames=True), 1080)
+        self.assertEqual(list(qsv), ["qsv-full", "d3d11va-qsv", "qsv"])
+        scale = ("w='if(gt(iw,ih),trunc(iw*min(ih,1080)/ih/2)*2,trunc(min(iw,1080)/2)*2)'"
+                 ":h='if(gt(iw,ih),trunc(min(ih,1080)/2)*2,trunc(ih*min(iw,1080)/iw/2)*2)'")
+        self.assertEqual(qsv["qsv-full"], (
+            "-vf", f"hwmap=derive_device=qsv,vpp_qsv={scale}:format=nv12",
+            "-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "6M", "-maxrate", "8M"))
+        self.assertNotIn("-pix_fmt", qsv["qsv-full"])
+        self.assertEqual(qsv["d3d11va-qsv"], qsv["qsv"])
+        self.assertEqual(qsv["qsv"][:2], ("-vf", f"scale={SCALE_720.replace('720', '1080')}"))
+
+    def test_vaapi_scales_on_the_gpu_or_before_upload_with_vbr(self):
+        outputs = self.outputs(HardwareEncoder("vaapi", "/dev/dri/renderD128"), 480)
+        scale = SCALE_720.replace("720", "480")
+        rate = ("-c:v", "h264_vaapi", "-rc_mode", "VBR", "-b:v", "1500k", "-maxrate", "2M")
+        self.assertEqual(outputs["vaapi"], ("-vf", f"scale_vaapi={scale}:format=nv12", *rate))
+        self.assertEqual(outputs["vaapi-encode"], ("-vf", f"scale={scale},format=nv12,hwupload", *rate))
+
+    def test_videotoolbox_scales_in_software_and_lowers_its_bitrate(self):
+        outputs = self.outputs(HardwareEncoder("videotoolbox"), 720)
+        self.assertEqual(outputs["videotoolbox"], outputs["videotoolbox-encode"])
+        self.assertEqual(outputs["videotoolbox"], ("-vf", f"scale={SCALE_720}", "-c:v", "h264_videotoolbox",
+                                                   "-allow_sw", "0", "-b:v", "3M", "-pix_fmt", "yuv420p"))
+
+    def test_the_setting_reaches_full_file_and_hls_and_keys_their_caches(self):
+        from peach.media_processing_policy import playback_max_height, save_preferences
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {"PEACH_TRANSCODE_BACKEND": "software"}):
+            root = Path(directory).resolve()
+            source = root / "clip.mkv"
+            source.write_bytes(b"fixture")
+            resolver = Mock(ffmpeg=lambda: BinaryChoice(Path("ffmpeg"), "test"), ffprobe=lambda: None)
+            service = TranscodeService(resolver, root / "full", state_root=root)
+            hls = HlsSegmentService(resolver, root / "hls", hardware=service.hardware)
+            original_segment = hls.cached_path(source, 7, 0, transcode=True)
+            with self.assertRaises(ValueError):
+                save_preferences(root, {"playback_max_height": 900})
+            save_preferences(root, {"playback_max_height": 720})
+            self.assertEqual(playback_max_height(root), 720)
+            captured = []
+
+            def execute(command, **kwargs):
+                captured.append(command)
+                Path(command[-1]).write_bytes(b"mp4")
+                return 0, b"", b""
+            with patch.object(service, "_probe", return_value=_MediaProfile("hevc", "yuv420p", "aac")), \
+                    patch.object(service, "_execute", side_effect=execute):
+                target, converted = service.browser_path(7, source)
+            self.assertTrue(converted and target.name.endswith("-720p.mp4"))
+            self.assertIn(f"scale={SCALE_720}", captured[0])
+            path, hit, max_height = hls._cached_target(source, 7, 0, True)
+            self.assertEqual((hit, max_height, path.parent.name.endswith("-h264-v3-720p")), (False, 720, True))
+            self.assertNotEqual(path, original_segment)
+            self.assertFalse(original_segment.parent.name.endswith("p"))
+            self.assertEqual(hls._cached_target(source, 7, 0, False)[2], 0)
+            command = hls._attempts(Path("ffmpeg"), source, 12, 6, True, "hevc", max_height)[-1][1](root / "s.ts")
+            self.assertIn(f"scale={SCALE_720}", command)
+            self.assertNotIn("scale", " ".join(hls._attempts(Path("ffmpeg"), source, 0, 6, False)[0][1](root / "c.ts")))

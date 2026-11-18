@@ -651,6 +651,10 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
 #: 促销企划的名字是逐片起的——「プレステージ20周年特別企画」「春のBIGセール」
 #: 「プレステージグループ秋の企画祭り」——穷举一轮就过期一轮。这几个词根本身
 #: 就说明了它描述的是卖法而不是内容，按形状判非内容比逐条登记稳。
+#: 剧情与角色设定类标签：出现在看过的作品里只是巧合，口味分析不把它们当作偏好（ADR-0164）。
+PLOT_TAGS = frozenset({"剧情", "妄想剧情", "强制剧情", "绿帽NTR", "出轨", "师生", "近亲", "母子设定", "痴汉",
+                       "偷拍偷窥", "醉酒", "药物", "泄密流出", "处女设定"})
+
 NON_CONTENT_PATTERNS = (
     re.compile(r"セール"),
     re.compile(r"キャンペーン"),
@@ -972,8 +976,8 @@ def resolve_genre(raw: object,
                   decisions: Mapping[str, str | None] | None = None) -> str | None:
     """一个来源原文的去向：Peach 标签、`None`（非内容，明确排除）、或 `UNMAPPED`。
 
-    查表顺序是用户决定、非内容、内容表。`decisions` 是用户在复核页当场定下的那批，
-    键已规范化。它排在两张静态表前面：用户刚说过的话不该被发版时写下的默认盖掉，
+    查表顺序是用户决定、公共种子、非内容、内容表。`decisions` 是用户在复核页当场定下的那批，
+    键已规范化。它排在发布资料前面：用户刚说过的话不该被发版时写下的默认盖掉，
     而把同一个词收录成别的标签正是他改主意的方式。
 
     抓取与复核折叠候选走同一个函数。各写一份的代价是「表里补了这个词，页面上它仍然
@@ -984,6 +988,12 @@ def resolve_genre(raw: object,
         return None
     if decisions and key in decisions:
         return decisions[key]
+    # 历史标签重算会独立执行旧源码，比较静态词表时不能混入当前安装的包。
+    if __package__:
+        from .seed_catalog import indexes
+        published = indexes()[2]
+        if key in published:
+            return published[key]
     if is_non_content_genre(key):
         return None
     return _CONTENT_INDEX.get(key, UNMAPPED)

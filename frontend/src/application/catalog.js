@@ -1,4 +1,4 @@
-import { initialCatalogFilters, resetCatalogFilters, homeCatalogState, homePath as pathForCatalog, onlineDefaultLoc as defaultLocations, resolveSort } from '../react/catalog-grid/catalog-state';
+import { initialCatalogFilters, resetCatalogFilters, homeCatalogState, homePath as pathForCatalog, onlineDefaultLoc as defaultLocations, resolveSort, verticalRouting } from '../react/catalog-grid/catalog-state';
 import { CatalogController } from '../react/catalog-grid/catalog-controller';
 import { completeReveal } from '../react/components/server-path-dialog';
 import { nextRating, ratingStars } from '../react/components/rating-values';
@@ -12,7 +12,7 @@ import { fetchBars, fetchTopsPage } from './../catalog-bars';
 import { confirmModal, dissolveValue, fitSkeleton, wireHorizontalScroller } from '../ui-kit';
 import { navigationState, paintSidebar, syncNavigation } from './navigation.js';
 import { disposeStage, mediaState, openEditions, openItem, openMix, openParts, openTok } from './media.js';
-import { buildManageBar, cardLayout, homeLayoutActive, javActive, layoutState, setHomeLayout, setJavLayout, showHomeSurfaces } from './layout.js';
+import { cardLayout, homeLayoutActive, javActive, layoutState, setHomeLayout, setJavLayout, showHomeSurfaces } from './layout.js';
 import { selectionState, setSelectMode, toggleSelection } from './selection.js';
 import { javDisplayName, javTitleHtml } from '../core/jav-title';
 import { tagLabel } from '../core/tags';
@@ -24,6 +24,8 @@ import { applicationEffects } from './effects';
 import { managedEntry, managedTaken, openManagedRoute, releaseManagedRoute, updateManagedRoute } from './../history/managed';
 import { catalogFilterSkeletonHtml } from './../catalog-filter-skeleton';
 import { catalogContentSkeletonHtml } from '../catalog-content-skeleton';
+import { discoveryGridSkeletonHtml, junkContentSkeletonHtml } from '../queue-skeleton';
+import { catalogView } from '../react/catalog-grid/catalog-view';
 import { JAV_LAYOUTS, cardRatio, gridLayout, javLayout } from './../appearance/layout';
 import { storePageSort } from './../appearance/settings';
 import { entityFaceImg, facePos, logoUrl } from './../card-art/markup';
@@ -33,13 +35,13 @@ import { clearHomeFeed, isFeedNewPath, renderHomeFeed } from './feed.js';
 import { renderCatalogLoading } from './loading.js';
 import { releaseHoverPreviews } from './../card-art/hover';
 import { revealRoutedPage } from './follow.js';
-import { pageSkeletonHtml } from './../management-placeholder';
 import { catalogEmptyHtml } from './../catalog-onboarding';
 import { junkRoute } from './../junk-queue';
 import { wallAddress } from '../react/video-wall/wall-route';
 import { restoringPage } from '../history/page-navigation';
 import { joinList, t as tr } from '../i18n';
-export const catalogState = { homeHasFeed: undefined, barsRequestSeq: undefined, barsPendingSeq: undefined, barsRendered: undefined, catalogFilterProps: undefined, catalogFilterMounting: undefined, catalogTagRows: undefined, catalogTopsPages: undefined, initialParams: undefined, resolveSort: undefined, initialCatalogUrl: undefined, initialParam: undefined, HOME_QUERY_KEYS: undefined, searchValueSnapshot: undefined, cancelSearchDissolve: undefined, rememberSearchValue: undefined, clearSearchField: undefined, mixRelatedCache: undefined, reduceMotion: undefined, tagList: undefined, tagPressed: undefined, withTagToggled: undefined, gridHelpers: undefined, gridActions: undefined, topsQueryParams: undefined, facetCountsSeq: undefined, VIEW_PILLS: undefined, catalogViews: undefined, TAGS_FIRST: undefined, catalogOnScreen: undefined, COMBO_LABELS: undefined, hideCatalogCombo: undefined, junkQueueHelpers: undefined, junkQueueActions: undefined };
+import { confirmBody } from '../react/components/bulk-action';
+export const catalogState = { homeHasFeed: undefined, barsRequestSeq: undefined, barsPendingSeq: undefined, barsRendered: undefined, catalogFilterProps: undefined, catalogFilterMounting: undefined, lastCount: undefined, catalogTagRows: undefined, catalogTopsPages: undefined, initialParams: undefined, resolveSort: undefined, initialCatalogUrl: undefined, initialParam: undefined, HOME_QUERY_KEYS: undefined, searchValueSnapshot: undefined, cancelSearchDissolve: undefined, rememberSearchValue: undefined, clearSearchField: undefined, mixRelatedCache: undefined, reduceMotion: undefined, tagList: undefined, tagPressed: undefined, withTagToggled: undefined, gridHelpers: undefined, gridActions: undefined, topsQueryParams: undefined, facetCountsSeq: undefined, VIEW_PILLS: undefined, catalogViews: undefined, TAGS_FIRST: undefined, catalogOnScreen: undefined, COMBO_LABELS: undefined, hideCatalogCombo: undefined, junkQueueHelpers: undefined, junkQueueActions: undefined };
 
 export function dropOfflineFromDefaultLoc(){
   if(catalogState.initialParams.has('loc'))return;
@@ -61,13 +63,21 @@ export function goHome(filters=null){
   syncNavigation();buildBars();
 }
 
+/* 点卡片是要看清这是什么再决定：视频进详情，图片开原图；压缩包、网址快捷方式这类浏览器里预览不了的，
+   同卡上「查看位置」，在文件管理器里显示（远程访问时给服务器路径）。不拿点卡片去切多选，多选走勾选框与右上角开关。 */
 export function openResourceCard(item,anchor=null){
   const id=item.id;
   if(!item.medium||item.medium==='video'){openItem(id,true,null,anchor);return}
   if(item.medium==='image'&&item.location!=='online'){
     window.open('/photo?id='+id,'_blank','noopener');return
   }
-  toggleSelection(id);
+  revealAsset(item).catch(error=>receiptsState.actionFailure(tr('shell:receipt.genericAction'),new Error(entityState.sourceHint(error.message))));
+}
+
+/** 在文件管理器里显示这一条；成功由 Toast 报。 */
+export async function revealAsset(it){
+  const result=await api('/api/reveal',{method:'POST',body:JSON.stringify({id:it.id})});
+  await completeReveal(result,()=>receiptsState.toast({text:tr('shell:sourceTools.revealed')}));
 }
 
 export function mixRelated(seedId){
@@ -191,7 +201,7 @@ export function commitContextFilter(mutate){
 
 export function catalogFilterBase(){
   return {tiers:null,tiersPending:false,empty:false,tags:[],tagFirst:catalogState.TAGS_FIRST,views:catalogState.catalogViews(),state:'',count:null,
-    trash:false,sorts:[],layout:null,refreshing:false,offscreen:false,combo:[],comboHidden:true,comboHost:$('#combo'),
+    trash:false,trashHost:$('#trashFilter'),sorts:[],layout:null,refreshing:false,offscreen:false,combo:[],comboHidden:true,comboHost:$('#combo'),
     actions:catalogFilterActions(),
     helpers:{wireDrag,wireScroller:row=>{if(row)wireHorizontalScroller(row)}}};
 }
@@ -203,11 +213,13 @@ export function paintCatalogFilter(patch){
   /* 收起时岛只留两排头像：浮层那两排与资料页、索引页的是同一组控件，藏着一份就是两套同名的，
      等不来的读数微光也会一直挂在页面上。收起时同样不铺静态骨架。 */
   const offscreen=host.style.display==='none'||document.body.matches('.entity-open,.index-open');
-  patch={...patch,offscreen};
+  /* 两排头像可在设置里关掉（「首页显示女优与厂牌头像」），每次推都按此刻的偏好带上，切开关时推一份空补丁就跟上。 */
+  const hideTiers=preferencesState.appSettings.homeTiers===false;
+  patch={...patch,offscreen,hideTiers};
   catalogState.catalogFilterProps={...(catalogState.catalogFilterProps||catalogFilterBase()),...patch};
   if(catalogState.catalogFilterMounting)return;
   if(managedTaken(host)){updateManagedRoute(host,patch);return}
-  if(!host.firstChild&&!offscreen){host.innerHTML=catalogFilterSkeletonHtml(catalogState.catalogViews(),catalogState.catalogFilterProps.state,catalogHeadProps());fitSkeleton(host)}
+  if(!host.firstChild&&!offscreen){host.innerHTML=catalogFilterSkeletonHtml(catalogState.catalogViews(),catalogState.catalogFilterProps.state,catalogHeadProps(),!hideTiers);fitSkeleton(host)}
   /* 常驻：不随换页收，所以不判当前页。 */
   catalogState.catalogFilterMounting=openManagedRoute('catalog-filter',catalogState.catalogFilterProps,{container:host,isCurrent:()=>true})
     .then(()=>updateManagedRoute(host,catalogState.catalogFilterProps))
@@ -241,6 +253,8 @@ export function catalogFilterActions(){
       notifyShell();replaceCatalogAddress();
     },
     reshuffle:()=>refreshAll(),
+    /* 读数旁的「显示全部」：这一次看全部，地址里不再带 `thumb`；回首页、刷新后按设置重新只看有预览图的。 */
+    showAll:()=>{state.thumb='0';notifyShell();paintCatalogFilter({previewOnly:false});replaceCatalogAddress()},
     setLayout:value=>{if(javActive())setJavLayout(value);else setHomeLayout(value)},
     /* 每排各记各的页号：两排的长度不一样，共用一个计数会让先到头的那排替另一排把页翻过去。
        页号跟着这一份名单走，`buildBars` 换名单时从头数起。两排翻到同一页时由 `fetchTopsPage` 共用一次请求。 */
@@ -249,6 +263,7 @@ export function catalogFilterActions(){
       const rows=(await fetchTopsPage(catalogState.topsQueryParams(pages.context,++pages[kind]).toString()))[kind]||[];
       return kind==='performers'?rows.map(tierPerformer):rows.map(tierStudio);
     },
+    emptyTrash:()=>{emptyTrash()},
   };
 }
 
@@ -260,7 +275,7 @@ export function catalogLayoutProp(){
 
 export function catalogHeadProps(){
   return {sorts:sortKeys(state.sort,state.dir),layout:catalogLayoutProp(),
-    state:state.state||'',trash:state.state==='trash'};
+    state:state.state||'',trash:state.state==='trash',previewOnly:state.thumb==='1'&&state.state!=='trash'};
 }
 
 export function catalogTags(filters){
@@ -363,14 +378,22 @@ export async function buildBars(){
 
 export function paintCatalogCount(nextTotal,n){
   mediaState.total=nextTotal;
-  /* 回收站的读数写在页头的说明行里（右端挂「清空回收站」），由页头岛画。 */
+  /* 「清空回收站」的确认框按这份读数写件数。 */
   if(state.state==='trash')selectionState.trashCount={total: mediaState.total,shown:n};
-  buildManageBar();
+  catalogState.lastCount={at:location.pathname+location.search,total:mediaState.total,shown:n};
   paintCatalogFilter({count:{total: mediaState.total,shown:n}});
 }
 
+/* 壳铺等待态时读数先回到占位；同一个地址重画（同一历史条目的前进后退）时网格沿用缓存、不再报数，
+   占位就一直等不到读数。这种时候沿用这个地址上一次报的数，地址变了才回到占位。 */
+export function keptCatalogCount(){
+  const kept=catalogState.lastCount;
+  return kept&&kept.at===location.pathname+location.search?{total:kept.total,shown:kept.shown}:null;
+}
+
 export function emptyTrash(){
-  return confirmModal({title:tr('shell:trash.empty'),body:tr('shell:trash.emptyConfirm'),confirmLabel:tr('shell:trash.empty'),danger:true,onConfirm:async()=>{
+  const count=selectionState.trashCount?.total??0;
+  return confirmModal({title:tr('shell:trash.empty'),body:confirmBody(tr('shell:trash.emptyConfirm',{count}),'irreversible'),confirmLabel:tr('shell:trash.empty'),danger:true,holdToConfirm:true,onConfirm:async()=>{
     try{
       const r=await api('/api/trash/empty',{method:'POST'});
       /* 删不掉的文件（占用中、网盘离线）会连同数据库行一起留在回收站，必须说出来，
@@ -457,7 +480,11 @@ export function catalogGridLayout(){
   return gridLayout({active:javActive()||home,home,portrait:state.orient===PORTRAIT});
 }
 
+/* 垃圾文件按自己的卡片／列表画；回收站的卡片是探索卡排法（卡底一颗「还原」），列表同首页。 */
 export function catalogSkeletonHtml(label=tr('shell:skeleton.loadingVideos')){
+  const path=decodeURIComponent(location.pathname);
+  if(path==='/junk-files')return junkContentSkeletonHtml(tr('shell:skeleton.loadingJunkFiles'));
+  if(path==='/trash'&&catalogView()!=='list')return discoveryGridSkeletonHtml('trash',label,catalogCardRatio(),{actions:['w-16']});
   return catalogContentSkeletonHtml(label,catalogCardRatio());
 }
 
@@ -487,11 +514,16 @@ export function catalogGridProps(){
     skeletonHtml:()=>catalogSkeletonHtml(),
     filters:{...state},batchSize:preferencesState.appSettings.batchSize,groupCollapse:preferencesState.appSettings.groupCollapse,
     /* 只有首页默认列表排除竖屏——那里另有独立的竖屏带承接它们。搜索必须能搜到竖屏作品，
-       否则按名字找一条竖屏视频会得到 0 结果。JAV 模式恒不含竖屏：番号发行物本身就是横版。 */
-    excludeVertical:(home&&path!=='/wall'&&!state.q&&!state.orient&&state.browse!=='folders')||state.jav==='1',
+       否则按名字找一条竖屏视频会得到 0 结果。JAV 模式恒不含竖屏：番号发行物本身就是横版。
+       设置里关掉首页竖屏带时两样一起撤：不插带子，主网格也不再排除竖屏。 */
+    ...verticalRouting({
+      homeDefault:home&&path!=='/wall'&&!state.q&&!state.orient&&state.browse!=='folders',
+      javOnly:state.jav==='1',
+      /* JAV 模式不插竖屏带：主列表的 exclude_vertical 管不到它，它是独立请求、独立插入的。 */
+      stripAllowed:home&&path!=='/wall'&&!javActive()&&state.orient!==PORTRAIT&&!trash&&state.browse!=='folders',
+      shortsLimit:preferencesState.appSettings.homeShortsLimit,
+    }),
     mix:home&&path!=='/wall'&&!trash&&state.browse!=='folders',
-    /* JAV 模式不插竖屏带：主列表的 exclude_vertical 管不到它，它是独立请求、独立插入的。 */
-    shorts:home&&path!=='/wall'&&!javActive()&&state.orient!==PORTRAIT&&!trash&&state.browse!=='folders',
     countRow:$('#count'),onCount:paintCatalogCount,onCountFailed:()=>paintCatalogFilter({count:false}),
     emptyHtml:({trash:inTrash,libraryEmpty})=>inTrash
       ?preferencesState.emptyState('trash',tr('shell:trash.emptyTitle'),tr('shell:trash.emptyHint'))
@@ -513,6 +545,26 @@ export function loadJunk(surface){
   return paintJunkQueue(surface);
 }
 
+/* 垃圾文件页「全部移入回收站」：待判断里这一类的全部条目，服务端按同一份筛选整批写，不止页面取回的那一批。
+   带上确认框里的件数，队列在这期间变了就整批不动、重读，请人再确认；做完给撤销，按返回的那批 id 整批还原。 */
+const JUNK_DISPOSE_ALL='/api/ads/dispose-all',JUNK_RESTORE_ALL='/api/ads/restore-all';
+export function disposeAllJunk(kind,count,columnFilters){
+  return confirmModal({title:tr('shell:batchJunk.disposeAll'),body:confirmBody(tr('shell:batchJunk.confirmDisposeAll',{count}),'undo'),
+    confirmLabel:tr('shell:batchJunk.disposeAll'),danger:true,holdToConfirm:true,onConfirm:async()=>{
+      let result;
+      try{result=await api(JUNK_DISPOSE_ALL,{method:'POST',body:JSON.stringify({kind,status:'pending',expected:count,column_filters:columnFilters})})}
+      catch(error){
+        if(error?.status!==400)throw error;
+        await loadCatalog();throw new Error(tr('shell:batchJunk.queueChanged'));
+      }
+      await loadCatalog();
+      receiptsState.actionReceipt(tr('shell:batchJunk.doneDispose',{count:result.changed}),{undo:async()=>{
+        await api(JUNK_RESTORE_ALL,{method:'POST',body:JSON.stringify({ids:result.ids})});
+        await loadCatalog();
+      }});
+    }});
+}
+
 export async function runJunkOperation(it,operation){
   const ids=[it.id],disposed=operation==='dispose',reconsidered=operation==='reconsider-junk';
   try{
@@ -532,7 +584,7 @@ export function junkQueueProps(){
     ...junkRoute(location.search),helpers:catalogState.junkQueueHelpers,actions:catalogState.junkQueueActions,
     batchSize:preferencesState.appSettings.batchSize,revision:catalogState.controller.revision,selectMode,selected:new Set(selected),
     countRow:$('#count'),settled:settleCatalog,
-    skeletonHtml:()=>pageSkeletonHtml(tr('shell:skeleton.loadingJunkFiles'),{cards:true,className:'catalog-skeleton postercard-skeleton'}),
+    skeletonHtml:()=>junkContentSkeletonHtml(tr('shell:skeleton.loadingJunkFiles')),
     canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
   };
 }
@@ -555,12 +607,17 @@ export function installCatalog7() {
     };
   }
 
+/** 当前页交给播放墙与沉浸的筛选：目录页是目录筛选，资料页是这一实体（标签另按交集处理）。 */
+export function pagePlaybackFilters(){
+  const context=currentBarsContext(),filters={...entityState.activeFilterState(),jav:javActive()?'1':''};
+  if(context.type==='entity'&&context.kind!=='tag')filters[context.kind]=context.name;
+  return filters;
+}
+
 export function installCatalog12() {
 applicationEffects.handler($('#wallBtn'), 'onclick', ()=>{
   setSelectMode(false,true);
-  const context=currentBarsContext(),filters={...entityState.activeFilterState(),jav:javActive()?'1':''};
-  if(context.type==='entity'&&context.kind!=='tag')filters[context.kind]=context.name;
-  navigationState.navigatePath(wallAddress(undefined,filters));
+  navigationState.navigatePath(wallAddress(undefined,pagePlaybackFilters()));
 });
 catalogState.mixRelatedCache = new Map();
 catalogState.reduceMotion = ()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -628,14 +685,16 @@ catalogState.junkQueueActions = {
   /* 换分类、换视图：先收起多选，再改地址，由目录元素重读。 */
   navigate:path=>{if(selectMode)setSelectMode(false,true);navigationState.route(path)},
   toggleSelection:(id,range)=>toggleSelection(id,range),
+  selectAll:(ids,on)=>{ids.forEach(id=>on?selected.add(id):selected.delete(id));setSelectMode(selected.size>0)},
   open:(it,anchor)=>it.junk_kind==='image'
     ?window.open('/photo?id='+it.id,'_blank','noopener'):openItem(it.id,true,null,anchor),
   /* 定位成功由 Toast 报，卡上状态行留空；失败把原因写回状态行。 */
   reveal:async it=>{
-    try{const result=await api('/api/reveal',{method:'POST',body:JSON.stringify({id:it.id})});await completeReveal(result,()=>receiptsState.toast({text:tr('shell:sourceTools.revealed')}));return ''}
+    try{await revealAsset(it);return ''}
     catch(error){return entityState.sourceHint(error.message)}
   },
   operate:(it,operation)=>runJunkOperation(it,operation),
+  disposeAll:(kind,count,filters)=>{disposeAllJunk(kind,count,filters)},
 };
 }
 

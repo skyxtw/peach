@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
@@ -49,21 +50,36 @@ def _parse_override(raw: str) -> tuple[tuple[str, str], ...]:
 Roots = Mapping[str, Sequence[str]]
 
 
-def location_mounts() -> dict[str, tuple[Path, ...]]:
-    """读取各媒体来源的本机实际目录，与 [media.locations] 中的目录前缀按顺序对应。
+def location_mount_values() -> dict[str, tuple[str, ...]]:
+    """各媒体来源的挂载值原文，与 [media.locations] 中的目录前缀按顺序对应。
 
     基础映射来自设置文件的 [media.mounts]，默认没有条目。Linux 和 macOS 缺少条目时无法
     读取该来源的媒体文件；Windows 直接使用数据库路径，不需要本表。MOUNTS_ENV 每次现读——测试和临时诊断
     会在运行期改它，缓存住就看不到变化；覆盖值只给一个目录，对应该来源的第一个数据库目录前缀。
+
+    `smb://` 地址原样保留：扫描与推送发现按这个前缀走 SMB 读取，包成 `Path` 会把它改写成
+    `smb:\\…`（Windows）或 `smb:/…`（POSIX），扫描随之落到一个不存在的本机目录（#693）。
     """
     merged: dict[str, tuple[str, ...]] = dict(settings_file.active().mounts)
     for location, mount in _parse_override(os.environ.get(MOUNTS_ENV, "")):
         merged[location] = (mount,) if mount else ()
     declared = settings_file.active().locations
-    return {location: tuple(Path(mount) if mount else (
+    return {location: tuple(str(mount) if mount else str(
                 Path(declared[location][index]) if os.name == "nt" and index < len(declared.get(location, ()))
                 else UNMAPPED_ROOT / location / str(index))
             for index, mount in enumerate(mounts)) for location, mounts in merged.items() if mounts}
+
+
+def location_mounts() -> dict[str, tuple[Path, ...]]:
+    """各媒体来源的本机实际目录（`location_mount_values` 的本机路径形态）。
+
+    SMB 地址在本机没有目录，记成 `UNMAPPED_ROOT` 下的占位，文件授权与存在性检查都拒绝它；
+    要按 SMB 读取的调用方用 `location_mount_values`。
+    """
+    from .smb_media import is_address
+    return {location: tuple(UNMAPPED_ROOT / location / str(index) if is_address(mount) else Path(mount)
+                            for index, mount in enumerate(mounts))
+            for location, mounts in location_mount_values().items()}
 
 
 def location_roots() -> dict[str, tuple[str, ...]]:
@@ -156,20 +172,15 @@ def root_online(root: Path) -> bool:
 
 
 
-def _letter_drive(path: Path) -> bool:
-    drive = path.drive
-    return len(drive) == 2 and drive[0].isalpha() and drive[1] == ":"
-
-
 def within_root(path: Path, root: Path) -> bool:
-    """路径是否落在授权根内。
+    """路径是否落在授权根内。只比较路径文字，不碰盘。
 
-    字面比较先走一遍；不匹配时用 inode 比较兜底，因为账本里是 `R:\\Media`
-    而授权根是 `/Volumes/Media/media`，exFAT/NTFS 大小写不敏感、pathlib 不是。
+    账本里是 `R:/Media`、授权根是 `.../media` 这类只差大小写的情形，在大小写不敏感的平台上
+    按不分大小写的文字比较放行：Windows（NTFS 与网盘盘符）与 macOS（APFS、exFAT 默认不分）。
+    Linux 上的文件系统分大小写，只认原样。
 
-    Windows 上 inode 比较要 stat 两边，网盘挂载的盘符每次 stat 都是一趟网络往返，而授权根有
-    好几个、每个请求逐个问。所以先按不分大小写的字面比较，两边都是盘符路径且盘符不同就直接
-    不在：不同盘符的同深度前缀只有跨盘的目录联接才会是同一个目录。
+    不用 `samefile` 比文件身份：每个媒体请求都走到这里，stat 网盘上的授权根会让请求跟着挂死的
+    挂载一起挂住。盘符映射与软链由两边同样经 `normalized_path` 对齐，文字比较就够了。
     """
     from .smb_media import SmbResource
     if isinstance(path, SmbResource) or isinstance(root, SmbResource):
@@ -180,17 +191,12 @@ def within_root(path: Path, root: Path) -> bool:
         return True
     if os.name == "nt":
         folded, base = os.path.normcase(path), os.path.normcase(root)
-        if folded == base or folded.startswith(base.rstrip("\\") + "\\"):
-            return True
-        if _letter_drive(path) and _letter_drive(root) and path.drive.casefold() != root.drive.casefold():
-            return False
-    depth = len(root.parts)
-    if len(path.parts) < depth:
-        return False
-    try:
-        return Path(*path.parts[:depth]).samefile(root)
-    except OSError:
-        return False
+        return folded == base or folded.startswith(base.rstrip("\\") + "\\")
+    if sys.platform == "darwin":
+        depth = len(root.parts)
+        return (len(path.parts) >= depth
+                and [part.casefold() for part in path.parts[:depth]] == [part.casefold() for part in root.parts])
+    return False
 
 
 def system_volume() -> Path:

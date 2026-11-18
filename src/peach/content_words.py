@@ -40,6 +40,11 @@ COLLECTION_SUFFIX = (
     r'|\s+v\d+(?:\s+\d+(?:\.\d+)?\s*(?:gb|g|tb))?'
     r'|\s+\d+(?:\.\d+)?\s*(?:gb|tb)'
     r'|\s*[(（]\d+[)）])$')
+#: 视频增强软件的模型代号（Topaz Video AI 的 Proteus `prob-4`、Chronos Fast `chf-3`、Iris `iris-3` 等）。
+#: 处理后的文件名与收纳目录常带着它，它从来不是人名或账号名的一部分。
+ENHANCEMENT_MODEL = (r"(?:prob|ahq|amq|alq|aaa|ghq|gcg|thd|thf|dtd|dtv|ddv|chf|chr|apo|apf|aion|iris|rhea"
+                     r"|nyx|rxl|slf|slp)-?\d{1,2}")
+ENHANCEMENT_SUFFIX = r"(?:[\s_.\-]+" + ENHANCEMENT_MODEL + r")+$"
 #: 路径里出现就说明是 Peach 没接来源的体系（国产、网红）。
 OTHER_SYSTEM_MARKS = ("国产", "國產", "网红", "網紅", "兔子先生", "麻豆")
 
@@ -64,6 +69,11 @@ BROWSER_CHALLENGE_MARKS = ("Just a moment", "请稍候", "cf-chl-", "challenge-p
 #: 站方按地区拒绝出口时说明页上的话（DMM 系英文页、日本站日文页、JavDB 中英双语页）。
 GEO_REFUSAL_PHRASES = ("not available in your region", "お住まいの地域からはご利用になれません",
                        "access to this site is prohibited in the country", "本站禁止了你的網路所在國家的訪問")
+#: 站方临时停用登录账号（嫌浏览太快）的说明，繁简两种写法；停的是账号不是出口，换出口没用。
+#: 2026-11-16 JavDB 原文：「帳號已被臨時停用：……將於 2026-11-16 21:46（UTC+08:00）自動恢復。」
+ACCOUNT_SUSPENDED_PHRASES = ("帳號已被臨時停用", "账号已被临时停用", "帳號已被暫時停用", "账号已被暂时停用")
+#: 同一段说明里的恢复时刻与时区。
+ACCOUNT_RESUME_AT = r"(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*[（(]\s*UTC\s*([+-])(\d{1,2}):?(\d{2})\s*[)）]"
 #: 年龄确认页上「18 岁以上、进入」那颗按钮的字样。
 AGE_GATE_BUTTON = r"18|はい|入場|同意|以上|Enter|Yes"
 #: X 登出页在账号封停或不存在时正文里会出现的字样（英文、日文两种界面）。

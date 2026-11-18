@@ -53,18 +53,19 @@ export function markExternalPlayback(key: string): void {
   try { localStorage.setItem(`${EXTERNAL_KEY}:${key}`, String(Date.now() / 1000)) } catch { /* 存储不可用不阻断播放。 */ }
 }
 
-export function playbackPosition(key: string, item: PlayerItem): number {
+/** 打开时从哪一秒接着播。离片尾不到 `restartPercent`% 的算看完，从头播：停在片尾字幕前关掉的，
+ *  下次不会落在片尾。时长未知时照原位置接。外部播放器接过进度时先按 ledger 的关闭点算。 */
+export function playbackPosition(key: string, item: PlayerItem, restartPercent = 0): number {
+  const duration = realDuration(item.duration);
   const stored = storedPosition(key);
   const ratio = Number(item.leave_ratio);
-  const fromRatio = ratio > 0 && ratio < 1 ? ratio * realDuration(item.duration) : 0;
+  const fromRatio = ratio > 0 && ratio < 1 ? ratio * duration : 0;
+  let time = stored !== null ? stored.time : fromRatio;
   if (stored && externalLaunchAt(key)) {
     const serverAt = epochSeconds(item.last_played);
-    if (serverAt > Math.max(externalLaunchAt(key), stored.at)) {
-      return ratio >= 1 ? 0 : fromRatio;
-    }
+    if (serverAt > Math.max(externalLaunchAt(key), stored.at)) time = ratio >= 1 ? 0 : fromRatio;
   }
-  if (stored !== null) return stored.time;
-  return ratio > 0 && ratio < 1 ? ratio * realDuration(item.duration) : 0;
+  return restartPercent > 0 && duration > 0 && time >= duration * (1 - restartPercent / 100) ? 0 : time;
 }
 
 /** 元数据加载且定位完成后才登记，换源与销毁产生的零位置不覆盖续播状态。 */

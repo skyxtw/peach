@@ -229,6 +229,37 @@ class ReleaseNoticeGateTests(unittest.TestCase):
             with self.assertRaisesRegex(version_bump.VersionError, "0.58.0 还没有更新公告"):
                 require_release_notice(root, "0.58.0", "minor")
 
+    def test_a_minor_release_after_0_58_0_needs_a_current_reasoned_review(self):
+        """0.58.0 之后的 minor 定版前，公告要有逐条带理由的审阅；改了公告审阅就失效。"""
+        import json
+        from scripts.release_tag import NOTICE_REVIEW, notice_digest, require_release_notice
+        notice = {"level": "notice", "features": [{"id": "english-interface", "icon": "translate"}]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "src/peach").mkdir(parents=True)
+            (root / "src/peach/release_notices.py").write_text(
+                f'NOTICES: dict[str, dict] = {{"0.59.0": {notice!r}}}\n', encoding="utf-8")
+            with self.assertRaisesRegex(version_bump.VersionError, "还没审阅"):
+                require_release_notice(root, "0.59.0", "minor")
+            review = {"version": "0.59.0", "digest": notice_digest(root, "0.59.0", notice),
+                      "items": {"english-interface": {"perceptible": "是",
+                                                      "icon": "翻译图标的登记含义就是界面语言，和这条一致"}},
+                      "omitted": "其余条目是修复与提速，打开应用看不出变化，不进公告"}
+            (root / NOTICE_REVIEW).parent.mkdir(parents=True)
+            (root / NOTICE_REVIEW).write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(version_bump.VersionError, "english-interface"):
+                require_release_notice(root, "0.59.0", "minor")
+            review["items"]["english-interface"]["perceptible"] = "浏览器是英文的用户打开就看到整页英文"
+            (root / NOTICE_REVIEW).write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+            require_release_notice(root, "0.59.0", "minor")
+            # 审阅之后又改了公告：摘要对不上，要重审。
+            changed = {**notice, "features": [{"id": "english-interface", "icon": "switch"}]}
+            (root / "src/peach/release_notices.py").write_text(
+                f'NOTICES: dict[str, dict] = {{"0.59.0": {changed!r}}}\n', encoding="utf-8")
+            with self.assertRaisesRegex(version_bump.VersionError, "对不上"):
+                require_release_notice(root, "0.59.0", "minor")
+            require_release_notice(root, "0.59.1", "patch")
+
     def test_the_repository_notices_parse_without_importing_the_package(self):
         from scripts.release_tag import ROOT, require_release_notice
         require_release_notice(ROOT, "0.57.0", "minor")

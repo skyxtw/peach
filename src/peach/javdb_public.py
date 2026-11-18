@@ -9,11 +9,11 @@ import re
 import threading
 import time
 from collections import OrderedDict, deque
-from concurrent.futures import Future
+from concurrent.futures import Future, TimeoutError as FutureTimeout
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import urlencode, urlsplit
 
 from PIL import Image
@@ -27,7 +27,7 @@ from .source_page_words import JAVDB_SUSPENSION_MARKERS
 from .user_agent import JAVDB_APP_USER_AGENT
 from .jav_cache import DAY, PublicSnapshots, cache_lifetime
 from .javdb_identity import RULE, cache_key as identity_cache_key, current_evidence
-from .metadata import RelayableError
+from .metadata import RelayableError, relay_args
 from .user_messages import UserValueError, nested_message
 
 WEB = "https://catembylegacy.fastcdn.dpdns.org"
@@ -58,6 +58,9 @@ ACCOUNT_JITTER = 0.8
 ACCOUNT_HOURLY_REQUESTS = 300
 #: 停用说明的恢复时间格式；特征词与 `javdb_account` 共用 `source_page_words` 的那一份。
 _RECOVERY_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})")
+#: 同一键已有请求在途时最多等它多久。在途请求不过停点，最慢是几次 15 秒的接口请求加 30 秒的网页读取，
+#: 与快照文件锁的 120 秒同一量级；等满按来源暂不可用处理，不让 Web 请求和别的任务一直挂着。
+PENDING_WAIT_SECONDS = 120.0
 _UNAVAILABLE = "errors.javdbPublic.unavailable"
 #: 未登录时接口回的业务动作。2026-11-10 起签名照旧被接受，缺的是登录令牌；这三家与
 #: javdb.com 的匿名搜索都回 `success=0`、`action=JWTVerificationError`。
@@ -126,6 +129,29 @@ def public_signature_parts(script: str) -> tuple[str, str] | None:
             return None
         values.append(value)
     return values[0], values[1]
+
+
+#: 作品资料当本地资料留存所需的字段：标题、发行日与封面都取到了才算齐。
+DURABLE_WORK_FIELDS = ("title", "release_date", "cover_url")
+
+
+def work_hold(key: str, result, released: str | None, today) -> dict:
+    """这份快照留多久：`{'durable': True}` 当本地资料固定，`{'until': 发行日}` 留到发行日再补取一次，空表按缓存规则过期。
+
+    只收作品身份与作品资料：番号认出的作品 id 找到了就不会变；作品资料要字段齐全，发行日当天或之后取得的固定，
+    发行前取得的留到发行日（发行前常缺演员、封面会换）。磁链、评论、图片会陆续更新，从不固定。
+    """
+    if key.startswith("movie-id:"):
+        return {"durable": True} if result else {}
+    if (not key.startswith("movie:") or not isinstance(result, dict)
+            or not all(result.get(name) for name in DURABLE_WORK_FIELDS)):
+        return {}
+    shown = (released or "")[:10]
+    try:
+        date.fromisoformat(shown)
+    except ValueError:
+        return {}
+    return {"durable": True} if shown <= today.isoformat() else {"until": shown}
 
 
 @contextmanager
@@ -243,10 +269,11 @@ class PublicRequestBudget:
     started: float = 0
     stop_reason: str = ""
     paused_at_start: float = 0.0
+    control: object = None
 
     def check(self):
-        from .task_control import CURRENT
-        control = CURRENT.get()
+        # 用开始计时那一刻的任务控制：取数据时屏蔽了停点（`_settled`），这时再读 CURRENT 是空的。
+        control = self.control
         paused = control.paused_seconds - self.paused_at_start if control is not None else 0.0
         for reason, exhausted in (
                 ("request_budget", self.requests >= self.max_requests),
@@ -255,6 +282,25 @@ class PublicRequestBudget:
             if exhausted:
                 self.stop_reason = reason
                 raise PublicBudgetExceeded("errors.javdbPublic.budgetExceeded")
+
+
+@contextmanager
+def _settled():
+    """先过一次停点，之后到退出前任务暂停与馆藏处理暂停都不再响应。
+
+    里面只有带期限的请求（接口 15 秒、网页读取 30 秒），暂停在它们做完后的下一个停点生效。
+    """
+    from .processing_control import CURRENT as PROCESSING
+    from .task_control import committing
+    processing = PROCESSING.get()
+    if processing is not None:
+        processing.checkpoint('work')
+    with committing():
+        token = PROCESSING.set(None)
+        try:
+            yield
+        finally:
+            PROCESSING.reset(token)
 
 
 def actor_gender(actor: dict) -> str:
@@ -316,7 +362,11 @@ class PublicAPI:
             self.page_context.reset(token)
 
     def _login_walled(self, ask, path, parse):
-        """搜索与作品资料：接口答就用接口；要求登录时改读网页，评论与磁链不经这里、照常问接口。"""
+        """搜索与作品资料：接口答就用接口；要求登录时改读网页，评论与磁链不经这里、照常问接口。
+
+        网页那一站在冷却或本趟预算用完时（`SourcePaused`）交 `PublicSourcePaused`，沿用旧快照、不往外冒。
+        """
+        from .scraping_access import SourcePaused
         from .sources.base import SourceFailure
         if self.clock() >= self.login_until:
             try:
@@ -328,6 +378,8 @@ class PublicAPI:
             raise PublicLoginRequired(_UNAVAILABLE)
         try:
             return parse(reader(path))
+        except SourcePaused as error:
+            raise PublicSourcePaused(*relay_args(error)) from error
         except (OSError, ValueError, TypeError, AttributeError, KeyError, SourceFailure) as error:
             raise PublicSourceUnavailable(_UNAVAILABLE) from error
 
@@ -335,7 +387,7 @@ class PublicAPI:
     def request_budget(self, budget: PublicRequestBudget):
         budget.started = time.monotonic()
         from .task_control import CURRENT
-        control = CURRENT.get()
+        control = budget.control = CURRENT.get()
         budget.paused_at_start = control.paused_seconds if control is not None else 0.0
         token = self.request_context.set(budget)
         try:
@@ -571,12 +623,28 @@ class PublicAPI:
     def _cached(self, key, fetch, *, released=None, refresh=False):
         cache_key = self._cache_key(key)
         image = key.startswith('image:')
-        store = self._store()
+        found, result = self._remembered(key, cache_key, image=image, refresh=refresh)
+        if found:
+            return result
+        # 下面要占住同键的在途 Future、来源锁或图片名额。暂停只在这里响应：锁内的请求停在
+        # 暂停点上，别的任务和 Web 请求就会陪着它一直等到用户点继续。
+        with _settled():
+            return self._load(key, cache_key, image, fetch, released=released, refresh=refresh)
+
+    def _remembered(self, key, cache_key, *, image, refresh):
         with self.lock:
             memory = self._memory(cache_key, image=image, refresh=refresh)
-            if memory is not None:
-                result, snapshot, error = memory
-                _record_read(key, snapshot, error)
+        if memory is None:
+            return False, None
+        result, snapshot, error = memory
+        _record_read(key, snapshot, error)
+        return True, result
+
+    def _load(self, key, cache_key, image, fetch, *, released, refresh):
+        store = self._store()
+        with self.lock:
+            found, result = self._remembered(key, cache_key, image=image, refresh=refresh)
+            if found:
                 return result
             snapshot = self.snapshots.get(cache_key)
             future = self.pending.get(cache_key)
@@ -584,7 +652,10 @@ class PublicAPI:
             if owner:
                 future = self.pending[cache_key] = Future()
         if not owner:
-            result = future.result()
+            try:
+                result = future.result(timeout=PENDING_WAIT_SECONDS)
+            except FutureTimeout:
+                raise PublicSourceUnavailable(_UNAVAILABLE) from None
             failed = self.failures.get(cache_key)
             _record_read(key, self.snapshots.get(cache_key), failed[1] if failed else None)
             return result
@@ -635,8 +706,11 @@ class PublicAPI:
             if isinstance(result, dict):
                 released = result.get('release_date') or released
             released = released if isinstance(released, str) else None
-            snapshot = self._store().save(identity_cache_key(key), result, released)
-        lifetime = 6 * 3600 if image else cache_lifetime(snapshot.released, datetime.fromtimestamp(self.wallclock()).date())
+            today = datetime.fromtimestamp(self.wallclock()).date()
+            snapshot = self._store().save(identity_cache_key(key), result, released,
+                                          **work_hold(key, result, released, today))
+        lifetime = 6 * 3600 if image else None if snapshot.durable else cache_lifetime(
+            snapshot.released, datetime.fromtimestamp(self.wallclock()).date())
         remaining = lifetime if image else None if lifetime is None else max(0, snapshot.saved + lifetime - self.wallclock())
         with self.lock:
             self.cache[cache_key] = (float('inf') if remaining is None else self.clock() + remaining, result)
@@ -756,8 +830,8 @@ class PublicAPI:
             raise PublicSourceUnavailable("errors.javdbPublic.unrecognizedFormat")
         return [row for row in rows if isinstance(row, dict)]
 
-    def peek_movie(self, code: str) -> dict | None:
-        """只读已取得的资料，不触发网络；供发现排序投影。"""
+    def peek_movie_identity(self, code: str) -> str | None:
+        """只读当前确认的唯一来源身份，歧义和缺失保持未取得。"""
         with self.lock:
             canonical = normalise_code_key(code)
             identity_key = 'movie-id:' + canonical
@@ -768,7 +842,17 @@ class PublicAPI:
                 identity = stored.value if stored else None
             if not isinstance(identity, list) or len(identity) != 1:
                 return None
-            key = f'movie:{canonical}:{identity[0]}'
+            value = identity[0]
+            return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9]+', value) else None
+
+    def peek_movie(self, code: str) -> dict | None:
+        """只读已取得的资料，不触发网络；供发现排序投影。"""
+        with self.lock:
+            identity = self.peek_movie_identity(code)
+            if identity is None:
+                return None
+            canonical = normalise_code_key(code)
+            key = f'movie:{canonical}:{identity}'
             cache_key = self._cache_key(key)
             hit = self.cache.get(cache_key)
             snapshot = self.snapshots.get(cache_key) or self._store().load(identity_cache_key(key))
@@ -815,11 +899,13 @@ class PublicAPI:
                             released=movie.get('release_date'), refresh=refresh)
 
     def resources(self, code: str, *, refresh=False, review_pages=MAX_REVIEW_PAGES) -> dict:
-        """磁链区与评论正文的资源链接；一侧未取得只记警告，作品身份未取得直接抛出。"""
+        """磁链区与评论正文的资源链接；一侧未取得只记警告，作品身份未取得直接抛出。
+
+        `refresh` 只重取磁链与评论；作品资料按快照规则复用（发行后齐全的固定，其余当天有效）。"""
         from .downloads import parse_magnet
         from .sources.javdb import merge_resources, parse_comment_text
 
-        movie = self.movie(code, refresh=True) if refresh else self.movie(code)
+        movie = self.movie(code)
         source_url = "https://javdb.com/v/" + movie["id"]
         warnings = []
         items = {}
@@ -827,6 +913,14 @@ class PublicAPI:
         try:
             rows = self.magnets(code, refresh=refresh, movie=movie)
         except PublicSourceUnavailable as error:
+            if isinstance(error, PublicLoginRequired) and self.page_context.get() is not None:
+                from .sources.base import SourceFailure
+                from .sources.javdb import page_resources
+                from .metadata import relay_args
+                try:
+                    return page_resources(code, movie, self.page_context.get(), review_pages=review_pages)
+                except SourceFailure as page_error:
+                    raise PublicSourceUnavailable(*relay_args(page_error)) from page_error
             rows = []
             magnet_failed = True
             warnings.append(Said("labels.javdbPublic.magnetsUnfetched", error=nested_message(error)))

@@ -11,9 +11,12 @@ description = "Peach 调用 amane 刮削站点的薄桥子进程"
 requires-python = ">=3.14"
 license = "AGPL-3.0-or-later"
 dependencies = [
-  "amane @ git+https://github.com/sqzw-x/amane@fd9294fbe5b4aa88ce1df84d534f6816ad9460d5",
+  "amane @ git+https://github.com/sqzw-x/amane@391af4fdc9fec4c7eb279ce8de53fbf693f09d5a",
 ]
 
 [tool.uv]
 # 桥不是一个包，只有一个脚本；uv 只管 venv 与锁。
 package = false
+# 上游从 v0.27 起把语义检索的模型运行时列为硬依赖，只有 `amane.semantic` 与 `amane.db.embeddings`
+# 导入它们；桥只走爬虫层与网络层，把它们排除在锁外。
+exclude-dependencies = ["numpy", "onnxruntime", "tokenizers", "pyobjc-framework-coreml"]

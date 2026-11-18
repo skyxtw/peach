@@ -47,12 +47,14 @@ import { clickedBlank } from '../components/row-click';
 import { Note } from '../components/note';
 import { TaskProgress } from '../components/task-progress';
 import { activityKind } from '../../activity-kinds';
+import { runBulkAction, type BulkAction, type Receipt } from '../components/bulk-action';
+import { exitPageSelection } from '../components/page-selection';
 import { SelectionDock } from '../components/selection-dock';
 import { busyProps } from '../settings/use-action';
 import {
   authorGroups, authorName, checkedText, checkEvidenceGap, checkFailures, checkReceipt, checkSummary,
   COLUMN_SORT, dropSources, errorHeadline, fetchCheckJob, FOLLOW_CHECK_KEY, isBroken,
-  LAYOUTS, markAllPending, pageWindow, patchSource, removeSource,
+  LAYOUTS, markAllPending, pageWindow, patchSource, removeSource, unmarkItems,
   reloadFollowManage, selectionState, setSourceEnabled, SORT_DEFAULT_DIR, SORT_OPTIONS,
   sortLabel, startCheck, tableRows, toggleGroup,
   type CheckJob, type FollowData, type FollowSource, type Layout, type SortDir, type SortKey,
@@ -62,6 +64,8 @@ import { AuthorAvatar, ErrorLine, SourceIcon, SourceLink, StatusBadge } from './
 import { codedText, jobText } from '../../core/server-text';
 import { FOLLOW_CHECK_TASK } from '../../running-tasks';
 import { joinList, t } from '../../i18n';
+import { useTableFilters } from '../components/use-table-filters';
+import { statusText } from './follow-manage';
 
 const sourceTableFeatures = tableFeatures({
   rowPaginationFeature,
@@ -134,7 +138,7 @@ export interface SourceListProps {
   onLayout(layout: Layout): void;
   onPageSize(size: number): void;
   onSelected(next: Set<number>): void;
-  toast(message: string): void;
+  toast: Receipt;
   openFollow(): void;
   onAdd(): void;
 }
@@ -269,6 +273,15 @@ export function SourceList(props: SourceListProps) {
 
   const groups = useMemo(() => authorGroups(sources, sort, dir, aliases), [sources, sort, dir, aliases]);
   const rows = useMemo(() => tableRows(groups, sort, dir, aliases), [groups, sort, dir, aliases]);
+  const filtered = useTableFilters(rows, {
+    author: { values: row => row.author, option: (name, row) => ({
+      leading: row && <AuthorAvatar group={row.group} name={name} small /> }) },
+    source: { values: row => row.source.label, option: (_, row) => ({
+      leading: row && <SourceIcon provider={row.source.provider} /> }) },
+    provider: { values: row => row.source.provider_label, option: (_, row) => ({
+      leading: row && <SourceIcon provider={row.source.provider} /> }) },
+    status: { values: row => statusText(row.source) },
+  }, () => onPage(1));
 
   const { job, running, outcome, start: check } = useBackgroundJob<CheckJob, number[]>({
     queryKey: FOLLOW_CHECK_KEY,
@@ -316,7 +329,7 @@ export function SourceList(props: SourceListProps) {
 
   const removeSourceRow = (source: FollowSource) => void confirmModal({
     title: t('follow:sourceList.unfollow'), body: t('follow:sourceList.unfollowBody'),
-    confirmLabel: t('follow:sourceList.unfollow'), danger: true,
+    confirmLabel: t('follow:sourceList.unfollow'), danger: true, holdToConfirm: true,
     onConfirm: () => remove.mutateAsync(source.id),
   });
 
@@ -339,8 +352,6 @@ export function SourceList(props: SourceListProps) {
         return;
       }
       setProblem('');
-      const done = result.action === 'remove' ? 'follow:sourceList.bulkDeleted' : result.action === 'enabled' ? 'follow:sourceList.bulkEnabled' : 'follow:sourceList.bulkPaused';
-      toast(t(done, { count: result.done.length }));
     },
     onError: (cause) => setProblem(errorMessage(cause)),
   });
@@ -355,10 +366,49 @@ export function SourceList(props: SourceListProps) {
         return;
       }
       setProblem('');
-      toast(t('follow:sourceList.bulkMarked', { count: result.total }));
     },
     onError: (cause) => setProblem(errorMessage(cause)),
   });
+
+  /* 批量动作：启用、暂停与「全部标记」都能原样改回去；删除撤不回，弹窗写明。 */
+  const host = { receipt: toast, failure: (cause: unknown) => setProblem(errorMessage(cause)) };
+  const enableMany = (enable: boolean): BulkAction<number> => ({
+    key: enable ? 'enable' : 'pause', label: enable ? t('follow:shared.enable') : t('follow:shared.pause'), reversal: 'undo',
+    confirm: (ids) => ({ title: enable ? t('follow:sourceList.enableMany') : t('follow:sourceList.pauseMany'),
+      body: t(enable ? 'follow:sourceList.enableManyBody' : 'follow:sourceList.pauseManyBody', { count: ids.length }) }),
+    run: async (ids) => {
+      const flipped = ids.filter((id) => sources.find((source) => source.id === id)?.enabled !== enable);
+      const { done } = await bulk.mutateAsync({ ids: flipped, action: enable ? 'enabled' : 'paused' });
+      return async () => {
+        await mapLimit(done, 4, (id: number) => setSourceEnabled(id, !enable));
+        for (const id of done) patchSource(id, { enabled: !enable });
+      };
+    },
+    receipt: (ids) => t(enable ? 'follow:sourceList.bulkEnabled' : 'follow:sourceList.bulkPaused', { count: ids.length }),
+  });
+  const deleteMany: BulkAction<number> = {
+    key: 'delete', label: t('follow:shared.delete'), reversal: 'irreversible', danger: true, holdToConfirm: true,
+    confirm: (ids) => ({ title: t('follow:sourceList.deleteManyTitle', { count: ids.length }), danger: true,
+      body: t('follow:sourceList.deleteManyBody'), confirmLabel: t('follow:sourceList.deleteSelected') }),
+    run: async (ids) => { await bulk.mutateAsync({ ids: [...ids], action: 'remove' }) },
+    receipt: (ids) => t('follow:sourceList.bulkDeleted', { count: ids.length }),
+  };
+  /* 「全部标记」作用于全部未看条目，条目在写入那一刻才取齐；撤销把标上的那些改回未看。 */
+  const markEverything = (to: 'seen' | 'ignored'): BulkAction<number> => {
+    let marked: number[] = [];
+    return {
+      key: `mark-${to}`, label: to === 'seen' ? t('follow:sourceList.markAllWatched') : t('follow:sourceList.ignoreAll'), reversal: 'undo',
+      confirm: ([count]) => to === 'seen'
+        ? { title: t('follow:followDetail.markSeen'), body: t('follow:sourceList.markWatchedBody', { count }) }
+        : { title: t('follow:sourceList.markIgnored'), body: t('follow:sourceList.markIgnoredBody', { count }),
+            recovery: t('shell:batchFollow.ignoreRecovery') },
+      run: async () => {
+        marked = (await markAll.mutateAsync(to)).marked;
+        return async () => { await unmarkItems(marked); await reloadFollowManage() };
+      },
+      receipt: () => t('follow:sourceList.bulkMarked', { count: marked.length }),
+    };
+  };
 
   const toggleSourceRow = (source: FollowSource, enabled: boolean) =>
     toggleEnabled.mutate({ id: source.id, enabled });
@@ -463,11 +513,11 @@ export function SourceList(props: SourceListProps) {
   const asTable = layout === 'table';
   const preferences = useTablePreferences('follow-sources', preferenceColumns);
   // 越界的页码落到末页：地址栏里挂着的可能是上一次、来源更多时的页码。
-  const win = pageWindow(asTable ? rows.length : groups.length, pageSize, page);
+  const win = pageWindow(asTable ? filtered.items.length : groups.length, pageSize, page);
 
   const table = useTable({
     features: sourceTableFeatures,
-    data: rows,
+    data: filtered.items,
     columns,
     /* 行的身份是来源 ID，不是它在这一页里的下标：换页、换排序之后 `rowSelection` 里记着的
        仍是同一批来源，卡片视图读的也是同一组数。 */
@@ -601,21 +651,12 @@ export function SourceList(props: SourceListProps) {
         {evidence ? <Note tone="warning">{t('follow:sourceList.evidenceGap', { error: evidence })}</Note> : null}
       </div>
 
-        <SelectionDock label={t('follow:sourceList.bulkActions')} visible={chosen.length > 0} count={t('follow:sourceList.selectedCount', { count: chosen.length })}>
-          <Button variant="secondary" size="small" disabled={readOnly}
-            {...busyProps(rowHandlers.busy)} onClick={() => startChecking(chosen)}>{t('follow:sourceList.checkSelected')}</Button>
-          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
-            onClick={() => bulk.mutate({ ids: chosen, action: 'enabled' })}>{t('follow:shared.enable')}</Button>
-          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
-            onClick={() => bulk.mutate({ ids: chosen, action: 'paused' })}>{t('follow:shared.pause')}</Button>
-          <Button variant="danger" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
-            onClick={() => void confirmModal({
-              title: t('follow:sourceList.deleteManyTitle', { count: chosen.length }),
-              body: t('follow:sourceList.deleteManyBody'),
-              confirmLabel: t('follow:sourceList.deleteSelected'), danger: true,
-              onConfirm: () => bulk.mutateAsync({ ids: chosen, action: 'remove' }),
-            })}>{t('follow:shared.delete')}</Button>
-          <Button variant="ghost" size="small" onClick={() => onSelected(new Set())}>{t('follow:shared.clearSelection')}</Button>
+        <SelectionDock label={t('follow:sourceList.bulkActions')} visible={chosen.length > 0} count={t('follow:sourceList.selectedCount', { count: chosen.length })}
+          actions={[enableMany(true), enableMany(false), deleteMany].map((bulkAction) => ({
+            action: bulkAction, items: chosen, host, disabled: readOnly || bulk.isPending }))}
+          leading={<Button variant="secondary" size="small" disabled={readOnly}
+            {...busyProps(rowHandlers.busy)} onClick={() => startChecking(chosen)}>{t('follow:sourceList.checkSelected')}</Button>}>
+          <Button variant="ghost" size="small" onClick={exitPageSelection}>{t('follow:shared.clearSelection')}</Button>
         </SelectionDock>
 
       {asTable ? (
@@ -636,12 +677,12 @@ export function SourceList(props: SourceListProps) {
                     isRowHeader={header.column.id === 'source'} {...preferences.columnProps(header.id)}>
                     {({ sortDirection }) => <>{header.id === 'select' ? text : sortable ? (
                       <span className="flex items-center gap-0.5">
-                        {text}
+                        {filtered.header(header.id, COLUMN_LABELS[header.id] || header.id) ?? text}
                         <span data-sort-indicator data-direction={sortDirection || undefined}>
                           <ChevronSortDown />
                         </span>
                       </span>
-                    ) : <VisuallyHidden>{text}</VisuallyHidden>}<TableColumnResizer preferences={preferences} id={header.id} /></>}
+                    ) : filtered.header(header.id, COLUMN_LABELS[header.id] || header.id) ?? text}<TableColumnResizer preferences={preferences} id={header.id} /></>}
                   </TableColumn>
                 );
               })}
@@ -696,16 +737,11 @@ export function SourceList(props: SourceListProps) {
             {t('follow:sourceList.markSummary', { unwatched: Number(counts.new) || 0, watched: Number(counts.seen) || 0, saved: Number(counts.saved) || 0, ignored: Number(counts.ignored) || 0 })}
           </span>
           <Button variant="secondary" size="small" onClick={openFollow}>{t('follow:sourceList.seeUpdates')}</Button>
-          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(markAll.isPending)}
-            onClick={() => void confirmModal({
-              title: t('follow:followDetail.markSeen'), body: t('follow:sourceList.markWatchedBody'), confirmLabel: t('follow:followDetail.markSeen'),
-              onConfirm: () => markAll.mutateAsync('seen'),
-            })}>{t('follow:sourceList.markAllWatched')}</Button>
-          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(markAll.isPending)}
-            onClick={() => void confirmModal({
-              title: t('follow:sourceList.markIgnored'), body: t('follow:sourceList.markIgnoredBody'), confirmLabel: t('follow:sourceList.markIgnored'),
-              onConfirm: () => markAll.mutateAsync('ignored'),
-            })}>{t('follow:sourceList.ignoreAll')}</Button>
+          {(['seen', 'ignored'] as const).map((to) => {
+            const mark = markEverything(to);
+            return <Button key={to} variant="secondary" size="small" disabled={readOnly} {...busyProps(markAll.isPending)}
+              onClick={() => void runBulkAction(mark, [Number(counts.new) || 0], host).catch(host.failure)}>{mark.label}</Button>;
+          })}
         </div>
       ) : null}
     </div>

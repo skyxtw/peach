@@ -11,11 +11,14 @@
  *
  * 面板常驻不卸载，每次打开重取设置；Peach 配置在挂载时重取各自的数据。 */
 import type { InterfaceLanguageChoice } from '../../i18n';
+import type { NameLanguage } from '../../core/entity-names';
 import { useMutation, type QueryClient } from '@tanstack/react-query';
 
 import { apiGet, apiSend } from '../../api';
+import { withBackoff } from '../../polling';
 import { queryClient } from '../query';
 import type { NavigationOrders } from '../../navigation-order';
+import type { SortControls } from '../../sort-controls';
 
 export const SETTINGS_URL = '/api/settings';
 export const FOLLOW_SCHEDULE_URL = '/api/follow/schedule';
@@ -34,6 +37,8 @@ export interface MediaProcessingPolicy {
   metadata_only: boolean;
   preview_acceleration?: 'auto' | 'software';
   playback_acceleration?: 'auto' | 'software';
+  /** 播放转码的画质上限（短边像素），0 为原画。 */
+  playback_max_height?: number;
 }
 export const fetchMediaProcessing = (signal?: AbortSignal) =>
   apiGet<MediaProcessingPolicy>(MEDIA_PROCESSING_URL, signal);
@@ -41,12 +46,13 @@ export const fetchMediaProcessing = (signal?: AbortSignal) =>
 /** `q_settings` 返回的整份；写入时只送改了的那几个键，回来的仍是整份。 */
 export interface SyncedSettings {
   taskSpeedMode?: 'low' | 'standard' | 'high';
-  performerNameLanguage?: 'zh-CN' | 'ja';
+  performerNameLanguage?: NameLanguage;
   interfaceLanguage?: InterfaceLanguageChoice;
   systemLanguage?: string | null;
   sidebarOrder?: string[];
   manageOrder?: string[];
   navigationOrders?: NavigationOrders;
+  sortControls?: SortControls;
   libraryOrder?: string[];
   followInitialDays?: number;
   postSetupTutorialDone?: boolean;
@@ -57,6 +63,15 @@ export interface SyncedSettings {
   searchHistoryLimit?: number | null;
   /** 番号识别规则，一条一个正则；配置页「媒体库与入库」里编辑。 */
   codePatterns?: string[];
+  /** 「想要」老片多久再查一次（天），以及查几次没找到就暂时放弃（0 表示一直查）。 */
+  wantStaleSearchDays?: number;
+  wantStaleAttemptLimit?: number;
+  /** 每趟扫描与采集向外部来源要的总量：请求次数、小时数、GB 数，档位与服务端 `SOURCE_BUDGET_CHOICES` 一致。 */
+  sourceBudgetRequests?: number;
+  sourceBudgetHours?: number;
+  sourceBudgetGigabytes?: number;
+  /** 没有别的封面时用 JavDB 带水印的图（#531），默认关。 */
+  javdbCoverFallback?: boolean;
 }
 
 export interface FollowScheduleStatus {
@@ -102,11 +117,19 @@ export function useSaveSettings(scope?: string) {
   }, queryClient);
 }
 
-export function useSaveFollowSchedule() {
+/** 关注与订阅源两份定时的读写：同一套调度实现，只换地址、缓存键和关掉时留着的默认间隔。 */
+export const SCHEDULES = {
+  follow: { url: FOLLOW_SCHEDULE_URL, key: FOLLOW_SCHEDULE_KEY, fetch: fetchFollowSchedule, fallback: 60 },
+  feed: { url: FEED_SCHEDULE_URL, key: FEED_SCHEDULE_KEY, fetch: fetchFeedSchedule, fallback: 360 },
+} as const;
+
+/** 存一份定时：传 0 是关掉，其余是间隔分钟数。 */
+export function useSaveSchedule(kind: keyof typeof SCHEDULES) {
+  const { url, key, fallback } = SCHEDULES[kind];
   return useMutation({
-    mutationFn: (minutes: number) => apiSend<FollowScheduleStatus>(FOLLOW_SCHEDULE_URL,
-      { enabled: minutes > 0, interval_minutes: minutes || 60 }),
-    onSuccess: (status) => queryClient.setQueryData(FOLLOW_SCHEDULE_KEY, status),
+    mutationFn: (minutes: number) => apiSend<FollowScheduleStatus>(url,
+      { enabled: minutes > 0, interval_minutes: minutes || fallback }),
+    onSuccess: (status) => queryClient.setQueryData(key, status),
   });
 }
 
@@ -124,8 +147,9 @@ export function useRunSchedule(kind: keyof typeof SCHEDULE_RUNS) {
   });
 }
 
-/** 调度正在跑时三秒重取一次，跑完就停，失败原因随之出现或消失。 */
-export const schedulePollInterval = (data: FollowScheduleStatus | undefined) => data?.running ? 3_000 : false;
+/** 调度正在跑时三秒重取一次，跑完就停，失败原因随之出现或消失；读失败按连续失败次数退避。
+ *  直接作 `refetchInterval`。 */
+export const schedulePollInterval = withBackoff<FollowScheduleStatus>((data) => (data?.running ? 3_000 : false));
 
 export function useSaveThumbnailMode() {
   return useMutation({

@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
+from pathlib import Path
 
 from . import entities, interface_text, media_libraries, sample_images, settings_file
 
@@ -48,9 +49,10 @@ from .web_activity import DEFAULT_PROFILE_ID
 from .web_state import WebContract
 from .western_artwork import artwork_key
 from .user_messages import UserValueError
+from .table_filters import column_filters
 
 
-GROUP_TABLES = ('asset', 'asset_entity', 'entity')
+GROUP_TABLES = ('asset_catalog', 'asset_entity', 'entity')
 
 
 def _download_source_names(contract: WebContract) -> tuple[tuple[int, tuple[str, ...]], ...]:
@@ -103,6 +105,11 @@ def attach_artwork_fields(contract: WebContract, item: dict) -> None:
     if is_pointer(item.get('path') or item.get('name') or ''):
         item['size'] = None
         item['is_strm'] = True
+    attach_cover_fields(contract, item)
+
+
+def attach_cover_fields(contract: WebContract, item: dict) -> None:
+    """本地封面、版本和取景投影，保留调用方的文件属性。"""
     key = artwork_key(item['id'], item.get('code'))
     item['has_cover'] = contract.has_cover(key)
     item['cover_key'] = key if item['has_cover'] else ''
@@ -294,12 +301,83 @@ def release_year_filter(value, *, trash=False):
         '' if year == 'none' else year for year in years]
 
 
+def column_page(args):
+    """列选项每次只取一页，搜索词与目录搜索独立。"""
+    return (str(args.get('column_q') or '').strip(), max(0, int(args.get('column_offset') or 0)),
+            max(1, min(int(args.get('column_limit') or 24), 100)))
+
+
+def column_search(query):
+    """列选项复用搜索补全的规范名、别名和检索词判据。"""
+    if not query:
+        return '', []
+    from .web_entity import SUGGEST_ENTITY_MATCH, _suggest_patterns
+    patterns = _suggest_patterns(query)
+    parameters = [patterns[name] for name in re.findall(r':(\w+)', SUGGEST_ENTITY_MATCH)]
+    return re.sub(r':\w+', '?', SUGGEST_ENTITY_MATCH), parameters
+
+
+SCALAR_COLUMN_EXPRESSIONS = {
+    "rating": "CAST(CAST(round(min(max(COALESCE(a.rating,0),0),100)/20.0) AS INTEGER) AS TEXT)",
+    "resolution": "CASE WHEN a.width>0 AND a.height>0 THEN CAST(a.width AS TEXT)||'x'||CAST(a.height AS TEXT) ELSE 'none' END",
+}
+
+
+def _column_filter_predicate(contract, selected):
+    conditions, parameters = [], []
+    with contract.read_connection() as connection:
+        for column, selection in selected.items():
+            exclude = isinstance(selection, dict)
+            values = selection['exclude'] if exclude else selection
+            choices = []
+            for value in values:
+                if column == 'library':
+                    clause, params = media_libraries.predicate(settings_file.active(), value)
+                elif column in SCALAR_COLUMN_EXPRESSIONS:
+                    clause, params = SCALAR_COLUMN_EXPRESSIONS[column] + '=?', [value]
+                elif column == 'people' and value == 'owner:none':
+                    clause, params = UNOWNED_ASSET_CLAUSE, []
+                else:
+                    kind, name = value.split(':', 1) if column == 'people' else ('tag', value)
+                    clause, params = _entity_asset_filter(connection, kind, name)
+                choices.append(clause)
+                parameters.extend(params)
+            combined = '(' + ' OR '.join(choices) + ')' if choices else '0'
+            conditions.append('NOT ' + combined if exclude else combined)
+    return conditions, parameters
+
+
+def _catalog_entity_filters(contract, args):
+    """实体筛选与详情页根范围分别解析，多个关系共同约束作品。"""
+    subjects = [(kind, args[kind]) for kind in ("creator", "performer", "studio", "series", "agency")
+                if args.get(kind)]
+    scope_kind, scope_name = args.get("scope_kind", ""), args.get("scope_name", "")
+    if scope_kind or scope_name:
+        if scope_kind not in {"creator", "performer", "studio", "series", "agency", "tag"} or not scope_name:
+            raise ValueError("invalid catalog scope")
+        subjects.append((scope_kind, scope_name))
+    if not subjects:
+        return [], []
+    where, parameters = [], []
+    with contract.read_connection() as connection:
+        for kind, name in subjects:
+            clause, values = _entity_asset_filter(connection, kind, name)
+            where.append(clause)
+            parameters.extend(values)
+    return where, parameters
+
+
 def catalog_filter(contract: WebContract, args):
     """视频列表与侧栏使用同一组筛选条件。"""
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
     # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
     where, par = ([] if trash else [VISIBLE_CATALOG_ASSET]), []
+    columns = column_filters(args.get('column_filters'), {'people', 'library', 'tags', *SCALAR_COLUMN_EXPRESSIONS})
+    if columns:
+        conditions, parameters = _column_filter_predicate(contract, columns)
+        where.extend(conditions)
+        par.extend(parameters)
     from .web_folders import folder_filter
     folder_where, folder_params = folder_filter(contract, args)
     where.extend(folder_where)
@@ -313,14 +391,9 @@ def catalog_filter(contract: WebContract, args):
     if args.get("loc"):
         locs = [x for x in args["loc"].split(",") if x]
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
-    subjects = [(kind, args[kind]) for kind in ("creator", "performer", "studio", "series", "agency")
-                if args.get(kind)]
-    if subjects:
-        with contract.read_connection() as connection:
-            for kind, name in subjects:
-                clause, values = _entity_asset_filter(connection, kind, name)
-                where.append(clause)
-                par.extend(values)
+    entity_where, entity_parameters = _catalog_entity_filters(contract, args)
+    where.extend(entity_where)
+    par.extend(entity_parameters)
     # 没有署名人的那批也是一类，和「某某的作品」并列，不是一句写在详情页上的说明。
     if args.get("owner") == "none":
         where.append(UNOWNED_ASSET_CLAUSE)
@@ -458,7 +531,8 @@ def _catalog_totals(contract: WebContract, where, parameters, args):
     return contract.cached_until_changed(
         repr(('catalog-totals', tuple(where), tuple(parameters))), read,
         tuple(contract.database.media_roots), *group_inputs(contract),
-        tables=CATALOG_TOTAL_TABLES, allow_stale=False)
+        tables=CATALOG_TOTAL_TABLES + (('asset',) if args.get('state') in {'fresh', 'played'} else ()),
+        allow_stale=False)
 
 
 def _catalog_order(args):
@@ -645,12 +719,29 @@ def entity_ref(contract: WebContract, kind: str, entity_id, name: str) -> dict:
         ref["image_version"] = contract.entity_image_version(kind, entity_id)
         ref["avatar_focus"] = contract.avatar_focus(kind, entity_id)
     if kind == 'creator':
+        from .follow_assets import ROOT_NAME, prioritize_avatar_urls
         from .follow_identity import creator_avatar_refs
-        urls = creator_avatar_refs(contract).get(entity_id, [])
+        urls = prioritize_avatar_urls(Path(contract.candidate_root) / ROOT_NAME,
+                                      creator_avatar_refs(contract).get(entity_id, []))
         if urls:
             ref['source_avatar_url'] = urls[0]
             ref['source_avatar_fallbacks'] = urls[1:]
     return ref
+
+
+def attach_entity_aliases(connection, rows):
+    """筛选选项按实体批量带出可检索别名。"""
+    ids = sorted({row['id'] for row in rows if row.get('id')})
+    if not ids:
+        return
+    aliases = {}
+    for entity_id, alias in connection.execute(
+            "SELECT DISTINCT entity_id,alias FROM entity_alias WHERE entity_id IN (" +
+            ','.join('?' for _ in ids) + ") ORDER BY alias", ids):
+        aliases.setdefault(entity_id, []).append(alias)
+    for row in rows:
+        row['aliases'] = [alias for alias in aliases.get(row.get('id'), [])
+                          if entities.is_identity_alias(row.get('kind', 'performer'), alias)]
 
 
 def attach_avatar_availability(contract: WebContract, rows, key="rep",
@@ -1147,6 +1238,28 @@ def item_pending_work(contract: WebContract, asset_id: int) -> list[dict]:
     return processing_work([busy] if busy else [])
 
 
+def _user_created_ids(c, canonical) -> set[int]:
+    """详情里的人物与公司哪些是编辑框里新建的档案：带个小标记，和刮来的放在一起时认得出来（ADR-0165）。"""
+    identity_ids = sorted({int(row[0]) for row in canonical if row[1] != "tag"})
+    if not identity_ids:
+        return set()
+    return {int(row[0]) for row in c.execute(
+        "SELECT id FROM entity WHERE id IN (" + ",".join("?" * len(identity_ids)) + ") "
+        "AND json_extract(metadata_json,'$.user_created')=1", identity_ids)}
+
+
+def _official_tag_names(legacy_rows) -> set[str]:
+    """扁平标签里来自官方来源的那几个，详情给它们标「官方」。"""
+    return {
+        normalize_entity_name(tag)
+        for tag, source in legacy_rows
+        if str(source or "").startswith("javinizer:")
+        and str(source or "").endswith(":tag")
+        and SOURCE_SPECS.get(str(source).split(":", 2)[1], None)
+        and SOURCE_SPECS[str(source).split(":", 2)[1]].official
+    }
+
+
 def q_item(contract: WebContract, aid):
     """按 id 直取。
     ⚠️ 没有这个接口时，前端只能用「带筛选条件再查一遍然后 find」的绕法：
@@ -1176,6 +1289,8 @@ def q_item(contract: WebContract, aid):
         d["sample_images"] = sample_images.detail_refs(c, d.get("code"))
         # 真相字段的字段级归属随详情一起下发：页面要显示某个值是谁写的、还能不能
         # 被自动写入者改，`mutation_revision` 则是编辑时回传的乐观并发凭据。
+        from .item_edit import field_sources
+        d["field_sources"] = field_sources(d.get("field_owners"))
         d["field_owners"] = parse_owners(d.get("field_owners"))
         d["mutation_revision"] = int(d.get("mutation_revision") or 0)
         # 在线资产的 `path` 是来源作品页，不是可播地址；能播的那条代理在
@@ -1201,15 +1316,9 @@ def q_item(contract: WebContract, aid):
         ))
         canonical, legacy_rows = visible_identity_data(c, canonical, legacy_rows)
         makers = label_makers(contract, c, aid)
+        user_created = _user_created_ids(c, canonical)
     legacy = [row[0] for row in legacy_rows]
-    official_tag_names = {
-        normalize_entity_name(tag)
-        for tag, source in legacy_rows
-        if str(source or "").startswith("javinizer:")
-        and str(source or "").endswith(":tag")
-        and SOURCE_SPECS.get(str(source).split(":", 2)[1], None)
-        and SOURCE_SPECS[str(source).split(":", 2)[1]].official
-    }
+    official_tag_names = _official_tag_names(legacy_rows)
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
     canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
     canonical_creators = {
@@ -1239,7 +1348,8 @@ def q_item(contract: WebContract, aid):
         for kind in ("creator", "performer", "studio", "series")
     }
     d["entity_refs"] = {
-        kind: [entity_ref(contract, kind, entity_id, name)
+        kind: [{**entity_ref(contract, kind, entity_id, name),
+                **({"user_created": True} if int(entity_id) in user_created else {})}
                for entity_id, item_kind, name in canonical if item_kind == kind]
         for kind in ("creator", "performer", "studio", "series")
     }
@@ -1253,6 +1363,9 @@ def q_item(contract: WebContract, aid):
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
     d['has_local_poster'] = (contract.poster_root / f"{d['id']}_4.jpg").is_file()
     attach_artwork_fields(contract, d)
+    # 编辑资料的封面区要知道现在这张是不是用户换上的（ADR-0165）。
+    from .item_cover import cover_state
+    d.update(cover_state(contract.cover_root, artwork_key(d['id'], d.get('code'))))
     # 身份格的厂牌位和顶栏小圆片同一条判据：没装标识就不输出 `<img>`。规范厂牌走
     # `entity_refs`，非规范的那条只有扁平 `studio` 字段，两边都要有标志，否则
     # 后者会从「本来能取到图」退化成永远首字母。
@@ -1486,7 +1599,7 @@ def state_clause(state: str) -> str:
 TOPS_POOL_FACTOR = 4
 
 #: 顶部两排候选池读到的账本表：作品与实体三张、「已标记」读的偏好、「稍后看」读的队列。
-TOPS_TABLES = GROUP_TABLES + ("asset_preference", "watch_queue")
+TOPS_TABLES = GROUP_TABLES + ("asset", "asset_preference", "watch_queue")
 
 
 def q_tops(contract: WebContract, n=28, jav=False, seed="", state="", page=0, filters=None):
@@ -1575,7 +1688,7 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state="", page=0, fi
 #: 筛选项读到的账本表（不含实体范围与搜索词那几条分支，它们不走按版本的缓存）：
 #: 作品与实体、标签隐藏偏好与标签实体的别名（`tag_not_hidden`）、「已标记」「稍后看」两种
 #: 状态，以及在线卡片的关注标签。
-FACETS_TABLES = GROUP_TABLES + ("entity_alias", "asset_tag_preference", "asset_preference",
+FACETS_TABLES = GROUP_TABLES + ("asset", "entity_alias", "asset_tag_preference", "asset_preference",
                                 "watch_queue", "follow_item", "follow_source")
 
 
@@ -1592,6 +1705,62 @@ def _release_year_facets(contract, connection, scope, values, state, filters, as
                 "WHERE a.medium='video' "+scope+' GROUP BY k ORDER BY k DESC', values)]
 
 
+def _column_facets(contract, connection, scope, scope_params, column, column_query, column_offset, column_limit):
+    """当前范围的分页列选项，按列保留计数、别名和身份展示字段。"""
+    if column in SCALAR_COLUMN_EXPRESSIONS:
+        expression = SCALAR_COLUMN_EXPRESSIONS[column]
+        rows = list(connection.execute(
+            f"SELECT {expression} AS k,count(*) AS n FROM asset a WHERE a.medium='video' " + scope
+            + f" AND {expression} LIKE ? GROUP BY k ORDER BY n DESC,k LIMIT ? OFFSET ?",
+            [*scope_params, '%' + column_query + '%', column_limit + 1, column_offset]))
+        items = [dict(row) for row in rows[:column_limit]]
+        return {"column": column, "items": items, "has_more": len(rows) > column_limit,
+                "next_offset": column_offset + len(items) if len(rows) > column_limit else None}
+    kinds = "'creator','performer'" if column == "people" else "'tag'"
+    visible = ("AND " + tag_not_hidden('ae.asset_id', 'e.normalized_name') +
+               " AND " + tag_is_not_a_performer_name('e.normalized_name')) if column == "tags" else ""
+    search, search_params = column_search(column_query)
+    search = 'AND ' + search if search else ''
+    rows = list(connection.execute(
+        "SELECT e.id,e.kind,e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
+        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        f"WHERE e.kind IN ({kinds}) {visible} AND ae.asset_id IN ("
+        "SELECT a.id FROM asset a WHERE a.medium='video' " + scope + ") " + search + " "
+        "GROUP BY e.id,e.kind,e.canonical_name ORDER BY n DESC,e.canonical_name,e.kind,e.id LIMIT ? OFFSET ?",
+        [*scope_params, *search_params, column_limit + 1, column_offset]))
+    items = [dict(row) for row in rows[:column_limit]]
+    if column == 'people':
+        attach_entity_aliases(connection, items)
+        for item in items:
+            item.update(entity_ref(contract, item['kind'], item['id'], item['k']))
+        attach_creator_reference_details(contract, [item for item in items if item['kind'] == 'creator'])
+    more = len(rows) > column_limit
+    return {"column": column, "items": items, "has_more": more,
+            "next_offset": column_offset + len(items) if more else None}
+
+
+def _facet_scope(contract, connection, jav, state, filters, asset_id, scope_kind, scope_name):
+    """筛选选项的根范围沿用作品、实体、媒体库与可见性约束。"""
+    scope = (PRESENT_ASSET_CLAUSE + (JAV_ASSET_CLAUSE if jav else "")
+             + state_clause(state))
+    scope_params: list[object] = []
+    if filters and filters.get("library") and asset_id is None:
+        library_clause, library_params = media_libraries.predicate(settings_file.active(), filters["library"])
+        scope += "AND " + library_clause + " "
+        scope_params.extend(library_params)
+    if asset_id is not None:
+        scope += "AND a.id=? "
+        scope_params.append(int(asset_id))
+    elif scope_kind or scope_name:
+        if (scope_kind not in {"creator", "performer", "studio", "series", "agency", "tag"}
+                or not scope_name):
+            raise ValueError("invalid facet scope")
+        clause, values = _entity_asset_filter(connection, scope_kind, scope_name)
+        scope += "AND " + clause + " "
+        scope_params.extend(values)
+    return scope, scope_params
+
+
 def q_facets(
     contract: WebContract,
     jav: bool = False,
@@ -1600,6 +1769,10 @@ def q_facets(
     asset_id: int | None = None,
     state: str = "",
     filters: dict | None = None,
+    column: str = "",
+    column_query: str = "",
+    column_offset: int = 0,
+    column_limit: int = 24,
 ):
     """返回当前浏览集合真正存在的筛选项。
 
@@ -1607,35 +1780,24 @@ def q_facets(
     筛选项必须来自和作品列表相同的规范关系，不能让前端拿全库 facets 猜当前页面。
     回收站里的作品照旧算进筛选项；标「已消失」的不算，它们不在任何列表里（ADR-0087）。
     """
+    if column not in {"", "people", "tags", *SCALAR_COLUMN_EXPRESSIONS}:
+        raise ValueError("invalid facet column")
     with contract.read_connection() as c:
-        scope = (PRESENT_ASSET_CLAUSE + (JAV_ASSET_CLAUSE if jav else "")
-                 + state_clause(state))
-        scope_params: list[object] = []
-        if filters and filters.get("library") and asset_id is None:
-            library_clause, library_params = media_libraries.predicate(settings_file.active(), filters["library"])
-            scope += "AND " + library_clause + " "
-            scope_params.extend(library_params)
-        if asset_id is not None:
-            scope += "AND a.id=? "
-            scope_params.append(int(asset_id))
-        elif scope_kind or scope_name:
-            if (scope_kind not in {"creator", "performer", "studio", "series", "agency", "tag"}
-                    or not scope_name):
-                raise ValueError("invalid facet scope")
-            clause, values = _entity_asset_filter(c, scope_kind, scope_name)
-            scope += "AND " + clause + " "
-            scope_params.extend(values)
+        scope, scope_params = _facet_scope(contract, c, jav, state, filters, asset_id, scope_kind, scope_name)
         out = {}
-        out["locations"] = [dict(r) for r in c.execute(
-            "SELECT a.location AS k, count(*) AS n, "
-            "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
-            "FROM asset a WHERE a.medium='video' " + scope +
-            "GROUP BY a.location ORDER BY n DESC", scope_params)]
-        out['years'] = _release_year_facets(contract, c, scope, scope_params, state, filters, asset_id)
+        if not column:
+            out["locations"] = [dict(r) for r in c.execute(
+                "SELECT a.location AS k, count(*) AS n, "
+                "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
+                "FROM asset a WHERE a.medium='video' " + scope +
+                "GROUP BY a.location ORDER BY n DESC", scope_params)]
+            out['years'] = _release_year_facets(contract, c, scope, scope_params, state, filters, asset_id)
         if filters is not None and asset_id is None:
             conditions, parameters = catalog_filter(contract, {**filters, "state": state})
             scope += "AND " + " AND ".join(conditions) + " "
             scope_params.extend(parameters)
+        if column:
+            return _column_facets(contract, c, scope, scope_params, column, column_query, column_offset, column_limit)
         out["orientations"] = [dict(r) for r in c.execute(
             "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
             "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
@@ -1705,7 +1867,21 @@ def w_item_tag(contract: WebContract, body):
     contract.cache_bust()
     aid = int(body["id"])
     operation = str(body.get("operation", "")).strip()
-    tag = str(body.get("tag", "")).strip()
+    # 事务边界只有一个入口：write_transaction 自己取 database.write_lock 并在异常时回滚。
+    # 这里不手取那把锁再手动 commit/close：任何 execute 抛出都会漏掉回滚和关闭。
+    # 那把锁不可重入，所以外层不能再套一个取同一把锁的 with，否则自死锁。
+    with contract.write_transaction() as c:
+        tag = write_item_tag(c, aid, operation, str(body.get("tag", "")))
+    return {"ok": True, "operation": operation, "tag": tag,
+            "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
+
+
+def write_item_tag(c, aid: int, operation: str, raw: str) -> str:
+    """在调用方的事务里给一部片加一个标签或隐藏一个标签，返回落下的规范名。
+
+    编辑框一次保存里的标签增删也走这里，与单条接口是同一套判据。
+    """
+    tag = str(raw or "").strip()
     if operation not in {"add", "remove"}:
         raise ValueError("operation must be add or remove")
     if not tag or len(tag) > 80 or is_performer_marker(tag):
@@ -1717,37 +1893,32 @@ def w_item_tag(contract: WebContract, body):
         tag = canonical[0]
     normalized = normalize_entity_name(tag)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    # 事务边界只有一个入口：write_transaction 自己取 database.write_lock 并在异常时回滚。
-    # 这里不手取那把锁再手动 commit/close：任何 execute 抛出都会漏掉回滚和关闭。
-    # 那把锁不可重入，所以外层不能再套一个取同一把锁的 with，否则自死锁。
-    with contract.write_transaction() as c:
-        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            raise ValueError("asset not found")
-        from .entities import _ingest_name_id
-        identity = _ingest_name_id(c, 'tag', canonical_tag_name(tag))
-        if identity is not None:
-            tag = c.execute('SELECT canonical_name FROM entity WHERE id=?', (identity,)).fetchone()[0]
-            normalized = normalize_entity_name(tag)
-        if operation == "remove":
-            c.execute(
-                "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
-                f"VALUES('{DEFAULT_PROFILE_ID}',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
-                "DO UPDATE SET hidden=1,updated_at=excluded.updated_at",
-                (aid, normalized, stamp),
-            )
-        else:
-            c.execute(
-                f"DELETE FROM asset_tag_preference WHERE profile_id='{DEFAULT_PROFILE_ID}' "
-                "AND asset_id=? AND normalized_tag=?", (aid, normalized),
-            )
-            c.execute(
-                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
-                "VALUES(?,?,1.0,'web-user')", (aid, tag),
-            )
-            upsert_asset_entity(
-                c, kind="tag", name=tag, asset_id=aid, role="tag",
-                source="web-user", confidence=1.0,
-                metadata={"profile_id": DEFAULT_PROFILE_ID}, now=stamp,
-            )
-    return {"ok": True, "operation": operation, "tag": tag,
-            "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
+    if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
+        raise ValueError("asset not found")
+    from .entities import _ingest_name_id
+    identity = _ingest_name_id(c, 'tag', canonical_tag_name(tag))
+    if identity is not None:
+        tag = c.execute('SELECT canonical_name FROM entity WHERE id=?', (identity,)).fetchone()[0]
+        normalized = normalize_entity_name(tag)
+    if operation == "remove":
+        c.execute(
+            "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
+            f"VALUES('{DEFAULT_PROFILE_ID}',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
+            "DO UPDATE SET hidden=1,updated_at=excluded.updated_at",
+            (aid, normalized, stamp),
+        )
+    else:
+        c.execute(
+            f"DELETE FROM asset_tag_preference WHERE profile_id='{DEFAULT_PROFILE_ID}' "
+            "AND asset_id=? AND normalized_tag=?", (aid, normalized),
+        )
+        c.execute(
+            "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(?,?,1.0,'web-user')", (aid, tag),
+        )
+        upsert_asset_entity(
+            c, kind="tag", name=tag, asset_id=aid, role="tag",
+            source="web-user", confidence=1.0,
+            metadata={"profile_id": DEFAULT_PROFILE_ID}, now=stamp,
+        )
+    return tag

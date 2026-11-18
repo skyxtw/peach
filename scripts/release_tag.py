@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -264,6 +265,55 @@ def require_release_notice(root: Path, version: str, part: str) -> None:
     if version not in notices:
         raise version_bump.VersionError(
             t("release_tag.noticeMissing", version=version))
+    if tuple(int(part) for part in version.split(".")) > tuple(int(part) for part in NOTICE_REVIEW_SINCE.split(".")):
+        require_notice_review(root, version, notices[version])
+
+
+#: 从这一版之后，minor 定版前要有智能体对公告的逐条审阅（`release_notices` 模块说明的规则）。
+NOTICE_REVIEW_SINCE = "0.58.0"
+#: 审阅记录的位置；`build/` 不进 Git，审阅只对这次定版有效。
+NOTICE_REVIEW = Path("build/release-notice-review.json")
+#: 每条理由至少写这么多字，挡住只填「是」「合理」的空审阅。
+NOTICE_REVIEW_MIN_REASON = 12
+
+
+def notice_digest(root: Path, version: str, notice: dict) -> str:
+    """公告条目与它两种语言的文字合在一起的摘要；审阅之后任何一处改动都让审阅失效。"""
+    key = "v" + version.replace(".", "-")
+    texts = {}
+    for language in ("zh-CN", "en"):
+        path = root / "resources/locales" / language / "server.json"
+        if path.is_file():
+            texts[language] = json.loads(path.read_text(encoding="utf-8")).get("releaseNotes", {}).get(key)
+    payload = json.dumps({"notice": notice, "text": texts}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def require_notice_review(root: Path, version: str, notice: dict) -> None:
+    """公告要先由智能体逐条审过：每条为什么使用者能明显感知、图标的登记含义为什么贴切，
+    以及看过更新日志后其余条目为什么不进公告。记录对不上当前公告就拒绝定版。"""
+    digest = notice_digest(root, version, notice)
+    path = root / NOTICE_REVIEW
+    if not path.is_file():
+        raise version_bump.VersionError(t("release_tag.noticeReviewMissing", version=version,
+                                          path=NOTICE_REVIEW.as_posix(), digest=digest))
+    review = json.loads(path.read_text(encoding="utf-8"))
+    if review.get("version") != version or review.get("digest") != digest:
+        raise version_bump.VersionError(t("release_tag.noticeReviewStale", version=version, digest=digest))
+    ids = [item["id"] for group in ("features", "automatic", "attention") for item in notice.get(group, [])]
+    items = review.get("items") or {}
+
+    def reasoned(value) -> bool:
+        return isinstance(value, str) and len(value.strip()) >= NOTICE_REVIEW_MIN_REASON
+
+    missing = [item for item in ids if not (isinstance(items.get(item), dict)
+                                            and reasoned(items[item].get("perceptible"))
+                                            and reasoned(items[item].get("icon")))]
+    if not reasoned(review.get("omitted")):
+        missing.append("omitted")
+    if missing:
+        raise version_bump.VersionError(t("release_tag.noticeReviewIncomplete", version=version,
+                                          items=t("common.clauseSeparator").join(missing)))
 
 
 def prepare(repo: str, part: str, *, apply: bool,

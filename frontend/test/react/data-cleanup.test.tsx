@@ -431,6 +431,16 @@ describe('链接管理', () => {
     expect(unclear.querySelector('[data-link-identity]')?.textContent).toContain('女优 2');
   });
 
+  it('自动重查过的暂时故障注明问了几次，站点拒绝的不注', async () => {
+    serve({ '/api/links': stats, '/api/links/check': { ...checked,
+      unclear: [row(2, { note: '403' }), row(3, { note: '503', temporary: true, attempts: 3 })],
+    }, '/api/links/prune': { status: 'idle' } });
+    const host = await wrap(<LinkManager />);
+    await settle();
+    const notes = [...host.querySelectorAll('[aria-label="本次未访问成功"] [data-link-rechecked]')].map((node) => node.textContent);
+    expect(notes).toEqual(['临时故障，共自动试了 3 次']);
+  });
+
   it('每一类链接各占一格，类型用界面上的名字，主要站点只列前三', async () => {
     serve({ '/api/links': stats, '/api/links/check': { ...checked, status: 'idle' }, '/api/links/prune': { status: 'idle' } });
     const host = await wrap(<LinkManager />);
@@ -462,7 +472,7 @@ describe('链接管理', () => {
     await settle();
     expect(seen).toHaveLength(1);
     expect(seen[0]!.danger).toBe(true);
-    expect(seen[0]!.body).toBe('将删除 1 条失效链接。删除前会再次检查，删除后无法恢复。');
+    expect(seen[0]!.body).toBe('将删除 1 条失效链接，删除前会再检查一次。不能撤销。');
     expect(server.posts('/api/links/prune')).toEqual([{ confirm: true, check_id: 'check-3', background: true }]);
   });
 

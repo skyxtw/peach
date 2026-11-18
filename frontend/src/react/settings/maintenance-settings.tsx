@@ -15,7 +15,9 @@ import type {
 import { PathLine } from '../components/path-line';
 import { groupRoot } from './configuration-panel';
 import { LedgerBackupSettings } from './ledger-backup-settings';
+import { RetentionSettings } from './retention-settings';
 import { LibrarySharingSettings } from './library-sharing-settings';
+import { SeedSharingSettings } from './seed-sharing-settings';
 import { RemoteReportingSettings } from './remote-reporting-settings';
 import { Disclosure, ErrorText, ExternalLink, Fact, FactList, Footer, Help, Rows, Section, Stack } from './section';
 import { StorageSettings } from './storage-settings';
@@ -33,12 +35,14 @@ export function MaintenanceSettings(
     <div {...groupRoot(panel)}>
       {data.storage ? <StorageSettings initial={data.storage} receipt={receipt} /> : null}
       {data.storage ? <LedgerBackupSettings receipt={receipt} /> : null}
+      {data.storage ? <RetentionSettings receipt={receipt} /> : null}
       {data.remote_reporting || data.library_sharing ? <Section id="librarySharing" guide="reporting" title={t('settings:dataSharing.title')}>
         {data.remote_reporting ? <RemoteReportingSettings initial={data.remote_reporting} receipt={receipt} /> : null}
         {data.library_sharing ? <div className="border-t border-separator-border">
           <LibrarySharingSettings initial={data.library_sharing} receipt={receipt} />
         </div> : null}
       </Section> : null}
+      <SeedSharingSettings receipt={receipt} />
       <Facts facts={data.facts} receipt={receipt} />
       <TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />
       {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}
@@ -87,7 +91,7 @@ export function AutomaticUpdates({ initial, receipt }: { initial: AutomaticUpdat
             onChange={(on) => setMode(on ? 'download' : 'check')} />
         </SettingsRow>
         <SettingsRow label={t('settings:autoUpdate.frequency')} description={help}>
-          <Select aria-label={t('settings:autoUpdate.frequency')} selectedKey={String(hours)} isDisabled={!initial.available}
+          <Select aria-label={t('settings:autoUpdate.frequency')} selectedKey={String(hours)} isDisabled={!initial.available || mode === 'off'}
             onSelectionChange={(key) => { if (key !== null) setHours(Number(key)); }}>
             {INTERVALS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
           </Select>
@@ -141,6 +145,7 @@ export function UninstallSettings(
   const [accepted, setAccepted] = useState('');
   const remove = () => void confirmModal({
     title: t('settings:uninstall.title'),
+    holdToConfirm: true,
     danger: true,
     body: removeData
       ? t('settings:uninstall.confirmFull')

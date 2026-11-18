@@ -6,8 +6,10 @@ import { $, api, esc, foldName, icon, isCatalogPath } from '../core';
 import { javTitleHtml } from '../core/jav-title';
 import { COVER_FRONT_RATIO } from './../appearance/layout';
 import { catalogState } from './catalog.js';
+import { state } from '../shell/index';
 import { feedNewSkeletonHtml } from '../feed-new-skeleton';
-import { managedTaken, openManagedRoute, updateManagedRoute } from './../history/managed';
+import { managedTaken, openManagedRoute, releaseManagedRoute, updateManagedRoute } from './../history/managed';
+import { appSettingsStore } from './../appearance/settings';
 import { noteHtml, stopAutoScroll, wireAutoScroll } from '../ui-kit';
 import { preferencesState, wireDrag } from './preferences.js';
 import { pushEntityPage } from './entity.js';
@@ -86,7 +88,7 @@ export function recalledHomeFeed(){
 
 export function prepareHomeFeed(host){
   // 一打开，宿主就归路由树：骨架只在打开之前铺，之后由画出来的那一行或空着说话。
-  if(!host||managedTaken(host)||host.querySelector('[data-feed-id]'))return;
+  if(!homeFeedCurrent()||!host||managedTaken(host)||host.querySelector('[data-feed-id]'))return;
   host.hidden=catalogState.homeHasFeed!==true;
   if(catalogState.homeHasFeed!==true)return;
   host.setAttribute('aria-busy','true');
@@ -114,22 +116,35 @@ export function wireFeedNewRow(row){
   if(preferencesState.appSettings.feedAutoScroll)wireAutoScroll(row);
 }
 
-export function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
+/* 首页这一行在不在场：设置里关掉「在首页显示新作」就哪条目录路径上都没有它，骨架也不铺。人物页那一行另走资料页。 */
+export function isFeedNewPath(path){return appSettingsStore().value.feedNewRows!==false&&isCatalogPath(path)&&path!=='/junk-files'}
 
+function homeFeedCurrent(){return isFeedNewPath(location.pathname)&&state.browse!=='folders'}
 
 export function renderHomeFeed(){
+  if(!homeFeedCurrent()){clearHomeFeed();return}
   const host=$('#feedNew');
   if(managedTaken(host)){host.hidden=catalogState.homeHasFeed!==true;return}
   prepareHomeFeed(host);
-  /* 这一行不随筛选变，判在不在场只看路径：换筛选换掉的是目录的代次，不该把它这一趟作废。 */
+  /* 同一目录里换筛选不重开；离开目录或进入文件夹浏览时撤销这一趟打开。 */
   void openManagedRoute('feed-new',{host,revision:feedState.feedRevision,helpers:feedState.feedNewHelpers,actions:feedState.feedNewActions},
-    {container:host,isCurrent:()=>isFeedNewPath(location.pathname)});
+    {container:host,isCurrent:homeFeedCurrent});
 }
 
 export function clearHomeFeed(){
   const host=$('#feedNew');
   host.querySelectorAll('.feednewrow').forEach(stopAutoScroll);
+  // 隐藏之外也卸掉查询订阅并撤销在途打开，封面轮询或刷新不能再把宿主亮出来。
+  releaseManagedRoute(host);
+  host.replaceChildren();
+  host.removeAttribute('aria-busy');
   host.hidden=true;
+}
+
+/* 设置里切了「在首页显示新作」：关掉就把画着的那一行连同它的查询一起卸掉，之后不再取数；打开时人正在目录上就当场画。 */
+export function syncHomeFeedSetting(folders){
+  if(appSettingsStore().value.feedNewRows===false){clearHomeFeed();return}
+  if(isFeedNewPath(location.pathname)&&!folders)renderHomeFeed();
 }
 
 export function refreshFeedRows(){

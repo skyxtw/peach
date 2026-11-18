@@ -9,15 +9,16 @@ import {
 type Icon = RemixiconComponentType;
 
 const FAMILIES: [Icon, string[]][] = [
-  [RiRssLine, ['follow-check', 'follow-resolve', 'follow-creator', 'follow-evidence-reclaim', 'feed-check', 'feed-scrape',
+  [RiRssLine, ['follow-check', 'follow-resolve', 'follow-creator', 'follow-evidence-reclaim', 'follow-backfill', 'feed-check', 'feed-scrape',
     'feed-cover']],
   [RiHardDrive3Line, ['library-processing', 'organize', 'batch', 'resource-scan', 'resource-apply', 'seed-import']],
   [RiFileSearchLine, ['scrape-codes', 'jav-discovery-metadata', 'want-scrape', 'upgrade-library']],
-  [RiImage2Line, ['scraping-cover', 'jav-covers', 'code-samples', 'timeline-thumbnails', 'entity-avatar']],
+  [RiImage2Line, ['scraping-cover', 'jav-covers', 'code-samples', 'timeline-thumbnails', 'entity-avatar',
+    'cover-artwork-repair']],
   [RiUser3Line, ['performer-profile', 'performer-alias', 'creator-identity', 'studio-mark']],
   [RiFilmLine, ['media-repair', 'mp4-header-repair']],
   [RiLinksLine, ['link-check', 'link-prune', 'source-check']],
-  [RiDownloadCloud2Line, ['download-postprocess']],
+  [RiDownloadCloud2Line, ['download-postprocess', 'want-search']],
   [RiHeart3Line, ['taste-refresh']],
   [RiToolsLine, ['upgrade-repairs', 'diagnostic-export', 'amane-bridge', 'face-models', 'ledger-backup', 'ledger-restore']],
 ];

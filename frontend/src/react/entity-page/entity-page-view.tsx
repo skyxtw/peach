@@ -5,7 +5,8 @@
  * 守自己的宿主。页内状态都在这里：当前视图、名册还是作品、照片墙的种子与翻页；筛选与媒体视图读
  * 地址栏（壳推进来的 `filters`／`media`），改它们只调 `actions.route`。 */
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { appSettingsStore } from '@peach/appearance';
 import { createPortal } from 'react-dom';
 import { api } from '@peach/legacy/core';
 import { tagLabel } from '@peach/legacy/tags';
@@ -17,6 +18,8 @@ import { EntityFolderWorkspace } from '../catalog-folders/catalog-folders-page';
 import { errorMessage } from '../../api';
 import type { MediaCardLayout } from '../catalog-grid/types';
 import { EmptyState } from '../components/empty-state';
+import { runBulkAction } from '../components/bulk-action';
+import { deleteProfilesAction } from '../index/roster-actions';
 import { RetryNote } from '../components/grid-reveal';
 import { spriteGlyph } from '../components/sprite-glyph';
 import type { EntityBodyActions, EntityPhotos, EntityRoster } from '../entity-body/entity-body';
@@ -33,8 +36,11 @@ import { queryClient } from '../query';
 import { pageNavigationReady, rememberPageState } from '../../history/page-navigation';
 import {
   EMPTY_MEDIA, codeSetsOf, entityKey, entityOptions, entityPhotosKey, fetchItems, itemsOptions,
-  photosOptions, tagList, tagPressed, type EntityPageData, type EntityPageProps, type PhotoPage,
+  mergeSides, photosOptions, tagList, tagPressed, type EntityAliasWriteResult, type EntityMergeResult,
+  type EntityPageData, type EntityPageProps, type PhotoPage,
 } from './entity-page';
+import { MergeDialog } from './merge-dialog';
+import { NameContributionDialog } from './name-contribution-dialog';
 import { useEntityOnline } from './use-entity-online';
 import { PENDING_REFETCH_MS, usePendingWorkRefetch } from '../components/pending-work';
 import { pollUntil } from '../../polling';
@@ -44,6 +50,9 @@ import { codedText } from '../../core/server-text';
 /** 订上新作后等服务端那一轮拉取：几秒问一次，最多等两分钟。 */
 const FEED_CHECK_POLL_MS = 3000;
 const FEED_CHECK_LIMIT_MS = 120_000;
+
+/** 能两两合并的种类，与服务端 `web_entity.MERGE_KINDS` 一致；标签走标签管理里的合并。 */
+const MERGE_KINDS = new Set(['performer', 'studio', 'creator', 'series', 'agency']);
 
 export function EntityPage(props: EntityPageProps) {
   const { kind, name } = props;
@@ -196,7 +205,11 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
   const fetchNextPhotos = wall.fetchNextPage;
 
   /* ── 新作 ── */
-  const feed = useQuery({ ...feedNewOptions(entityId, helpers.feedRowHtml), enabled: !!entityId });
+  /* 设置「首页与人物页显示新作」关掉时不取这一行、宿主收起；在这一页上切换当场跟上。 */
+  const settings = appSettingsStore();
+  const feedRows = useSyncExternalStore(settings.subscribe, () => settings.value.feedNewRows !== false);
+  const feed = useQuery({ ...feedNewOptions(entityId, helpers.feedRowHtml), enabled: !!entityId && feedRows });
+  useLayoutEffect(() => { if (!feedRows) hosts.feed.hidden = true }, [feedRows, hosts.feed]);
   const feedRevision = useRef(props.feedRevision);
   useEffect(() => {
     if (feedRevision.current === props.feedRevision) return;
@@ -228,7 +241,12 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
   }, [kind, name]);
   const alias = useMutation({
     mutationFn: (payload: { alias: string; remove?: boolean }) => api('/api/entity-alias',
-      { method: 'POST', body: JSON.stringify({ kind, name: entity.canonical_name, ...payload }) }) as Promise<{ added?: boolean; alias?: string }>,
+      { method: 'POST', body: JSON.stringify({ kind, name: entity.canonical_name, ...payload }) }) as Promise<EntityAliasWriteResult>,
+    onSuccess: () => refreshEntity(),
+  });
+  const merge = useMutation({
+    mutationFn: ({ target_id, source_id }: { target_id: number; source_id: number }) => api('/api/entity-merge',
+      { method: 'POST', body: JSON.stringify({ kind, target_id, source_id }) }) as Promise<EntityMergeResult>,
     onSuccess: () => refreshEntity(),
   });
   const rename = useMutation({
@@ -254,8 +272,17 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
     onSuccess: () => refreshEntity(),
   });
 
+  const [merging, setMerging] = useState(false);
+  const [contributingName, setContributingName] = useState(false);
+  /* 合并成了：回执，再打开保留的那一份（当前页可能就是被并掉的那份）。 */
+  const merged = useCallback((done: EntityMergeResult) => {
+    helpers.receipt(t('shell:entityMerge.done', { source: done.source.canonical_name, target: done.target.canonical_name }));
+    void refreshEntity();
+    actions.openEntity(kind, done.target.canonical_name, true);
+  }, [actions, helpers, kind, refreshEntity]);
   const heroActions = useMemo<EntityHeroActions>(() => ({
     openEntity: actions.openEntity,
+    ...(kind === 'performer' ? { contributeName: () => setContributingName(true) } : {}),
     /* 换统称要重写整条实体的扁平投影，先把代价说清再问。确认键、标题和成功回执共用「更改统称」这一个
        动词；写入失败时弹层留在原地，原因写在正文下方等重试。地址换成新名字，由壳重进这一页。 */
     chooseName: (chosen) => {
@@ -276,11 +303,43 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
         actions.openEntity(kind, done.canonical_name || '');
       });
     },
-    addAlias: () => { void helpers.aliasForm(entity.user_aliases || [], (payload) => alias.mutateAsync(payload)) },
+    addAlias: () => {
+      void (async () => {
+        const outcome = await helpers.aliasForm(
+          entity.user_aliases || [], (payload) => alias.mutateAsync(payload));
+        const conflict = outcome?.conflict;
+        if (!conflict) return;
+        /* 撞上另一份同类档案：撞的是对方的名字时别名没写，撞的是对方的别名时已经写了（`shared`），
+           两种都问要不要合并。保留哪一份按 `mergeSides`。 */
+        const { keep, absorb } = mergeSides(conflict);
+        void confirmModal({
+          title: t('shell:entityMerge.title'),
+          body: t(conflict.shared ? 'shell:entityMerge.bodyShared' : 'shell:entityMerge.bodyTaken', {
+            alias: conflict.alias, other: conflict.other.canonical_name, keep: keep.canonical_name, keepWorks: keep.works,
+            absorb: absorb.canonical_name, absorbWorks: absorb.works,
+          }),
+          confirmLabel: t('shell:entityMerge.confirm'),
+          danger: true,
+          onConfirm: () => merge.mutateAsync({ target_id: keep.id, source_id: absorb.id }),
+        }).then(({ confirmed, result }) => {
+          if (confirmed && result) merged(result as EntityMergeResult);
+        });
+      })();
+    },
     bindStudio: async (dimension, id) => {
       await bindStudio.mutateAsync({ kind: dimension, id });
       helpers.receipt(t('catalog:entityPage.dmmBound', { id }));
     },
+    ...(MERGE_KINDS.has(kind) && entityId ? { mergeDuplicate: () => setMerging(true) } : {}),
+    ...(MERGE_KINDS.has(kind) && entityId ? { deleteProfile: () => {
+      const action = deleteProfilesAction(async result => {
+        actions.avatarChanged();
+        if (result.entity_ids.includes(entityId)) actions.openIndex();
+        await queryClient.invalidateQueries();
+      });
+      void runBulkAction(action, [{ entity_id: entityId, k: entity.canonical_name, n: entity.asset_count || 0 }],
+        { receipt: helpers.receipt }).catch(error => helpers.failure(action.label, error));
+    } } : {}),
     follow: async (on) => {
       try {
         await follow.mutateAsync(on);
@@ -328,7 +387,7 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
       helpers.receipt(t('catalog:entityPage.followedCreatorLinked', { author, name: entity.canonical_name }));
       await refreshEntity();
     },
-  }), [actions, alias, bindFollow, bindStudio, entity, entityId, filters, follow, followKey, helpers, kind, name, refreshEntity, rename]);
+  }), [actions, alias, bindFollow, bindStudio, entity, entityId, filters, follow, followKey, helpers, kind, merge, merged, name, refreshEntity, rename]);
   const heroHelpers = useMemo<EntityHeroHelpers>(() => ({
     portraitImg: () => helpers.portraitImg(kind, entity),
     wireScroller: helpers.wireDrag,
@@ -445,7 +504,10 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
     <>
       <EntityHeroPage key={avatarEpoch} kind={kind} name={name} entity={entity} feedNew={feed.data ?? null}
         feedError={!feed.data && feed.isError ? errorMessage(feed.error) : undefined} retryFeed={() => { void feed.refetch() }}
-        feedHost={entityId ? hosts.feed : null} jav={javPage} actions={heroActions} helpers={heroHelpers} />
+        feedHost={entityId && feedRows ? hosts.feed : null} jav={javPage} actions={heroActions} helpers={heroHelpers} />
+      {merging && entityId ? <MergeDialog kind={kind} currentId={Number(entityId)} close={() => setMerging(false)} onMerged={merged} /> : null}
+      {contributingName && entityId ? <NameContributionDialog entityId={Number(entityId)} close={() => setContributingName(false)}
+        saved={() => helpers.receipt(t('catalog:seedName.saved'))} /> : null}
       {createPortal(
         <EntityFilterPage kind={kind} name={name} view={view} views={views} state={filters.state || ''}
           states={props.states} tags={tags} combo={combo} readout={readout} busy={busy}
@@ -457,7 +519,8 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
           ? <EntityOnline view={online.view} media={online.media} result={online.result}
             data={online.data} visible={online.visible} context={online.context} photoSize={props.photoSize}
             photoLayout={props.photoLayout} imagesOnly={props.followImagesOnly} helpers={props.follow.helpers}
-            actions={props.follow.actions} canLoadMore={props.canLoadMore} clearFilters={online.clearFilters} />
+            actions={props.follow.actions} canLoadMore={props.canLoadMore} clearFilters={online.clearFilters}
+            selectMode={props.selectMode} selected={props.followSelected} />
           : view === 'videos' && items.isError
           ? <RetryNote message={errorMessage(items.error)} onRetry={() => { void items.refetch() }} />
           : view === 'photos' && (wall.isError || wallPage?.error)
@@ -472,6 +535,7 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
             <EntityBodyPage kind={kind} name={name} view={view} roster={rosterProps} items={items.data ?? null}
               revision={itemsRevision} fetchPage={fetchPage}
               listScope={JSON.stringify([kind, name, filters, props.jav, filters.sort === 'seed' ? props.seed : ''])}
+              filters={filters} facetScope={{ scope_kind: kind, scope_name: name, jav: props.jav ? '1' : '' }}
               restoreNavigation={props.restoreNavigation}
               photos={photos} photoSize={props.photoSize}
               photoLayout={props.photoLayout} helpers={props.card.helpers} actions={bodyActions} layout={layout}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import json
+from contextlib import closing
 from pathlib import Path
 
 from . import interface_text, junk, ledger_backups, organize, settings_file
@@ -18,6 +19,7 @@ from .jobs import JobDeferred
 from .library_processing import COLLECT_STAGE, _ffprobe_path, process_library
 from .media_probe import probe_unmeasured
 from .task_runs import declared_rows, item_progress, run_progress
+from .task_control import operation
 from .task_stages import stage_label, stage_progress
 from .task_retry import RELAYED, RetryableTaskError
 from .user_messages import UserRuntimeError, UserValueError
@@ -106,12 +108,28 @@ def _probe_folder(contract, task, main, folder_ids, *, on_junk=lambda result: No
                             asset_ids=folder_ids, config=config, protected_ids=[main], on_junk=on_junk)
 
 
+def collect_state_file(config, main: int) -> Path:
+    """一条下载后处理补资料的续跑状态：按正片编号一份，失败重试时接着跑。"""
+    return config.directory('state') / 'download-processing' / f'{main}.json'
+
+
+def _discard_collect_state(contract, main: int) -> None:
+    """后处理完成，这部片的续跑状态、问题日志与逐项缓存用不上了；失败的留着给重试。
+
+    与 `_collect` 同一判据认数据目录：生效配置的账本不是这一份时不碰。"""
+    from .upgrade_repairs import discard_checkpoint
+    config = settings_file.active()
+    if config.configured and Path(contract.db_path).resolve() == (
+            config.directory("database") / "ledger.db").resolve():
+        discard_checkpoint(collect_state_file(config, main))
+
+
 def _collect(contract, main: int, handle) -> dict:
     config = settings_file.active()
     if not config.configured or Path(contract.db_path).resolve() != (
             config.directory("database") / "ledger.db").resolve():
         raise UserValueError("errors.downloadPostprocess.configMismatchCollect")
-    state_file = config.directory('state') / 'download-processing' / f'{main}.json'
+    state_file = collect_state_file(config, main)
     try:
         previous = json.loads(state_file.read_text(encoding='utf-8'))
     except FileNotFoundError:
@@ -191,19 +209,25 @@ def _organize(contract, task, main: int) -> dict:
         return {"moved": 0, "skipped": Said(organize.SKIP_REASON_CODES[first]) if first in organize.SKIP_REASON_CODES
                 else Said("labels.downloadPostprocess.nothingToOrganize")}
     name = f"ledger.pre-download-{task.id}-{time.strftime('%Y%m%d-%H%M%S')}.db"
+    # 用自己的连接逐条提交，不进 `write_transaction`：改名要动网盘，网盘一卡，握着的进程写锁
+    # 会让播放计数、评分、任务心跳等全部写入一起停住。`apply_plan` 每动完一个文件就提交一次，
+    # 写锁只在那条 UPDATE 期间占用。
     with ledger_backups.organize_backup(Path(contract.db_path), contract.candidate_root,
-                                        name) as backup, \
-            contract.database.write_transaction() as connection:
+                                        name) as backup, operation(), \
+            closing(contract.database.connect(write=True)) as connection:
         integrity = connection.execute('PRAGMA integrity_check').fetchone()[0]
         if integrity != 'ok':
             raise UserRuntimeError('errors.downloadPostprocess.integrityBefore', {'integrity': integrity})
         baseline = {tuple(row) for row in connection.execute('PRAGMA foreign_key_check')}
         result = organize.apply_plan(connection, movable, generated_root=contract.candidate_root)
+        connection.commit()
         integrity = connection.execute('PRAGMA integrity_check').fetchone()[0]
         introduced = {tuple(row) for row in connection.execute('PRAGMA foreign_key_check')} - baseline
-        if integrity != 'ok' or introduced:
-            raise UserRuntimeError('errors.downloadPostprocess.integrityAfter',
-                                   {'integrity': integrity, 'count': len(introduced)})
+    if result.get('moved'):
+        contract.database.after_commit()
+    if integrity != 'ok' or introduced:
+        raise UserRuntimeError('errors.downloadPostprocess.integrityAfter',
+                               {'integrity': integrity, 'count': len(introduced)})
     if result.get('failed'):
         reasons = '；'.join(str(row['reason']) for row in result.get('failures', ()))
         if all(row.get('retryable') for row in result.get('failures', ())):
@@ -256,6 +280,7 @@ def run(contract, key: str, handle) -> dict:
         detail = Said("labels.downloadPostprocess.donePending", summary=detail,
                       pending="；".join(filter(None, pending))[:300])
     store.postprocess(task_id, POSTPROCESS_COMPLETE, detail=detail, finished=iso(time.time()))
+    _discard_collect_state(contract, main)
     contract.cache_bust()
     NOTICES.add("download", int(main), task.code or task.display_name)
     return {"task_id": task_id, "asset_id": main, "ads_isolated": isolated, 'probed': probed,

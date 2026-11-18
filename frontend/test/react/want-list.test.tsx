@@ -3,11 +3,12 @@
  * 对账、查找计数与发售日的判定在服务端（`tests/test_wants.py`、`tests/test_wants_web.py`）；这里只看
  * 页签照回话怎么画、写操作怎么发。 */
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
+import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { queryClient } from '../../src/react/query';
 import { WANT_PAGE_SIZE, WantList } from '../../src/react/wants/want-list';
-import type { Want, WantsData } from '../../src/react/wants/wants';
+import { recordWantMagnets, WANTS_KEY, type Want, type WantsData } from '../../src/react/wants/wants';
 import { actionOrder, buttonNamed, choose, click, mount, settle, type } from './render';
 
 afterEach(() => { queryClient.clear(); localStorage.clear() });
@@ -22,7 +23,7 @@ const want = (id: number, extra: Partial<Want> = {}): Want => ({
 });
 
 const listed = (items: Want[]): WantsData => ({
-  items, scraping: false,
+  items, scraping: false, searching: false,
   counts: { searching: 0, unreleased: 0, given_up: 0, acquired: 0 },
 });
 
@@ -63,19 +64,65 @@ it('按待找、未发售、暂时放弃、已入库分段，段名带条数；�
     want(1, { phase: 'acquired', acquired_at: '2026-09-30 12:00:00' }),
     want(2), want(3, { phase: 'given_up', search_count: 3 }),
     want(4, { phase: 'unreleased', release_date: '2026-12-01' }), want(5, { fresh: true }),
+    want(7, { search_count: 2, last_search_at: '2026-10-02T03:00:00.000Z', last_search_outcome: 'none' }),
+    want(8, { fresh: true, last_search_at: '2026-10-03T03:00:00.000Z', last_search_outcome: 'found' }),
   ]));
   const { host } = await open();
   const sections = [...host.querySelectorAll<HTMLElement>('section[data-want-phase]')];
   expect(sections.map((one) => [one.dataset.wantPhase, one.querySelector('h3')?.textContent]))
-    .toEqual([['searching', '待找2'], ['unreleased', '未发售1'], ['given_up', '暂时放弃1'], ['acquired', '已入库1']]);
+    .toEqual([['searching', '待找4'], ['unreleased', '未发售1'], ['given_up', '暂时放弃1'], ['acquired', '已入库1']]);
   const note = (id: number) => host.querySelector(`[data-want-id="${id}"] [data-want-note]`)?.textContent;
-  expect([note(2), note(5), note(4), note(3), note(1)]).toEqual([
-    undefined, undefined, '2026-12-01 发售', undefined, '入库于 2026-09-30',
+  expect([note(2), note(5), note(7), note(8), note(4), note(3), note(1)]).toEqual([
+    undefined, undefined, '2026-10-02 没查到资源（查过 2 次）', undefined, '2026-12-01 发售',
+    '查过 3 次都没找到', '入库于 2026-09-30',
   ]);
   expect(buttonNamed('重新查找', host.querySelector('[data-want-id="3"]')!)).not.toBeNull();
   expect(buttonNamed('重新查找', host.querySelector('[data-want-id="2"]')!)).toBeNull();
   expect(actionOrder(buttonNamed('重新查找', host.querySelector('[data-want-id="3"]')!)!.parentElement))
-    .toEqual(['来源页', '移除', '重新查找', '查找资源']);
+    .toEqual(['JavDB', '重新查找', '查找资源', '移除']);
+});
+
+it('资源查询取得磁链后清除卡片上旧的未命中提示，历史查找记录保持可读', async () => {
+  serve(listed([want(1, {
+    search_count: 1, last_search_at: '2026-10-02T03:00:00.000Z', last_search_outcome: 'none',
+  })]));
+  const { host } = await open();
+  expect(host.querySelector('[data-want-note]')?.textContent).toContain('没查到资源');
+  await act(async () => recordWantMagnets(1, true));
+  await settle();
+  expect(host.querySelector('[data-want-note]')).toBeNull();
+  expect(queryClient.getQueryData<WantsData>(WANTS_KEY)?.items[0]?.last_search_outcome).toBe('none');
+  await act(async () => recordWantMagnets(1, false));
+  await settle();
+  expect(host.querySelector('[data-want-note]')?.textContent).toContain('没查到资源');
+});
+
+it('暂时放弃的条目取得资源后通过写接口结算，并移回待找', async () => {
+  let current = want(1, { phase: 'given_up', search_count: 3, last_search_outcome: 'none' });
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    let body: unknown;
+    if (init?.method === 'POST') {
+      expect(JSON.parse(String(init.body))).toEqual({ action: 'found', ids: [1] });
+      current = { ...current, phase: 'searching', search_count: 0, last_search_outcome: 'found', has_magnets: true };
+      body = { ok: true, affected: 1 };
+    } else if (url.startsWith('/api/wants/magnets')) {
+      body = { state: 'ready', error: '', checked_at: null, items: [{
+        id: 'magnet:abc', protocol: 'magnet', uri: 'magnet:?xt=urn:btih:' + 'a'.repeat(40), info_hash: 'a'.repeat(40),
+        name: '546ABC-1J', source: 'JavBus', source_url: 'https://www.javbus.com/ABC-1',
+        size: '4 GB', date: '', files: '', attributes: [], origins: ['JavBus'],
+      }] };
+    } else if (url.startsWith('/api/downloads')) body = { available: false, providers: [], tasks: [] };
+    else body = listed([current]);
+    return { ok: true, status: 200, json: async () => structuredClone(body) };
+  });
+  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('IntersectionObserver', undefined);
+  const { host } = await open();
+  await settle();
+  expect(host.querySelector('[data-want-phase="searching"] [data-want-id="1"]')).not.toBeNull();
+  expect(host.querySelector('[data-want-phase="given_up"]')).toBeNull();
+  expect(host.querySelector('[data-want-note]')).toBeNull();
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
 });
 
 it('待找与暂时放弃两段每行有查找资源，原地打开带番号与标题的云下载弹层；未发售与已入库没有', async () => {
@@ -87,7 +134,7 @@ it('待找与暂时放弃两段每行有查找资源，原地打开带番号与�
   const { host } = await open();
   const key = (id: number) => buttonNamed('查找资源', host.querySelector(`[data-want-id="${id}"]`)!);
   expect([2, 3, 4, 1, 6].map((id) => !!key(id))).toEqual([true, true, false, false, true]);
-  expect(key(2)!.className).toContain('bg-background-primary-default');
+  expect(key(2)!.className).toContain('bg-button-primary');
   await click(key(2));
   await settle();
   expect(document.querySelector('[role=dialog]')?.textContent).toContain('ABC-2 · 雨の日');

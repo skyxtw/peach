@@ -16,7 +16,7 @@ const TABLE: Record<ActivityKind, readonly string[]> = {
   ],
   radar: [
     'follow-check', 'feed-check', 'follow-resolve', 'follow-creator', 'creator-identity', 'link-check', 'source-check',
-    'resource-scan',
+    'resource-scan', 'want-search',
     'stage:library.scanFiles', 'stage:library.checkCompanions', 'stage:library.probeMedia', 'stage:library.checkNetwork',
     'stage:library.checkJunk', 'stage:library.recheckJunk', 'stage:library.prepareImages', 'stage:library.readImages',
     'stage:backup.checkIntegrity', 'stage:diagnostics.readSystem', 'stage:mediaRepair.scan',
@@ -36,7 +36,8 @@ const TABLE: Record<ActivityKind, readonly string[]> = {
   ],
   blocks: [
     'organize', 'batch', 'library-processing', 'media-repair', 'mp4-header-repair', 'taste-refresh', 'diagnostic-export',
-    'amane-bridge', 'timeline-thumbnails', 'upgrade-library', 'upgrade-repairs', 'follow-evidence-reclaim',
+    'amane-bridge', 'timeline-thumbnails', 'upgrade-library', 'upgrade-repairs', 'follow-evidence-reclaim', 'follow-backfill',
+    'cover-artwork-repair',
     'stage:library.preparePreviews', 'stage:library.makePreviews', 'stage:backup.migrateBackup', 'stage:mediaRepair.repair',
     'stage:organize.running', 'stage:organize.rollingBack', 'stage:download.isolateExtras',
     'step:media',

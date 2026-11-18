@@ -14,7 +14,7 @@ const followActions: FollowFeedActions = { route: vi.fn(), shuffle: vi.fn(), loa
   toggleSelection: vi.fn(), setImagesOnly: vi.fn(), setPhotoLayout: vi.fn(), canFlip: () => true, toast: vi.fn(),
   failure: vi.fn(), checkReport: vi.fn() };
 const helpers: EntityPageHelpers = { portraitImg: entityPortraitImg, wireDrag: vi.fn(), wireScroller: vi.fn(), wireFeedRow: vi.fn(),
-  feedRowHtml: () => '', receipt: vi.fn(), failure: vi.fn(), aliasForm: async () => {}, sourceToolsHtml: () => '',
+  feedRowHtml: () => '', receipt: vi.fn(), failure: vi.fn(), aliasForm: async () => undefined, sourceToolsHtml: () => '',
   wireSourceTools: vi.fn(), comboItems: () => [], sortKeys: () => [] };
 const preference = { sort: 'rating', dir: 'asc' };
 
@@ -62,6 +62,12 @@ describe('实体与索引域控制', () => {
     entry.fresh('performer', '甲');
     entry.read('performer', '乙', '', preference);
     expect(entry.read('performer', '甲', '?sort=short', preference).filters.sort).toBe('dur');
+  });
+
+  it('删除资料后替换当前地址回到同类名册', () => {
+    const { controller, ports } = setup();
+    controller.actions('creator', '甲').openIndex();
+    expect(ports.route).toHaveBeenCalledWith('/creators', true);
   });
 
   it('route 只推当前实体，POP 不写地址，props 使用当前种子与偏好', () => {

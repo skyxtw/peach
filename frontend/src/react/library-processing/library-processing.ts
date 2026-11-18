@@ -345,6 +345,10 @@ export function announceCompletion(
     toast(t('manage:scanFetch.previewsToast', { count: state.previews || 0 }));
     return;
   }
+  if (state.requested_stage === 'covers') {
+    toast(t('manage:scanFetch.coversToast', { count: state.covers || 0 }));
+    return;
+  }
   toast(t('manage:scanFetch.doneToast', { count: state.identified || 0, candidates: state.candidates || 0, autoApplied: state.auto_applied || 0 })
     + (state.previews ? t('manage:scanFetch.toastPreviewsTail', { count: state.previews }) : ''));
 }

@@ -51,6 +51,11 @@ async function open(browser: Browser, options: {
     contentType: 'text/html; charset=utf-8', body: `<!doctype html><html><head><meta charset="utf-8"><title>${options.title || 'SSIS-057 作品详情'}</title></head><body>${options.html ?? '<h1>SSIS-057 作品详情</h1>'}</body></html>`,
   }));
   await page.addInitScript(({ configured, token, base, initial, resolved, version, releaseMeta }) => {
+    // 交互回归向选择器开放影子树，正式闭合隔离由用户脚本仓库单独验收。
+    const attach = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function (options) {
+      return attach.call(this, { ...options, mode: 'open' });
+    };
     const mock: Mock = {
       calls: [], reports: [], updates: [], pending: [], automatic: true, menus: {},
       values: configured ? { 'peach.jav.base': base, 'peach.jav.token': token } : {},
@@ -123,6 +128,8 @@ async function open(browser: Browser, options: {
 }
 
 const button = (page: Page) => page.locator(ROOT).locator('[data-action="add"]');
+// 没在跟踪又要核对状态时，查询是按钮区里的刷新图标键，主按钮隐藏。
+const recheck = (page: Page) => page.locator(ROOT).locator('[data-action="query"]');
 const settingsDialog = (page: Page) => page.locator('#peach-jav-settings').getByRole('dialog');
 async function unpairedStorage(page: Page) {
   const values = await page.evaluate(() => window.javMock.values);
@@ -575,11 +582,11 @@ describe('JAV 用户脚本', () => {
       await page.clock.fastForward(30_000);
       assert.equal(await page.evaluate(() => window.javMock.calls.length), 2);
       assert.equal(await page.evaluate(() => window.javMock.reports.length), 1);
-      await button(page).click();
+      await recheck(page).click();
       await pending(page, 3);
       await page.evaluate(() => window.javMock.pending[2]!.onerror());
       await ready(page, '查询 Peach 状态');
-      await button(page).click();
+      await recheck(page).click();
       await pending(page, 4);
       await reply(page, 3, body('failed'));
       await ready(page, '重试加入 Peach 馆藏');
@@ -603,7 +610,7 @@ describe('JAV 用户脚本', () => {
       await reply(page, 1, body('owned', 'ABW-123'));
       await ready(page, '查询 Peach 状态');
       assert.match(await page.locator(ROOT).getByRole('status', { name: 'Peach 任务状态', exact: true }).innerText(), /状态无效/);
-      await button(page).click();
+      await recheck(page).click();
       await pending(page, 3);
       await page.evaluate(() => window.javMock.reply(2, {}, 401));
       await ready(page, '查询 Peach 状态');

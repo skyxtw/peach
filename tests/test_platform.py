@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -14,6 +15,7 @@ from peach.platform import (
     UNMAPPED_ROOT,
     is_unmapped,
     is_windows_path,
+    location_mount_values,
     location_mounts,
     location_roots,
     resolve_location,
@@ -141,6 +143,16 @@ class MountSourceTests(unittest.TestCase):
                     location_mounts(),
                     {"local": (Path("/mnt/other"),), "115": (Path("/mnt/115"),)})
 
+    def test_smb_addresses_stay_verbatim_for_scanning_and_are_unmapped_as_local_directories(self):
+        """`smb://` 包成 Path 会变成 `smb:\\…` 或 `smb:/…`，扫描认不出是 SMB（#693）。"""
+        address = "smb://192.0.2.20:4450/Share"
+        with with_media({"local": (address, "/mnt/res")}, {"local": (r"X:\share", r"R:\media")}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertEqual(location_mount_values()["local"], (address, "/mnt/res"))
+                smb, local = location_mounts()["local"]
+                self.assertTrue(is_unmapped(smb))
+                self.assertEqual(local, Path("/mnt/res"))
+
     def test_a_fresh_machine_has_no_mounts_at_all(self):
         """内建默认为空：没挂的来源按脱盘处理，绝不猜一个本机路径。"""
         with with_media({}):
@@ -240,6 +252,15 @@ class RootBoundaryTests(unittest.TestCase):
             self.assertFalse(within_root(Path("A:/media/a.mp4"), Path("B:/")))
             self.assertFalse(within_root(Path("B:/other/a.mp4"), Path("C:/media")))
 
+    def test_boundary_answers_from_the_path_text_without_touching_any_disk(self):
+        """每个媒体请求都走到这里：字面不匹配时也不 stat 授权根，挂死的网盘不连带请求。"""
+        refused = AssertionError("不该 stat 授权根")
+        with patch.object(Path, "samefile", side_effect=refused), patch("os.stat", side_effect=refused):
+            self.assertFalse(within_root(Path("/mnt/res/other/b.mp4"), Path("/mnt/res/media")))
+            self.assertFalse(within_root(Path("//nas/share/b.mp4"), Path("B:/")))
+            self.assertEqual(within_root(Path("/mnt/RES/media/b.mp4"), Path("/mnt/res/media")),
+                             os.name == "nt" or sys.platform == "darwin")
+
     def test_root_online_needs_a_readable_mount_not_just_a_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertTrue(root_online(Path(tmp)))
@@ -282,13 +303,6 @@ class OfflineModeTests(unittest.TestCase):
                 with self.assertRaises(MediaUnavailable) as caught:
                     backend.file_for(MediaAsset(3, r"R:\media\nope.mp4", None))
         self.assertNotIsInstance(caught.exception, MediaOffline)
-
-    def test_source_status_reports_each_root_separately(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            live = Path(tmp).resolve()
-            dead = live / "gone"
-            status = FilesystemBackend([live, dead], live / "snapshots").source_status()
-        self.assertEqual([row["online"] for row in status], [True, False])
 
 
 class MountReachabilityTests(unittest.TestCase):

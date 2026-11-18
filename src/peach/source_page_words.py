@@ -68,6 +68,7 @@ SEESAA_RENAMED = r"から【([^【】]+)】へ変更"
 
 #: 演员页 `section-meta` 里的作品数（`323 部影片`），它不是名字。
 JAVDB_COUNT = r"^\d+\s*部影片$"
+JAVDB_NO_MAGNETS = "此影片暫無網友分享磁鏈"
 #: 要登录才给的资料页回的是登入页。
 JAVDB_LOGIN = r"<title>\s*登入\s*\|"
 #: 同一位女优按记录类型分开的那几条，现名后面挂的标记。
@@ -92,6 +93,8 @@ FANZA_PHOTO_BONUS_TITLE = r"【FANZA限定】(.+) 生写真[1-9]\d?枚付き"
 
 # ---- JavBus ----
 
+#: JavBus 磁链表里标在名称后的「字幕」按钮：这条磁力带中文字幕。
+JAVBUS_SUBTITLES = "字幕"
 #: 作品页 `<span class="header">` 的栏名（繁体原词）。
 JAVBUS_FIELDS = {
     "code": "識別碼",

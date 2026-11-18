@@ -151,8 +151,8 @@ class RebuildTests(unittest.TestCase):
                                      getattr(subprocess, 'CREATE_NO_WINDOW', 0))
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_text("", encoding="utf-8")
-                    write_amane_metadata(tools, "0.22.1")
-                    return completed(json.dumps({"ok": True, "amane": {"version": "0.22.1"},
+                    write_amane_metadata(tools)
+                    return completed(json.dumps({"ok": True, "amane": {"version": metadata_amane.locked_version()},
                                                  "sites": list(metadata_amane.SITES)}))
 
                 done = metadata_amane.rebuild(tools, runner=build)
@@ -369,7 +369,7 @@ class PreparationTests(unittest.TestCase):
             python.parent.mkdir(parents=True)
             python.write_text("", encoding="utf-8")
             self.assertFalse(metadata_amane.describe(tools)["installed"])
-            write_amane_metadata(tools, "0.22.1", ready=True)
+            write_amane_metadata(tools, ready=True)
             self.assertTrue(metadata_amane.describe(tools)["installed"])
 
     def test_runtime_receipts_require_the_current_dependency_lock(self):

@@ -83,7 +83,7 @@ export function FeedNewRow({ feedNew, host, wire, act, settled, error, retry }: 
     if (link && actions && !event.button && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
       event.preventDefault(); actions.navigate(link.getAttribute('href')!); return;
     }
-    const button = (event.target as Element).closest<HTMLElement>('[data-feed-action]');
+    const button = (event.target as Element).closest<HTMLButtonElement>('[data-feed-action]');
     const card = button?.closest<HTMLElement>('[data-feed-id]');
     if (!button || !card) return;
     const action = button.dataset.feedAction || '';

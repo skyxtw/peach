@@ -30,6 +30,7 @@ import { StatusLabel, type StatusTone } from '../components/status-label';
 import { ConnectionStatus } from '../components/connection-status';
 import { Page } from '../components/page';
 import { SiteMark } from '../components/site-mark';
+import { SectionToc } from '../components/section-toc';
 import { SEGMENT, SEGMENTED_TRACK, SegmentedRadioGroup as RadioGroup } from '../components/segmented';
 import { queryClient } from '../query';
 import {
@@ -160,7 +161,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
   const detailed = network === 'peach' || source.accepts_cookie || source.browser || !!problem || results.length > 0;
 
   return (
-    <Section title={codedText(source, 'label')} onSubmit={submit} aside={
+    <Section id={`source-${source.source}`} title={codedText(source, 'label')} onSubmit={submit} aside={
       <span className="flex min-w-0 items-center gap-1">
         <SiteMark source={source.source} />
         {source.login ? <ExternalLink href={source.login}>{linkHost(source.login)}</ExternalLink> : null}
@@ -222,11 +223,14 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
               </div>}
         </> : null}
         {problem ? <ErrorText>{problem}</ErrorText> : null}
-        {results.map((result) => (
-          <Note key={result.label} tone={result.ok ? 'success' : 'error'}>
-            <span className="flex flex-col items-start gap-1"><ConnectionStatus tone={result.ok ? 'success' : 'error'}>{result.ok ? t('manage:sourceSettings.reachable') : t('manage:sourceSettings.connectionFailed')}</ConnectionStatus><span>{checkText(result, codedText(source, 'label'))}</span></span>
-          </Note>
-        ))}
+        {results.map((result) => {
+          const tone = result.kind === 'unchecked' ? 'neutral' : result.ok ? 'success' : 'error';
+          const status = result.kind === 'unchecked' ? t('manage:sourceSettings.unchecked')
+            : result.ok ? t('manage:sourceSettings.reachable') : t('manage:sourceSettings.connectionFailed');
+          return <Note key={result.label} tone={tone}>
+            <span className="flex flex-col items-start gap-1"><ConnectionStatus tone={tone}>{status}</ConnectionStatus><span>{checkText(result, codedText(source, 'label'))}</span></span>
+          </Note>;
+        })}
       </Stack> : null}
       {/* 主体动作在最右。次级动作先出现，`保存` 是这张卡唯一的写入，放在一行的末尾；
           表单里只有它一个 `type=submit`，所以挪位置不影响回车提交。 */}
@@ -373,7 +377,7 @@ function CoverCard({ toast }: ScrapingProps) {
     : taskQuery.error ? errorMessage(taskQuery.error)
     : outcome?.status === 'failed' ? (coverFailure(outcome) || t('manage:hdCover.notFound')) : '';
   return (
-    <Section title={t('manage:hdCover.title')} onSubmit={submit}>
+    <Section id="hd-cover" title={t('manage:hdCover.title')} onSubmit={submit}>
       <Stack>
         {taskQuery.isPending ? <div role="status" aria-label={t('manage:hdCover.loadingStatus')} data-skeleton="" className="skeleton-sheen h-6 rounded-md" /> : null}
         <div className="flex flex-wrap items-end gap-2">
@@ -475,12 +479,21 @@ export function ScrapingPage({ toast }: ScrapingProps) {
   return (
     <Page>
       <p className="text-body-2-regular text-text-secondary">{t('manage:scrapingSources.proxyHint')}</p>
-      <CheckAllCard toast={toast} />
-      <CoverCard toast={toast} />
-      <CustomSources receipt={toast} />
-      {(data.sources || []).map(
-        (source) => <SourceCard key={source.source} source={source} toast={toast} />)}
-      <AmaneBridgeCard toast={toast} />
+      <SectionToc label={t('manage:scrapingSources.contents')} entries={[
+        { id: 'check-all', label: t('manage:connectionCheck.title') },
+        { id: 'hd-cover', label: t('manage:hdCover.title') },
+        { id: 'custom-sources', label: t('manage:customSources.title') },
+        ...(data.sources || []).map(source => ({ id: `source-${source.source}`,
+          label: codedText(source, 'label'), icon: source.source === 'makers' ? undefined : <SiteMark source={source.source} /> })),
+        { id: 'source-amane', label: 'amane' },
+      ]}>
+        <CheckAllCard toast={toast} />
+        <CoverCard toast={toast} />
+        <CustomSources receipt={toast} />
+        {(data.sources || []).map(
+          (source) => <SourceCard key={source.source} source={source} toast={toast} />)}
+        <div id="source-amane"><AmaneBridgeCard toast={toast} /></div>
+      </SectionToc>
     </Page>
   );
 }

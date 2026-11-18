@@ -21,7 +21,6 @@ import { resolveFollowSort } from '../../follow-sort';
 import type { FollowManageProps } from '../bundle';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
-import { TagManager } from '../index/tag-manager';
 import { SortableBoardTabs } from '../components/navigation-order';
 import { STAT_STRIP_SIX } from '../components/stat-card';
 import { ExternalLink } from '../settings/section';
@@ -40,6 +39,7 @@ import { SourceList } from './source-list';
 import { MeasuredReading } from './measured-reading';
 import { FOLLOW_MANAGE_NAV as TABS } from './manage-route';
 import { t } from '../../i18n';
+import { enterPageSelection, usePageSelection } from '../components/page-selection';
 
 type TabKey = (typeof TABS)[number][0];
 
@@ -59,6 +59,9 @@ export function FollowManagePage(props: FollowManageProps) {
      它不进地址栏——那是这一刻手里的一批东西，不是这一页的身份。 */
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set<number>());
   const [feedSelected, setFeedSelected] = useState<ReadonlySet<number>>(new Set<number>());
+  /* 关注列表与订阅源的勾选接右上角多选开关：勾了就进入多选，点开关退出时两份都清空。 */
+  usePageSelection(() => { setSelected(new Set<number>()); setFeedSelected(new Set<number>()) });
+  useEffect(() => { if (selected.size || feedSelected.size) enterPageSelection() }, [selected, feedSelected]);
 
   const follow = useQuery({ queryKey: FOLLOW_MANAGE_KEY, queryFn: ({ signal }) => fetchFollow(signal) });
   const credentials = useQuery({
@@ -171,10 +174,6 @@ export function FollowManagePage(props: FollowManageProps) {
             onAdded={() => { void feeds.refetch(); setTab('list'); go({ tab: 'list' }) }} />
           {follow.data ? <AliasManager groups={data.author_aliases || []} readOnly={readOnly} toast={toast}
             suggestions={data.alias_suggestions || []} sources={data.sources} /> : null}
-        </div> : null}
-
-        {tab === 'tags' ? <div role="tabpanel" id="follow-panel-tags" aria-labelledby="follow-tab-tags" className="flex flex-col gap-4">
-          <TagManager scope="online" />
         </div> : null}
 
       </div>

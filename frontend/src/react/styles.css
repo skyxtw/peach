@@ -21,6 +21,7 @@
 @import "./components/surface-motion.css";
 @import "./junk-queue/junk-queue.css";
 @import "./entity-hero/entity-hero.css";
+@import "./entity-page/name-contribution-dialog.css";
 @import "./entity-filter/entity-filter.css";
 @import "./catalog-filter/catalog-filter.css";
 @import "./catalog-folders/catalog-folders.css";
@@ -30,6 +31,7 @@
 @import "./jav/jav.css";
 @import "./follow-detail/follow-detail.css";
 @import "./item-detail/item-detail.css";
+@import "./item-detail/item-edit.css";
 @import "./jav-detail/jav-detail.css";
 @import "./photo-lightbox/photo-lightbox.css";
 @import "./index/index-people.css";
@@ -69,6 +71,8 @@
 [data-async-text-value][aria-hidden="true"] { opacity: 0; }
 [data-async-text-skeleton] { opacity: 0; }
 [data-async-text][aria-busy="true"] > [data-async-text-skeleton] { opacity: 1; }
+/* 不忙时骨架只是透明，微光不扫：WebKit 对透明元素的动画照样逐帧重绘，满屏卡片的文字骨架会让手机持续发热。 */
+[data-async-text]:not([aria-busy="true"]) > [data-async-text-skeleton]::after { animation: none; }
 /* 独立页面包（`pages/`）有自己的产物 `peach-pages.css`，它用到的工具类不进这一份。 */
 @source not "./pages";
 @source "../management-skeletons.ts";
@@ -400,6 +404,12 @@ html:has([data-selection-dock]) { scroll-padding-bottom: var(--selection-dock-sp
   background: linear-gradient(180deg, var(--glass-sheen), transparent 62%), var(--glass-pick-fill);
   box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
 }
+/* 带滑动玻璃的那一组（`components/glass-segments.tsx`）：选中面由滑过来的那块玻璃给，格子自己不铺底。 */
+.peach-react [data-glide-segments] [data-glass-segment][data-selected][data-selected] {
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
 
 /* BoardUI 带字按键与链接键的字形和文字同行，画框取 `--icon-inline`，随所在文字字号缩放；纯图标键
  * 没有文字那一格，仍按档位取 20、18、14px。`button-press-motion` 只在 Button 与 ButtonLink 上，
@@ -429,15 +439,6 @@ html:has([data-selection-dock]) { scroll-padding-bottom: var(--selection-dock-sp
   border-radius: var(--control-radius);
 }
 .peach-react button[data-tag-mode] svg { width: 16px; height: 16px; }
-
-/* 浮层上动作键（`components/filter-glass.tsx` 的 `GlassPill`）指上去的那一下：同一副料，
- * 细线让给整圈 rim，落影把它从浮层上托起来，跟首页筛选条上滑到指针下的那块一样。那一档
- * `backdrop-filter` 提亮写在 `web/board.css`：构建会把标准属性折成 Chromium 不认的前缀写法。 */
-.peach-react [data-glass-pill]:hover:not([aria-busy]) {
-  border-color: transparent;
-  background: linear-gradient(180deg, var(--glass-sheen), transparent 62%), var(--glass-pick-fill);
-  box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
-}
 
 /* 索引页的过滤框与播放列表的新建框在窄屏把字号提到 16px：小于这一档，手机浏览器聚焦时
  * 会把整页放大。 */

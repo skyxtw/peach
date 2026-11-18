@@ -2,7 +2,7 @@
 <martif type="TBX" xml:lang="zh-Hans">
 <martifHeader><fileDesc><sourceDesc><p>Peach 界面术语表，见 docs/adr/0156-interface-translation.md</p></sourceDesc></fileDesc></martifHeader>
 <text><body>
-<termEntry id="concept.library">
+<termEntry id="concept.library" weblate-flags="terminology">
 <descrip>用户配置的一组媒体目录，有自己的名字，侧栏可以切换，一个实例可以有多个。目录各自存放在哪种位置（本地磁盘、115、PikPak）是下面的“媒体来源”。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>媒体库</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Library</term><note from="translator">Plex、Jellyfin 都把这一层叫 Library；可数，复数 libraries 自然。#443 用 Media library，比 Library 长 6 个字符，而侧栏选择器和下拉框都很窄。 以后增加网络共享、SMB 等类型，都还是 library 的一种，名称不变。</note></tig></langSet>
@@ -11,12 +11,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>媒体库</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Media library</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.collection">
+<termEntry id="concept.collection" weblate-flags="terminology">
 <descrip>当前实例已经收录的全部作品，跨所有媒体库。与“库外发现”相对。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>馆藏</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Collection</term><note from="translator">#443 把馆藏也译成 Library，和媒体库撞成同一个词，“馆藏探索”和“选择媒体库”在英文里就分不清了。Collection 是“我拥有的”通用说法。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.video.0">
+<termEntry id="concept.video.0" weblate-flags="terminology">
 <descrip>用户看到的一部片子。作品偏身份（番号层），影片和视频偏可播放的那一份。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>作品</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Video</term><note from="translator">英文 JAV 站（R18.dev、JavLibrary）都叫 Video。Work 准确但生硬，Title 会和“标题”撞词，Movie 不适合创作者短片和动画。中文里三个词的细微区别，英文统一成 Video；真要区分作品身份时用 edition（版本）表达。 需要区分同番号的不同文件时，说 edition 或 file，不另造词。</note></tig></langSet>
@@ -25,7 +25,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>作品</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Movie</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.video.1">
+<termEntry id="concept.video.1" weblate-flags="terminology">
 <descrip>用户看到的一部片子。作品偏身份（番号层），影片和视频偏可播放的那一份。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>影片</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Video</term><note from="translator">英文 JAV 站（R18.dev、JavLibrary）都叫 Video。Work 准确但生硬，Title 会和“标题”撞词，Movie 不适合创作者短片和动画。中文里三个词的细微区别，英文统一成 Video；真要区分作品身份时用 edition（版本）表达。 需要区分同番号的不同文件时，说 edition 或 file，不另造词。</note></tig></langSet>
@@ -34,12 +34,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>影片</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Movie</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.file">
+<termEntry id="concept.file" weblate-flags="terminology">
 <descrip>磁盘或网盘上的一个具体文件。一部作品可以对应多个文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>文件</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>File</term><note from="translator">没有歧义。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.code">
+<termEntry id="concept.code" weblate-flags="terminology">
 <descrip>作品的发行编号，如 SSIS-001、FC2-PPV-1234567。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>番号</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Code</term><note from="translator">Code 最短，社区英文讨论也常说 JAV code。ID 会和数据库 ID 混淆；Content ID 是 DMM 内部编号，和番号不是一回事。</note></tig></langSet>
@@ -52,12 +52,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>番号</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>DVD ID</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.metadata">
+<termEntry id="concept.metadata" weblate-flags="terminology">
 <descrip>从来源站取回或人工填写的标题、演员、发行日期、标签等信息。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>资料</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Metadata</term><note from="translator">媒体服务器的标准说法。按钮里放不下时（如卡片紧凑档）可用 Info，但同一个按钮只能选一个。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.tag">
+<termEntry id="concept.tag" weblate-flags="terminology">
 <descrip>作品的分类标签。界面里的“标签”二字要翻译，标签值本身属于内容。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>标签</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tag</term><note from="translator">Genre 只对应来源站的类型词，Peach 的标签还包括人工和在线标签，用 Tag 更宽。</note></tig></langSet>
@@ -66,7 +66,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>标签</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Genre</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.cover">
+<termEntry id="concept.cover" weblate-flags="terminology">
 <descrip>作品的封面图。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>封面</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cover</term><note from="translator">JAV 语境就叫 cover；Poster 是 Plex 叫法，竖版海报和横版封面不是一回事。</note></tig></langSet>
@@ -79,7 +79,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>封面</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Artwork</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.avatar">
+<termEntry id="concept.avatar" weblate-flags="terminology">
 <descrip>人物或创作者的头像照片。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>头像</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Avatar</term><note from="translator">用户定 Avatar：头像在界面里是小圆图，avatar 一眼能认出；Photo 留给大图。</note></tig></langSet>
@@ -92,17 +92,17 @@
 <langSet xml:lang="zh-Hans"><tig><term>头像</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Profile photo</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.magnet.0">
+<termEntry id="concept.magnet.0" weblate-flags="terminology">
 <descrip>BT 磁力链接。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>磁力</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Magnet link</term><note from="translator">Magnet 单独写不成含义，Link 在 Peach 里已指外链和链接检查。按钮和筛选全写：Copy magnet link、Has magnet link／No magnet link；卡片上窄的徽标改成磁铁图标，悬停显示 Magnet link。“磁力”“磁链”两个写法统一。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.magnet.1">
+<termEntry id="concept.magnet.1" weblate-flags="terminology">
 <descrip>BT 磁力链接。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>磁链</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Magnet link</term><note from="translator">Magnet 单独写不成含义，Link 在 Peach 里已指外链和链接检查。按钮和筛选全写：Copy magnet link、Has magnet link／No magnet link；卡片上窄的徽标改成磁铁图标，悬停显示 Magnet link。“磁力”“磁链”两个写法统一。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.storage">
+<termEntry id="concept.storage" weblate-flags="terminology">
 <descrip>一个目录存放在哪种位置：本地磁盘、115、PikPak。媒体库设置里每个目录旁边那个“来源”下拉选的就是它；资源同步结果按它分卡。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>媒体来源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Storage</term><note from="translator">列出来的是存储位置，Storage 一眼就懂，也避开 source 这个已被资料来源、关注来源占用的词。媒体库设置里目录旁边那个可见字段“来源”含义相同，也译 Storage。 以后加 SMB、OneDrive 时还是 storage 的一种。</note></tig></langSet>
@@ -115,12 +115,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>媒体来源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Media sources</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.actress">
+<termEntry id="concept.actress" weblate-flags="terminology">
 <descrip>JAV 作品的出演者实体。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>女优</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Actress</term><note from="translator">英文 JAV 站的通行说法，用户一看就知道是 JAV 语境。#443 用 Performers，会和“艺人”撞词。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.performer">
+<termEntry id="concept.performer" weblate-flags="terminology">
 <descrip>所有类型出演者的总称，含非 JAV 的演员。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>艺人</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Performer</term><note from="translator">比 Actress 宽，男性和非 JAV 出演者都覆盖。</note></tig></langSet>
@@ -133,7 +133,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>艺人</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Artists</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.creator">
+<termEntry id="concept.creator" weblate-flags="terminology">
 <descrip>自己发布作品的个人或账号，如社媒博主、动画作者。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>创作者</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Creator</term><note from="translator">社媒平台的通行说法。动画作者也归在这里，不单独用 Artist。</note></tig></langSet>
@@ -142,12 +142,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>创作者</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Artist</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.seller">
+<termEntry id="concept.seller" weblate-flags="terminology">
 <descrip>FC2 上出售作品的账号，不是厂牌。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>卖家</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Seller</term><note from="translator">与 FC2 站内说法一致。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.studio">
+<termEntry id="concept.studio" weblate-flags="terminology">
 <descrip>制作发行的公司（メーカー），旗下可有多个厂牌。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>片商</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Studio</term><note from="translator">R18.dev 用 Maker，但 Studio 更通用，也和现有路由 /studios 一致。</note></tig></langSet>
@@ -156,7 +156,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>片商</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Maker</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.label">
+<termEntry id="concept.label" weblate-flags="terminology">
 <descrip>片商旗下的品牌线（レーベル）。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>厂牌</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Label</term><note from="translator">与日本业界的 レーベル 对应；#443 也用 Label。 侧栏入口「厂牌」打开的 /studios 同时列片商与厂牌，入口名用 Studios（用户定）；单个厂牌与身份区分组仍是 Label。</note></tig></langSet>
@@ -165,27 +165,27 @@
 <langSet xml:lang="zh-Hans"><tig><term>厂牌</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Brand</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.agency">
+<termEntry id="concept.agency" weblate-flags="terminology">
 <descrip>艺人所属的经纪公司。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>事务所</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Agency</term><note from="translator">没有歧义。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.series">
+<termEntry id="concept.series" weblate-flags="terminology">
 <descrip>同一系列的作品集合。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>系列</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Series</term><note from="translator">单复数同形，计数句要按复数规则写全句。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.scan">
+<termEntry id="concept.scan" weblate-flags="terminology">
 <descrip>检查媒体库目录，找出新增、改名和删除的文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>扫描</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Scan</term><note from="translator">没有歧义。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.sync">
+<termEntry id="concept.sync" weblate-flags="terminology">
 <descrip>扫描文件并补齐资料与预览的一整趟处理。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>同步</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Sync</term><note from="translator">你已定下“同步新增文件／同步所有媒体库／同步所选媒体库”这组名称，英文对应 Sync new files / Sync all libraries / Sync selected library。 以后增加按目录同步时沿用 Sync。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.import">
+<termEntry id="concept.import" weblate-flags="terminology">
 <descrip>把一个文件登记进馆藏。下载完成不等于入库。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>入库</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Import</term><note from="translator">Import 短，且媒体软件里就是这个意思。Add to collection 在按钮和状态里太长。</note></tig></langSet>
@@ -194,7 +194,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>入库</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Add to collection</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.organize">
+<termEntry id="concept.organize" weblate-flags="terminology">
 <descrip>按命名模板重命名、移动文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>整理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Organize</term><note from="translator">Organize 覆盖重命名和移动两件事。</note></tig></langSet>
@@ -203,12 +203,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>整理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Rename &amp; move</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.fetch">
+<termEntry id="concept.fetch" weblate-flags="terminology">
 <descrip>从来源站取回资料或新作。界面里“刮削”只出现在“刮削记录”里，统一归到这里。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>采集</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Fetch</term><note from="translator">Scrape 是开发者黑话，普通用户不一定懂，还带“爬取”的负面含义。Fetch 是普通词，也短。“刮削记录”译作 Fetch log。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.enrich">
+<termEntry id="concept.enrich" weblate-flags="terminology">
 <descrip>只给缺资料的作品补齐，不覆盖已有内容。与“重新采集”不同。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>补全资料</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Fill in metadata</term><note from="translator">Fill in 准确表达“只补空”。#443 的 Complete details 读起来像“完成”。按钮放不下时可缩成 Fill in。</note></tig></langSet>
@@ -225,7 +225,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>补全资料</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Complete details</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.preview">
+<termEntry id="concept.preview" weblate-flags="terminology">
 <descrip>悬停时播放的缩略画面与九宫格拼图。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>视频预览</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Preview</term><note from="translator">九宫格单独叫 Contact sheet；进度条上方那块叫 Seek preview。</note></tig></langSet>
@@ -234,7 +234,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>视频预览</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Video previews</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.follow">
+<termEntry id="concept.follow" weblate-flags="terminology">
 <descrip>关注某位创作者、女优或来源这个动作，出现在按钮和短语里，如“关注创作者”“添加关注”。界面上单独写“关注”的地方都是侧栏入口和页面名，归下一条。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>关注</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Follow</term><note from="translator">人用 Follow（社媒习惯），站点源用 Subscribe（RSS 习惯）。侧栏入口叫 Following。</note></tig></langSet>
@@ -243,17 +243,17 @@
 <langSet xml:lang="zh-Hans"><tig><term>关注</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Subscribe</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.subscription">
+<termEntry id="concept.subscription" weblate-flags="terminology">
 <descrip>对站点或片单的定时拉取。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>订阅</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Subscription</term><note from="translator">与 Follow 分工：人 → Follow，源 → Subscribe。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.newRelease">
+<termEntry id="concept.newRelease" weblate-flags="terminology">
 <descrip>关注对象新发行的作品。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>新作</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>New releases</term><note from="translator">通行说法。徽标位置太窄时缩成 New。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.discover.0">
+<termEntry id="concept.discover.0" weblate-flags="terminology">
 <descrip>按口味推荐作品。“馆藏探索”在已有作品里推荐，“库外发现”推荐还没有的。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>发现</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Discover</term><note from="translator">两个中文词英文合成一个 Discover，再用 In collection / Not in collection 区分范围。</note></tig></langSet>
@@ -262,7 +262,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>发现</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Explore</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.discover.1">
+<termEntry id="concept.discover.1" weblate-flags="terminology">
 <descrip>按口味推荐作品。“馆藏探索”在已有作品里推荐，“库外发现”推荐还没有的。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>探索</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Discover</term><note from="translator">两个中文词英文合成一个 Discover，再用 In collection / Not in collection 区分范围。</note></tig></langSet>
@@ -271,7 +271,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>探索</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Explore</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.findDownloads">
+<termEntry id="concept.findDownloads" weblate-flags="terminology">
 <descrip>用配置的索引器搜这部作品的下载资源（磁力、网盘）。找到后由你选择下载。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>查找资源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Search torrents</term><note from="translator">资源搜索用配置的索引器查 BT，结果都是磁力链接，所以 Search torrents 准确（用户定稿）。紧凑卡片里放不下时只留图标。</note></tig></langSet>
@@ -288,7 +288,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>查找资源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Find resources</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.viewOnSite">
+<termEntry id="concept.viewOnSite" weblate-flags="terminology">
 <descrip>卡片上跳到作品原始页面（来源站）的外链按钮。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>作品来源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>View on site</term><note from="translator">按钮的意思是“去原站看”，不是“来源”这个名词。紧凑档已经只显示图标，悬停提示用这句。</note></tig></langSet>
@@ -301,7 +301,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>作品来源</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Video sources</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.cloudDownload">
+<termEntry id="concept.cloudDownload" weblate-flags="terminology">
 <descrip>提交到 115、PikPak 等网盘的离线下载。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>云下载</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cloud download</term><note from="translator">Offline download 是网盘自己的叫法，但英文用户更容易把它理解成“离线时下载”。</note></tig></langSet>
@@ -310,7 +310,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>云下载</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Offline download</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.want">
+<termEntry id="concept.want" weblate-flags="terminology">
 <descrip>标记想获取的外部作品，之后可以找资源下载。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>想要</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Want</term><note from="translator">卡片紧凑档里的按钮只放得下一个短词。按钮用 Want，状态用 Wanted，页面入口叫 Wanted；三者是同一个词族。</note></tig></langSet>
@@ -323,7 +323,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>想要</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Add to wishlist</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.review">
+<termEntry id="concept.review" weblate-flags="terminology">
 <descrip>逐项检查机器给出的资料候选，决定采用或忽略。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>人工复核</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Review</term><note from="translator">通行说法。</note></tig></langSet>
@@ -332,7 +332,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>人工复核</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Manual review</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.candidate">
+<termEntry id="concept.candidate" weblate-flags="terminology">
 <descrip>带来源和置信度、还没确认的资料。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>候选</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Candidate</term><note from="translator">用户定 Candidate：候选是待复核、还没落库的断言，Suggestion 会被读成随便的推荐。</note></tig></langSet>
@@ -341,7 +341,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>候选</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Suggestion</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.accept.0">
+<termEntry id="concept.accept.0" weblate-flags="terminology">
 <descrip>确认候选资料并写入。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>采用</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Approve</term><note from="translator">用户定 Approve：采用和通过是复核里的同一个动作，与 Ignore 成对。</note></tig></langSet>
@@ -350,7 +350,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>采用</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Accept</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.accept.1">
+<termEntry id="concept.accept.1" weblate-flags="terminology">
 <descrip>确认候选资料并写入。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>通过</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Approve</term><note from="translator">用户定 Approve：采用和通过是复核里的同一个动作，与 Ignore 成对。</note></tig></langSet>
@@ -359,7 +359,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>通过</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Accept</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.ignore">
+<termEntry id="concept.ignore" weblate-flags="terminology">
 <descrip>不采用这条候选，以后不再提示。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>忽略</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Ignore</term><note from="translator">Dismiss 隐含“以后还会出现”，与实际行为不符。</note></tig></langSet>
@@ -368,7 +368,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>忽略</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Dismiss</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.revert">
+<termEntry id="concept.revert" weblate-flags="terminology">
 <descrip>把已经写入的资料改回写入前。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>撤回</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Revert</term><note from="translator">Undo 留给“撤销上一步”，Revert 指已落库的写入，两者不能共用。</note></tig></langSet>
@@ -377,17 +377,17 @@
 <langSet xml:lang="zh-Hans"><tig><term>撤回</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Withdraw</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.home">
+<termEntry id="nav.home" weblate-flags="terminology">
 <descrip>全部馆藏的主页。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>首页</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Home</term></tig></langSet>
 </termEntry>
-<termEntry id="nav.manage">
+<termEntry id="nav.manage" weblate-flags="terminology">
 <descrip>顶栏的管理菜单，收着任务中心、数据管理、关注管理、统计、口味和 Peach 配置。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>管理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Manage</term><note from="translator">Admin 暗示权限区分，Peach 是单人自托管，没有这层含义。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.tasks">
+<termEntry id="nav.tasks" weblate-flags="terminology">
 <descrip>后台任务与下载进度。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>任务中心</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tasks</term><note from="translator">管理菜单里的入口越短越好；Task center 是中文直译。</note></tig></langSet>
@@ -396,7 +396,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>任务中心</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Task center</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.data">
+<termEntry id="nav.data" weblate-flags="terminology">
 <descrip>扫描、清理、整理、修复等维护工具的入口。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>数据管理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Library tools</term><note from="translator">Data management 容易被理解成数据库管理；这里实际是馆藏维护工具。</note></tig></langSet>
@@ -405,7 +405,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>数据管理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Data management</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.subscriptions">
+<termEntry id="nav.subscriptions" weblate-flags="terminology">
 <descrip>管理关注的创作者、女优与 JAV 订阅。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>关注管理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Subscriptions</term><note from="translator">与路由 /subscriptions 一致，作页面名也比动宾短语自然。</note></tig></langSet>
@@ -414,17 +414,17 @@
 <langSet xml:lang="zh-Hans"><tig><term>关注管理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Manage follows</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.following">
+<termEntry id="nav.following" weblate-flags="terminology">
 <descrip>侧栏入口“关注”、关注页的大标题和导航排序里的“关注”：指关注更新流这个页面，不是动作。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>关注</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Following</term><note from="translator">名词用 Following，动作用 Follow，和 X、Instagram 的分工一样：入口叫 Following，按钮叫 Follow。也可以都用 Follow，但侧栏里“Follow”读起来像一个待点的动作。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.preferences">
+<termEntry id="nav.preferences" weblate-flags="terminology">
 <descrip>每个浏览器各自的显示与播放偏好。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>设置</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Preferences</term><note from="translator">要和“Peach 配置”分开：设置只影响当前浏览器，配置影响整个实例。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.configuration">
+<termEntry id="nav.configuration" weblate-flags="terminology">
 <descrip>整个实例的服务端配置：媒体库、下载、网络、维护。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>Peach 配置</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Settings</term><note from="translator">英文用户找“服务器配置”时找的就是 Settings。</note></tig></langSet>
@@ -441,12 +441,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>Peach 配置</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Peach configuration</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.stats">
+<termEntry id="nav.stats" weblate-flags="terminology">
 <descrip>馆藏与观看统计。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>统计</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Stats</term><note from="translator">短。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.taste">
+<termEntry id="nav.taste" weblate-flags="terminology">
 <descrip>根据观看与评价分析偏好。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>口味</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Taste</term><note from="translator">Preferences 已被“设置”占用。</note></tig></langSet>
@@ -455,7 +455,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>口味</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Taste profile</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.unseen">
+<termEntry id="nav.unseen" weblate-flags="terminology">
 <descrip>还没播放过的作品。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>没看过</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Unwatched</term><note from="translator">媒体服务器通行说法；#443 的 Not watched 多 2 个字符。</note></tig></langSet>
@@ -468,12 +468,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>没看过</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Unseen</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.watchLater">
+<termEntry id="nav.watchLater" weblate-flags="terminology">
 <descrip>用户排进“稍后看”的作品。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>稍后看</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Watch later</term><note from="translator">YouTube 通行说法。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.flagged">
+<termEntry id="nav.flagged" weblate-flags="terminology">
 <descrip>人工标记过的作品。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>已标记</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Flagged</term></tig></langSet>
@@ -482,12 +482,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>已标记</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Marked</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.playlist">
+<termEntry id="nav.playlist" weblate-flags="terminology">
 <descrip>用户整理的播放集合；“播放队列”是本次播放顺序。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>播放列表</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Playlist</term><note from="translator">播放队列译作 Queue。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.trash">
+<termEntry id="nav.trash" weblate-flags="terminology">
 <descrip>移入后可还原，清空后才真正删除。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>回收站</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Trash</term><note from="translator">跨平台通用；Recycle bin 是 Windows 专用说法。</note></tig></langSet>
@@ -496,17 +496,17 @@
 <langSet xml:lang="zh-Hans"><tig><term>回收站</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Recycle bin</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.junk">
+<termEntry id="nav.junk" weblate-flags="terminology">
 <descrip>广告、样片等不需要的文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>垃圾文件</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Junk files</term></tig></langSet>
 </termEntry>
-<termEntry id="nav.duplicates">
+<termEntry id="nav.duplicates" weblate-flags="terminology">
 <descrip>同一作品的多个文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>重复文件</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Duplicates</term><note from="translator">导航里单词就够。</note></tig></langSet>
 </termEntry>
-<termEntry id="nav.batchDelete">
+<termEntry id="nav.batchDelete" weblate-flags="terminology">
 <descrip>按条件永久删除一批作品。现在按女优，以后加按系列、按番号。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>批量删除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Bulk delete</term><note from="translator">你要求名称给以后的扩展留余地：Bulk delete 不绑定筛选维度。 按系列、按番号作为页面内筛选维度加入，入口名不变。</note></tig></langSet>
@@ -515,52 +515,52 @@
 <langSet xml:lang="zh-Hans"><tig><term>批量删除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Batch delete</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="act.save">
+<termEntry id="act.save" weblate-flags="terminology">
 <descrip>写入当前编辑。设置页主按钮统一叫“保存配置”。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>保存</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Save</term><note from="translator">“保存配置”译作 Save settings。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.cancel">
+<termEntry id="act.cancel" weblate-flags="terminology">
 <descrip>放弃当前编辑或关闭对话框，不影响后台任务。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>取消</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cancel</term><note from="translator">与“取消任务”拆成两个消息 ID。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.cancelTask">
+<termEntry id="act.cancelTask" weblate-flags="terminology">
 <descrip>让排队或运行中的任务不再继续。界面上写作“取消任务”“取消后续任务”；单独一个“取消”是对话框的退出键，归上一条。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>取消</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cancel task</term><note from="translator">按钮在任务行里有空间写全；与退出编辑的 Cancel 分开，避免同字异义。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.stop">
+<termEntry id="act.stop" weblate-flags="terminology">
 <descrip>让持续运行的服务或循环停下，如公网入口。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>停止</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Stop</term></tig></langSet>
 </termEntry>
-<termEntry id="act.pause">
+<termEntry id="act.pause" weblate-flags="terminology">
 <descrip>暂时停下，之后可以继续。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>暂停</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Pause</term></tig></langSet>
 </termEntry>
-<termEntry id="act.resume">
+<termEntry id="act.resume" weblate-flags="terminology">
 <descrip>从暂停处继续。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>继续</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Resume</term><note from="translator">Resume 与 Pause 成对；Continue 留给“继续编辑、继续看”这类普通句子。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.retry">
+<termEntry id="act.retry" weblate-flags="terminology">
 <descrip>再执行一次失败的步骤。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>重试</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Retry</term><note from="translator">按钮用 Retry；句子里写 try again。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.undo">
+<termEntry id="act.undo" weblate-flags="terminology">
 <descrip>撤销刚才的一步操作，通常在通知里。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>撤销</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Undo</term></tig></langSet>
 </termEntry>
-<termEntry id="act.restore">
+<termEntry id="act.restore" weblate-flags="terminology">
 <descrip>把回收站里的内容放回原处。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>还原</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Restore</term><note from="translator">“恢复默认”另译 Reset to default，“恢复任务”用 Resume，三者拆开。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.reset">
+<termEntry id="act.reset" weblate-flags="terminology">
 <descrip>把设置或顺序改回出厂值。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>恢复默认</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Reset</term><note from="translator">按钮写 Reset；需要说明对象时写 Reset order。</note></tig></langSet>
@@ -573,12 +573,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>恢复默认</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Restore defaults</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="act.delete">
+<termEntry id="act.delete" weblate-flags="terminology">
 <descrip>删除记录或条目；删文件必须用“永久删除”。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>删除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Delete</term></tig></langSet>
 </termEntry>
-<termEntry id="act.deletePermanently">
+<termEntry id="act.deletePermanently" weblate-flags="terminology">
 <descrip>删掉文件，不可恢复。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>永久删除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Delete permanently</term><note from="translator">危险操作按钮空间更宽（建议上限 40 字符），把后果写明。</note></tig></langSet>
@@ -587,32 +587,32 @@
 <langSet xml:lang="zh-Hans"><tig><term>永久删除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Delete forever</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="act.moveToTrash">
+<termEntry id="act.moveToTrash" weblate-flags="terminology">
 <descrip>可还原的删除。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>移入回收站</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Move to trash</term></tig></langSet>
 </termEntry>
-<termEntry id="act.remove">
+<termEntry id="act.remove" weblate-flags="terminology">
 <descrip>从列表或集合里拿掉，不删文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>移除</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Remove</term></tig></langSet>
 </termEntry>
-<termEntry id="act.cleanup">
+<termEntry id="act.cleanup" weblate-flags="terminology">
 <descrip>删掉缓存、空目录、失效条目这类可再生的东西。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>清理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Clean up</term><note from="translator">Clear 留给“清空选择”。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.empty">
+<termEntry id="act.empty" weblate-flags="terminology">
 <descrip>把一个容器里的东西全部拿掉。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>清空</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Empty</term><note from="translator">清空回收站 → Empty trash；清空选择 → Clear selection。按对象拆 ID。</note></tig></langSet>
 </termEntry>
-<termEntry id="act.selectAll">
+<termEntry id="act.selectAll" weblate-flags="terminology">
 <descrip>选中当前页全部条目。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>全选</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Select all</term></tig></langSet>
 </termEntry>
-<termEntry id="act.expand">
+<termEntry id="act.expand" weblate-flags="terminology">
 <descrip>展开一块内容；与“收起”成对，收起译作 Collapse。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>展开</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Expand</term><note from="translator">一对词：Expand / Collapse。按钮空间够时用 Show more / Show less 更口语。</note></tig></langSet>
@@ -621,32 +621,32 @@
 <langSet xml:lang="zh-Hans"><tig><term>展开</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Show more</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="state.ok">
+<termEntry id="state.ok" weblate-flags="terminology">
 <descrip>检查通过、状态没问题。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>正常</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>OK</term><note from="translator">状态徽标里 OK 最短；Normal 读起来像“普通”。</note></tig></langSet>
 </termEntry>
-<termEntry id="state.queued">
+<termEntry id="state.queued" weblate-flags="terminology">
 <descrip>已提交，还没开始。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>排队中</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Queued</term></tig></langSet>
 </termEntry>
-<termEntry id="state.running.0">
+<termEntry id="state.running.0" weblate-flags="terminology">
 <descrip>正在执行。两个中文写法英文合并。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>运行中</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Running</term><note from="translator">徽标里 Running 比 In progress 短 4 个字符。</note></tig></langSet>
 </termEntry>
-<termEntry id="state.running.1">
+<termEntry id="state.running.1" weblate-flags="terminology">
 <descrip>正在执行。两个中文写法英文合并。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>进行中</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Running</term><note from="translator">徽标里 Running 比 In progress 短 4 个字符。</note></tig></langSet>
 </termEntry>
-<termEntry id="state.paused">
+<termEntry id="state.paused" weblate-flags="terminology">
 <descrip>暂停中，可继续。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>已暂停</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Paused</term></tig></langSet>
 </termEntry>
-<termEntry id="state.done">
+<termEntry id="state.done" weblate-flags="terminology">
 <descrip>成功结束。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>已完成</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Completed</term><note from="translator">用户定 Completed：任务状态徽标统一用过去分词。</note></tig></langSet>
@@ -655,7 +655,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>已完成</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Done</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="state.canceled">
+<termEntry id="state.canceled" weblate-flags="terminology">
 <descrip>被取消，没有完成。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>已取消</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Canceled</term><note from="translator">按美式拼写规则。</note></tig></langSet>
@@ -664,12 +664,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>已取消</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cancelled</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="state.failed">
+<termEntry id="state.failed" weblate-flags="terminology">
 <descrip>执行出错。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>失败</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Failed</term></tig></langSet>
 </termEntry>
-<termEntry id="state.unavailable">
+<termEntry id="state.unavailable" weblate-flags="terminology">
 <descrip>没有拿到结果，不一定是出错，也可能来源里本来就没有。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>未取得</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Not found</term><note from="translator">Unavailable 像是“服务不可用”；这里多数是“来源里没找到”。确实是取不到时，在具体句子里写 couldn't get。</note></tig></langSet>
@@ -678,12 +678,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>未取得</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Not fetched</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="state.unknown">
+<termEntry id="state.unknown" weblate-flags="terminology">
 <descrip>值不知道。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>未知</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Unknown</term></tig></langSet>
 </termEntry>
-<termEntry id="nav.feeds">
+<termEntry id="nav.feeds" weblate-flags="terminology">
 <descrip>设置分区：关注采集与订阅拉取的参数。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>来源与订阅</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Feeds</term><note from="translator">与「关注管理」(Subscriptions) 和「来源和凭证」(Sources) 三个名字互不重复。</note></tig></langSet>
@@ -692,7 +692,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>来源与订阅</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Sources and subscriptions</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="nav.sources">
+<termEntry id="nav.sources" weblate-flags="terminology">
 <descrip>页面：采集来源、登录状态与连接检查。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>来源和凭证</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Sources</term><note from="translator">分区名用一个词；凭证在页面里由小标题承担。</note></tig></langSet>
@@ -705,7 +705,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>来源和凭证</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Sources and credentials</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.dateAdded">
+<termEntry id="concept.dateAdded" weblate-flags="terminology">
 <descrip>作品登记进馆藏的时间，用于排序和列名。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>入库时间</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Date added</term><note from="translator">媒体软件的通行写法，不绑死 Import。</note></tig></langSet>
@@ -714,7 +714,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>入库时间</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Import date</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.database">
+<termEntry id="concept.database" weblate-flags="terminology">
 <descrip>保存全部资料、观看记录与复核结论的数据库。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>账本</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Database</term><note from="translator">用户最容易懂；分区名写 Backups，句子里写 database，能不提就不提。</note></tig></langSet>
@@ -723,7 +723,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>账本</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Ledger</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.folder">
+<termEntry id="concept.folder" weblate-flags="terminology">
 <descrip>磁盘或网盘上的文件夹：媒体目录、数据目录、目标目录、缓存目录都是它。全量文案里出现约 400 次。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>目录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Directory</term><note from="translator">用户定 Directory。 「数据目录」= Data directory，「目录模板」= Directory template。</note></tig></langSet>
@@ -732,7 +732,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>目录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Folder</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.thisComputer.0">
+<termEntry id="concept.thisComputer.0" weblate-flags="terminology">
 <descrip>运行 Peach 服务的那台电脑。和它相对的是连上来的浏览器、手机，统称「设备」。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>本机</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>This device</term><note from="translator">用户定 This device。 用户定 This device。指运行 Peach 的服务器、而页面可能在手机等别的设备上打开的句子（监听范围、只读端、本机路径），中英文都改写成「运行 Peach 的电脑」/ the computer running Peach，不用「本机」。形容词位置写 local。</note></tig></langSet>
@@ -741,7 +741,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>本机</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>This computer</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.thisComputer.1">
+<termEntry id="concept.thisComputer.1" weblate-flags="terminology">
 <descrip>运行 Peach 服务的那台电脑。和它相对的是连上来的浏览器、手机，统称「设备」。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>这台电脑</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>This device</term><note from="translator">用户定 This device。 用户定 This device。指运行 Peach 的服务器、而页面可能在手机等别的设备上打开的句子（监听范围、只读端、本机路径），中英文都改写成「运行 Peach 的电脑」/ the computer running Peach，不用「本机」。形容词位置写 local。</note></tig></langSet>
@@ -750,7 +750,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>这台电脑</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>This computer</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.accessToken">
+<termEntry id="concept.accessToken" weblate-flags="terminology">
 <descrip>没设访问密码时系统生成的登录口令，也是脚本和 API 放在 X-Token 请求头里的那串值。和用户自己设的「访问密码」是两样东西。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>访问口令</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Access token</term><note from="translator">「访问密码」= Access password 没有争议；口令要和它分开，又要和 CloudDrive2 的「API 令牌」(API token) 分得清。Access token 与请求头 X-Token 对得上。 更换口令 = Rotate token。</note></tig></langSet>
@@ -763,7 +763,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>访问口令</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Passcode</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.remoteAccess">
+<termEntry id="concept.remoteAccess" weblate-flags="terminology">
 <descrip>离开局域网后访问 Peach 的入口，目前由 Cloudflare 隧道提供（临时地址或固定域名两种形态）。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>公网入口</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Remote access</term><note from="translator">草稿写 Tunnel，#443 写 Public entry point。Tunnel 是实现方式，用户要的是「在外面也能打开」；以后换实现也不用改名。Cloudflare tunnel 留在说明句里。 启动公网入口 = Start remote access。「局域网」= LAN，「公网地址」= Public URL。</note></tig></langSet>
@@ -772,7 +772,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>公网入口</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tunnel</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.primary">
+<termEntry id="concept.primary" weblate-flags="terminology">
 <descrip>多台电脑共用一份馆藏时，唯一能写账本的那台；其余是「只读端」，只能浏览。复核、关注管理、备份恢复都只能在写入端做。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>写入端</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Primary computer</term><note from="translator">#443 有四种写法（write side、writer instance、write client、writer），页面草稿里没有出现过，全在提示和后端报错里。Primary 一眼看得出主次，不需要懂「写入」是什么意思。 只读端 = read-only computer；「本机只能浏览」= This computer is read-only。</note></tig></langSet>
@@ -785,7 +785,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>写入端</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Writer</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.favorites">
+<termEntry id="concept.favorites" weblate-flags="terminology">
 <descrip>「我的收藏」：收藏的艺人、创作者、标签、系列、厂牌，以及保存的筛选。入口是星标按钮。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>收藏</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Favorites</term><note from="translator">和「喜欢」是两回事：收藏是收藏实体和筛选，喜欢是给作品的口味反馈。#443 把「取消喜欢」也写成 Unfavorite，两个混了。不用 Collection，那是「馆藏」。 保存的筛选 = Saved filters。</note></tig></langSet>
@@ -794,12 +794,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>收藏</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Starred</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.like.0">
+<termEntry id="concept.like.0" weblate-flags="terminology">
 <descrip>给作品的口味反馈，会改推荐权重。界面上「不喜欢」「不合口味」是同一个动作的两种说法。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>喜欢</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Like</term><note from="translator">用户定 Like / Dislike：一对词，Dislike 最短，放得进窄按钮。 取消喜欢 = Remove like，绝不写 Unfavorite（那是「收藏」）。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.like.1">
+<termEntry id="concept.like.1" weblate-flags="terminology">
 <descrip>给作品的口味反馈，会改推荐权重。界面上「不喜欢」「不合口味」是同一个动作的两种说法。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>不合口味</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Dislike</term><note from="translator">用户定 Like / Dislike：一对词，Dislike 最短，放得进窄按钮。 取消喜欢 = Remove like，绝不写 Unfavorite（那是「收藏」）。</note></tig></langSet>
@@ -812,12 +812,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>不合口味</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Not my taste</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.watch">
+<termEntry id="concept.watch" weblate-flags="terminology">
 <descrip>用户看过某部作品这件事：观看记录、观看次数、观看时间、已看。和「播放」(Play，播放器动作) 分开。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>观看</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Watch</term><note from="translator">草稿里「观看次数」写成 Play count、「观看时间」写成 Last watched，混用了两个词。建议：动作和播放器用 Play，记录和状态用 Watch；次数按媒体软件惯例写 Plays。 观看次数 = Plays，观看时间 = Last watched，已看 = Watched，观看记录 = Watch history。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.activity">
+<termEntry id="concept.activity" weblate-flags="terminology">
 <descrip>某部作品上属于用户自己的东西：喜欢、评分、稍后看、播放列表、观看记录。文件删了它们也会保留，可以转移给替代文件。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>个人记录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Your activity</term><note from="translator">#443 写 Personal records，读起来像档案。Your activity 说清楚这是你留下的痕迹；Personal data 太像隐私条款。</note></tig></langSet>
@@ -830,7 +830,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>个人记录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Personal data</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.cast">
+<termEntry id="concept.cast" weblate-flags="terminology">
 <descrip>一部作品里出现的人，作品详情、文件名模板与筛选都用。「演员」同义。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>出演者</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Performers</term><note from="translator">用户定 Performers：出演者就是作品里的艺人，和「艺人」(Performer) 同一批人。 「演员」同义；「人物」= People（名册里所有人的总称）。</note></tig></langSet>
@@ -839,7 +839,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>出演者</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cast</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.credit.0">
+<termEntry id="concept.credit.0" weblate-flags="terminology">
 <descrip>作品挂在哪个艺人、创作者、厂牌、系列名下。「未归属」是没有署名人的作品，有自己的入口。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>归属</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Credit</term><note from="translator">#443 写 Attribution 和 Unattributed，偏法律用语；影视资料站通用 credit。未归属 = Uncredited 也更短。 未归属 = Uncredited，归属冲突 = Credit conflicts。</note></tig></langSet>
@@ -848,7 +848,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>归属</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Attribution</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.credit.1">
+<termEntry id="concept.credit.1" weblate-flags="terminology">
 <descrip>作品挂在哪个艺人、创作者、厂牌、系列名下。「未归属」是没有署名人的作品，有自己的入口。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>署名</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Credit</term><note from="translator">#443 写 Attribution 和 Unattributed，偏法律用语；影视资料站通用 credit。未归属 = Uncredited 也更短。 未归属 = Uncredited，归属冲突 = Credit conflicts。</note></tig></langSet>
@@ -857,7 +857,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>署名</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Attribution</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.region">
+<termEntry id="concept.region" weblate-flags="terminology">
 <descrip>作品的制作地区（日本、欧美、国产等），可批量判定，判定后刮削不再改写。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>产地</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Region</term><note from="translator">#443 写 Origin，但 origin 在这里容易读成「来源」，而 Peach 的来源已经很多。Region 不会撞，也放得进筛选器。</note></tig></langSet>
@@ -870,7 +870,29 @@
 <langSet xml:lang="zh-Hans"><tig><term>产地</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Country</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.rollback.0">
+<termEntry id="concept.region.cn" weblate-flags="terminology">
+<descrip>产地之一（分区码 cn）：华语地区制作的片子，含大陆与港台厂牌。中文资源圈的固定叫法，不是「本国」。</descrip>
+<langSet xml:lang="zh-Hans"><tig><term>国产</term></tig></langSet>
+<langSet xml:lang="en"><tig><term>Chinese</term><note from="translator">产地各项都写形容词：Japanese、Korean、Chinese、Western、Other。「国产」字面是本国生产，直译成 Domestic 对非中国用户是错的；写 China 又把港台厂牌归进一个国名。以后加繁体中文时写「華語」，不要照搬「國產」，台湾读者会读成台湾本地片。</note></tig></langSet>
+</termEntry>
+<termEntry id="concept.region.cn.forbidden.0">
+<langSet xml:lang="zh-Hans"><tig><term>国产</term></tig></langSet>
+<langSet xml:lang="en"><tig><term>Domestic</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
+</termEntry>
+<termEntry id="concept.region.cn.forbidden.1">
+<langSet xml:lang="zh-Hans"><tig><term>国产</term></tig></langSet>
+<langSet xml:lang="en"><tig><term>China</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
+</termEntry>
+<termEntry id="concept.region.west" weblate-flags="terminology">
+<descrip>产地之一（分区码 west）：欧美及其他西方地区制作的片子，中文习惯上也含捷克、俄罗斯、拉美、澳洲。</descrip>
+<langSet xml:lang="zh-Hans"><tig><term>欧美</term></tig></langSet>
+<langSet xml:lang="en"><tig><term>Western</term><note from="translator">英文 JAV 与片库圈里和 JAV 对举的通用说法（JAV vs Western），覆盖范围与「欧美」一致。不写 American 或 US &amp; Europe：前者太窄，后者把拉美、澳洲排在名字之外。</note></tig></langSet>
+</termEntry>
+<termEntry id="concept.region.west.forbidden.0">
+<langSet xml:lang="zh-Hans"><tig><term>欧美</term></tig></langSet>
+<langSet xml:lang="en"><tig><term>American</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
+</termEntry>
+<termEntry id="concept.rollback.0" weblate-flags="terminology">
 <descrip>把上一批整理（改名、移动）过的文件整批退回原名和原位置。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>回滚</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Roll back</term><note from="translator">Revert 已经给了「撤回」（撤回自动写入），Undo 给了「撤销」。回滚是整批的文件操作，用 Roll back 才不会和那两个按钮撞名。</note></tig></langSet>
@@ -879,7 +901,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>回滚</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Undo batch</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.rollback.1">
+<termEntry id="concept.rollback.1" weblate-flags="terminology">
 <descrip>把上一批整理（改名、移动）过的文件整批退回原名和原位置。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>退回</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Roll back</term><note from="translator">Revert 已经给了「撤回」（撤回自动写入），Undo 给了「撤销」。回滚是整批的文件操作，用 Roll back 才不会和那两个按钮撞名。</note></tig></langSet>
@@ -888,12 +910,12 @@
 <langSet xml:lang="zh-Hans"><tig><term>退回</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Undo batch</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.scrape">
+<termEntry id="concept.scrape" weblate-flags="terminology">
 <descrip>从资料站抓作品资料（标题、演员、厂牌等）。界面上主要见于「刮削记录」导出和排查说明。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>刮削</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Scrape</term><note from="translator">草稿把「刮削记录」写成 Fetch log，和「采集」(Fetch，关注与来源的拉取) 并成一个词。媒体软件用户熟悉 scrape；分开写，排查时能看出是哪条流水线。 如果想少一个词，也可以并进 Fetch。</note></tig></langSet>
 </termEntry>
-<termEntry id="concept.register">
+<termEntry id="concept.register" weblate-flags="terminology">
 <descrip>扫描时把新文件记进馆藏，还没补资料。「登记大小」是馆藏里记下的文件大小。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>登记</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Add</term><note from="translator">入库已经是 Import。登记是扫描里的一步，用户只关心「加进来了」；Register 偏技术。登记大小单写 Recorded size。 尚未登记的新增文件 = New files not added yet。</note></tig></langSet>
@@ -906,7 +928,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>登记</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Record</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.cloudDrive">
+<termEntry id="concept.cloudDrive" weblate-flags="terminology">
 <descrip>115、PikPak 这类云存储，通常经 CloudDrive2 挂载成本地盘。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>网盘</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cloud drive</term><note from="translator">草稿里「网盘与本地」写成 Storage，和已定稿的「媒体来源」(Storage) 撞了。网盘本身固定写 Cloud drive，Storage 只留给媒体来源。 网盘与本地 = Cloud and local。</note></tig></langSet>
@@ -915,7 +937,7 @@
 <langSet xml:lang="zh-Hans"><tig><term>网盘</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cloud storage</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.fullVideo">
+<termEntry id="concept.fullVideo" weblate-flags="terminology">
 <descrip>关注条目或下载里真正的完整视频，相对于预告、预览图。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>正片</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Full video</term><note from="translator">Feature 在英文里也指「功能」，界面里很容易误读。Full video 说清楚是完整版。</note></tig></langSet>
@@ -928,52 +950,52 @@
 <langSet xml:lang="zh-Hans"><tig><term>正片</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Main video</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="concept.monitor">
+<termEntry id="concept.monitor" weblate-flags="terminology">
 <descrip>持续盯着本机文件夹，有新文件就入库。</descrip>
 <langSet xml:lang="zh-Hans"><tig><term>监视</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Monitor</term><note from="translator">草稿写 Watch local folders，但 Watch 已经是「观看」。文件夹用 Monitor，避免「watch」一词两用。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.00">
+<termEntry id="ref.00" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>访问密码</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Access password</term><note from="translator">用户自己设的登录密码。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.01">
+<termEntry id="ref.01" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>令牌</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Token</term><note from="translator">API 令牌 = API token，隧道令牌 = Tunnel token。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.02">
+<termEntry id="ref.02" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>凭据</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Credentials</term><note from="translator">来源的登录信息与 Cookie。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.03">
+<termEntry id="ref.03" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>账号</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Account</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.04">
+<termEntry id="ref.04" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>登录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Sign in</term><note from="translator">状态写 Signed in，不写 Log in / Logged in。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.05">
+<termEntry id="ref.05" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>设备</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Device</term><note from="translator">连上 Peach 的浏览器和手机。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.06">
+<termEntry id="ref.06" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>局域网</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>LAN</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.07">
+<termEntry id="ref.07" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>代理</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Proxy</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.08">
+<termEntry id="ref.08" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>托盘</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tray</term><note from="translator">Windows 托盘与 macOS 菜单栏统称 tray。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.09">
+<termEntry id="ref.09" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>挂载</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Mount</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.10">
+<termEntry id="ref.10" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>路径前缀映射</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Path mapping</term><note from="translator">映射单用 mapping。</note></tig></langSet>
 </termEntry>
@@ -981,99 +1003,99 @@
 <langSet xml:lang="zh-Hans"><tig><term>路径前缀映射</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Path prefix mapping</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="ref.11">
+<termEntry id="ref.11" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>索引器</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Indexer</term><note from="translator">Torznab 等资源索引服务。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.12">
+<termEntry id="ref.12" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>种子</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Torrent</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.13">
+<termEntry id="ref.13" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>用户脚本</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Userscript</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.14">
+<termEntry id="ref.14" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>配对</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Pair</term><note from="translator">配对信息 = Pairing info。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.15">
+<termEntry id="ref.15" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>诊断</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Diagnostics</term><note from="translator">诊断报告 = Diagnostics report。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.16">
+<termEntry id="ref.16" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>备份</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Backup</term><note from="translator">动词写 Back up。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.17">
+<termEntry id="ref.17" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>迁移</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Migration</term><note from="translator">数据库迁移 = Database migration；迁移数据目录 = Move data folder。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.18">
+<termEntry id="ref.18" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>修复</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Repair</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.19">
+<termEntry id="ref.19" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>缩略图</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Thumbnail</term><note from="translator">时间轴缩略图 = Timeline thumbnails。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.20">
+<termEntry id="ref.20" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>抽帧</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Frame extraction</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.21">
+<termEntry id="ref.21" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>图库</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Gallery</term><note from="translator">找头像用的人像图库；不写 library，那是媒体库。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.22">
+<termEntry id="ref.22" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>光晕</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Glow</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.23">
+<termEntry id="ref.23" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>别名</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Alias</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.24">
+<termEntry id="ref.24" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>人物</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>People</term><note from="translator">名册里所有人的总称。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.25">
+<termEntry id="ref.25" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>档案</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Profile</term><note from="translator">女优档案 = Actress profile。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.26">
+<termEntry id="ref.26" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>身份</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Identity</term><note from="translator">身份核对 = Identity check。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.27">
+<termEntry id="ref.27" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>发行</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Release</term><note from="translator">发行日期 = Release date，发行年份 = Release year。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.28">
+<termEntry id="ref.28" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>合集</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Compilation</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.29">
+<termEntry id="ref.29" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>评分</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Rating</term><note from="translator">来源评分 = Site rating。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.30">
+<termEntry id="ref.30" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>评论</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Comments</term><note from="translator">不写 Reviews，Review 已经是「复核」。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.31">
+<termEntry id="ref.31" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>字幕</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Subtitles</term><note from="translator">中字 = Chinese subs。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.32">
+<termEntry id="ref.32" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>无码</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Uncensored</term><note from="translator">有码 = Censored。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.33">
+<termEntry id="ref.33" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>推荐</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Recommendations</term><note from="translator">按钮或标记写 Recommended。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.34">
+<termEntry id="ref.34" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>浏览记录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Browsing history</term></tig></langSet>
 </termEntry>
@@ -1081,67 +1103,67 @@
 <langSet xml:lang="zh-Hans"><tig><term>浏览记录</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Browsing data</term><termNote type="administrativeStatus">forbidden</termNote></tig></langSet>
 </termEntry>
-<termEntry id="ref.35">
+<termEntry id="ref.35" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>播放</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Play</term><note from="translator">名词写 Playback；分区名「浏览与播放」也是 Playback。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.36">
+<termEntry id="ref.36" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>官网</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Official site</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.37">
+<termEntry id="ref.37" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>站点</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Site</term><note from="translator">资料站 = Metadata sites。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.38">
+<termEntry id="ref.38" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>识别</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Recognize</term><note from="translator">未识别 = Unrecognized。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.39.0">
+<termEntry id="ref.39.0" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>新手教程</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tour</term><note from="translator">新手教程 = Guided tour，界面导览 = Interface tour。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.39.1">
+<termEntry id="ref.39.1" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>导览</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Tour</term><note from="translator">新手教程 = Guided tour，界面导览 = Interface tour。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.40">
+<termEntry id="ref.40" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>合并</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Merge</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.41">
+<termEntry id="ref.41" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>模板</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Template</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.42">
+<termEntry id="ref.42" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>规则</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Rule</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.43">
+<termEntry id="ref.43" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>类型</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Type</term><note from="translator">不写 Kind。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.44">
+<termEntry id="ref.44" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>画质</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Quality</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.45">
+<termEntry id="ref.45" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>标题</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Title</term><note from="translator">片名同义。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.46">
+<termEntry id="ref.46" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>冷却中</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Cooling down</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.47">
+<termEntry id="ref.47" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>配额</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Quota</term></tig></langSet>
 </termEntry>
-<termEntry id="ref.48">
+<termEntry id="ref.48" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>流量</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Data usage</term><note from="translator">流量保护 = Data saver，预计流量 = Estimated data usage。</note></tig></langSet>
 </termEntry>
-<termEntry id="ref.49">
+<termEntry id="ref.49" weblate-flags="terminology">
 <langSet xml:lang="zh-Hans"><tig><term>镜像</term></tig></langSet>
 <langSet xml:lang="en"><tig><term>Mirror</term><note from="translator">只指镜像站；安装镜像、Docker 镜像是另一个词，实施时拆消息 ID。</note></tig></langSet>
 </termEntry>

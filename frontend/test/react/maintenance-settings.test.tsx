@@ -1,4 +1,5 @@
 import { act } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as legacyUi from '@peach/legacy/ui';
 
@@ -17,7 +18,16 @@ const release: ReleaseState = {
 };
 const uninstall = { available: true, full_available: true, message: '', data_root: 'fixture', directories: ['fixture', 'fixture/cache'] };
 
-it('分区依次是运行信息、新手教程、卸载；缺依赖的运行信息带下载链接', async () => {
+function mountMaintenance(data: ConfigurationData, receipt = vi.fn(), otherRequest = fetchMock(503, {})) {
+  const seedState = fetchMock(200, { enabled: false, available: false, schema: 1, last_attempt: {} });
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+    (url === '/api/configuration/seed-sharing' ? seedState : otherRequest)(url, init));
+  return mount(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <MaintenanceSettings data={data} receipt={receipt} reopenTutorial={vi.fn()} />
+  </QueryClientProvider>);
+}
+
+it('公共资料贡献在运行信息之前，卸载在末尾；缺依赖的运行信息带下载链接', async () => {
   const data: ConfigurationData = {
     editable: true, notice: '', revision: 'r', media_dirs: [], library_count: 0, port: 9123,
     automatic_updates: automatic, updates: release, uninstall,
@@ -26,9 +36,9 @@ it('分区依次是运行信息、新手教程、卸载；缺依赖的运行信�
       { term: 'FFmpeg', value: '未找到 FFmpeg', download_url: 'https://ffmpeg.org/download.html', download_label: '下载 FFmpeg' },
     ],
   };
-  const host = await mount(<MaintenanceSettings data={data} receipt={vi.fn()} reopenTutorial={vi.fn()} />);
+  const host = await mountMaintenance(data);
   expect([...host.firstElementChild!.children].map((node) => node.getAttribute('aria-label')))
-    .toEqual(['运行信息', '新手教程', '卸载 Peach']);
+    .toEqual(['公共资料贡献', '运行信息', '新手教程', '卸载 Peach']);
   const facts = section(host, '运行信息')!;
   expect([...facts.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['版本', 'FFmpeg']);
   const link = facts.querySelector('a[href="https://ffmpeg.org/download.html"]');
@@ -42,9 +52,8 @@ it('能装的缺失工具给「安装」，装完用服务端回的运行信息�
     facts: [{ term: 'untrunc', value: '未安装；缺索引的 MP4 需要它才修得了。', install_tool: 'untrunc' }],
   };
   const fetcher = fetchMock(200, { message: '已安装 untrunc（9d86ec9）', facts: [{ term: 'untrunc', value: '已安装，版本 9d86ec9' }] });
-  vi.stubGlobal('fetch', fetcher);
   const receipt = vi.fn();
-  const host = await mount(<MaintenanceSettings data={data} receipt={receipt} reopenTutorial={vi.fn()} />);
+  const host = await mountMaintenance(data, receipt, fetcher);
   const facts = section(host, '运行信息')!;
   expect(facts.querySelector('a[target="_blank"]')).toBeNull();
   await click(buttonNamed('安装', facts));
@@ -78,6 +87,16 @@ describe('自动更新', () => {
     expect(receipt).toHaveBeenCalledTimes(2);
   });
 
+  it('自动检查关着时检查频率也禁用，打开后才能选', async () => {
+    vi.stubGlobal('fetch', fetchMock(200, automatic));
+    const host = await mount(<AutomaticUpdates initial={automatic} receipt={vi.fn()} />);
+    const frequency = () => host.querySelector<HTMLButtonElement>('[aria-haspopup="listbox"]')!;
+    const disabled = () => frequency().disabled || frequency().hasAttribute('data-disabled');
+    expect(disabled()).toBe(true);
+    await click(switches(host)[0]);
+    expect(disabled()).toBe(false);
+  });
+
   it('源码运行锁住自动下载，检查频率那一行不带说明，失败原因留在分区里且不报成功', async () => {
     vi.stubGlobal('fetch', fetchMock(400, { detail: '设置正在保存' }));
     const receipt = vi.fn();
@@ -103,6 +122,27 @@ describe('检查更新', () => {
     expect(host.textContent).toContain('工具缺失、损坏或版本变化时会另行下载所需工具包');
     expect(host.textContent).not.toContain('首次安装');
     expect([...host.querySelectorAll('a')].some((a) => a.textContent === '完整安装包')).toBe(false);
+  });
+
+  it('下载内容只在安装包有新版时出现：源码、容器和已是最新都不列', async () => {
+    const withPackage = { ...release, latest_version: '1.0.0', package_kind: 'update', asset_size: 12 * 1048576 } as const;
+    for (const initial of [
+      { ...withPackage, state: 'current', latest_version: '0.9.0' },
+      { ...withPackage, state: 'available', installation_code: 'source' },
+      { ...withPackage, state: 'available', installation_code: 'docker' },
+    ]) {
+      const host = await mount(<ReleaseUpdates initial={initial as ReleaseState} />);
+      expect(host.textContent).not.toContain('应用更新包');
+      expect(host.textContent).not.toContain('另行下载所需工具包');
+    }
+  });
+
+  it('下载内容的说明和其他说明一样放在带留白的段落里，不贴着上一行', async () => {
+    const host = await mount(<ReleaseUpdates initial={{ ...release, state: 'available', latest_version: '1.0.0',
+      package_kind: 'update', asset_size: 12 * 1048576 }} />);
+    const help = [...host.querySelectorAll('p')].find((p) => p.textContent?.includes('另行下载所需工具包'));
+    expect(help?.parentElement?.tagName).toBe('DIV');
+    expect(help?.parentElement?.className).toContain('py-4');
   });
 
   it('尚未检查的状态只显示一次，最新版本保持未取得', async () => {

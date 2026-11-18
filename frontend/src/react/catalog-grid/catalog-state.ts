@@ -10,6 +10,8 @@ export interface CatalogPreferences {
   defaultSort: string;
   defaultSortDirection?: string;
   pageSorts?: Readonly<Record<string, PageSort | undefined>>;
+  /** 首页默认只显示有预览图的作品（#196）；地址上的 `thumb` 优先。 */
+  homePreviewOnly?: boolean;
 }
 
 export interface CatalogAddress { pathname: string; search: string }
@@ -34,6 +36,9 @@ export function catalogSort(address: CatalogAddress, preferences: CatalogPrefere
   return pageSortPreference(preferences, catalogSortPage(address.pathname, address.search));
 }
 
+/** 没有地址参数时 `thumb` 取哪一档：设置里打开了「首页只显示有预览图」就是 `1`。 */
+const previewDefault = (preferences: CatalogPreferences) => (preferences.homePreviewOnly ? '1' : '0');
+
 export function resolveSort(rawSort: string | null, rawDir: string | null,
   preferences: CatalogPreferences, fallback?: string, page: SortPage = 'home'): { sort: string; dir: string } {
   const preferred = pageSortPreference(preferences, page);
@@ -55,7 +60,7 @@ export function initialCatalogFilters(address: CatalogAddress, preferences: Cata
     dur_min: read('dur_min') || '', dur_max: read('dur_max') || '', orient: orientParam(read('orient')),
     region: read('region') || '', year: read('year') || '', state: ROUTE_STATES[pathname] || read('state') || '',
     ...sortFromAddress(read('sort'), read('dir'), preferred.sort, preferred.dir), seed: read('seed') || seed(),
-    q: read('q') || '', jav: read('jav') || '', thumb: read('thumb') || '0',
+    q: read('q') || '', jav: read('jav') || '', thumb: read('thumb') || previewDefault(preferences),
     browse: read('browse') === 'folders' || read('folder') ? 'folders' : '',
     folder: read('folder') || '', folder_recursive: read('folder_recursive') === '0' ? '0' : '',
   };
@@ -84,7 +89,7 @@ export function homePath(filters: Readonly<CatalogFilters>): string {
   return path + (params.size ? `?${params}` : '');
 }
 
-/** 回首页保留来源范围，其余口径使用浏览偏好与新种子。 */
+/** 回首页保留来源范围，其余口径使用浏览偏好与新种子；「只显示有预览图」按设置重新生效。 */
 export function resetCatalogFilters(previous: Readonly<CatalogFilters>, preferences: CatalogPreferences,
   seed: () => string): CatalogState {
   const preferred = pageSortPreference(preferences, 'home');
@@ -93,7 +98,7 @@ export function resetCatalogFilters(previous: Readonly<CatalogFilters>, preferen
     len: '', dur_min: '', dur_max: '', orient: '', region: '', year: '', state: '',
     sort: preferred.sort,
     dir: preferred.dir,
-    seed: seed(), q: '', jav: '', thumb: '0',
+    seed: seed(), q: '', jav: '', thumb: previewDefault(preferences),
     browse: '', folder: '', folder_recursive: '',
   };
 }
@@ -103,4 +108,14 @@ export function homeCatalogState<T extends CatalogFilters>(state: T): {
   state: T; barsContext: BarsContext; detailReturnBarsContext: null;
 } {
   return { state, barsContext: { type: 'home', filters: state }, detailReturnBarsContext: null };
+}
+
+/** 首页的竖屏放哪儿。`homeDefault` 是首页默认列表（没有搜索、没有显式筛画幅），那里竖屏由独立的竖屏带承接、
+ *  主网格排除竖屏；`stripAllowed` 是这一屏能插竖屏带。设置里把竖屏带关掉（`shortsLimit` 为 0）时两样一起撤：
+ *  不插带子，竖屏回到主网格里。JAV 模式（`javOnly`）恒不含竖屏，不看这个开关。 */
+export function verticalRouting({ homeDefault, javOnly, stripAllowed, shortsLimit }: {
+  homeDefault: boolean; javOnly: boolean; stripAllowed: boolean; shortsLimit: number;
+}): { excludeVertical: boolean; shorts: boolean; shortsLimit: number } {
+  const strip = shortsLimit > 0;
+  return { excludeVertical: (homeDefault && strip) || javOnly, shorts: stripAllowed && strip, shortsLimit };
 }

@@ -130,9 +130,10 @@ const ROUTES: readonly Route[] = [
     body: (page) => [heading(page, '#main', '垃圾文件'), heading(page, '#grid', '没有待判断的垃圾文件')],
   },
   {
-    // 骨架只写「正在比对重复内容」；汇总块上那一格「重复内容」有没有重复组都会画，只有真页面有。
+    // 骨架的读数格只有「重复内容 · 」加一条微光；读数里写出组数的那一版有没有重复组都会画，只有真页面有。
     path: '/duplicates',
-    body: (page) => [heading(page, '#main', '重复文件'), page.locator('#stats').getByText('重复内容', { exact: true })],
+    body: (page) => [heading(page, '#main', '重复文件'),
+      page.locator('#stats [data-duplicates-frame] [data-catalog-readout]', { hasText: /^重复内容 · \d+ 组/ })],
   },
   {
     // 旧直达地址进入资源同步二级页。
@@ -159,7 +160,7 @@ const ROUTES: readonly Route[] = [
     body: (page: Page) => [page.getByRole('dialog', { name: /外观与导航|浏览与播放|JAV 与新作|搜索与推荐|内容显示/ })] })),
   ...['subscriptions', 'downloads', 'network', 'maintenance'].map(section => ({ path: `/settings/${section}`, body: configurationBody })),
   { path: '/settings/maintenance/repairs', body: page => [pageTitle(page, '修复与迁移'), page.locator('#main [data-manage-crumb] a[href="/settings/maintenance"]'),
-    page.locator('#stats section[aria-labelledby="repair-items"]')] },
+    page.locator('#stats section[aria-labelledby="repair-items"], #stats section[aria-labelledby^="repair-group-"]').first()] },
   {
     path: `/assets/${requiredEnv('PEACH_E2E_ITEM')}`,
     body: (page) => {
@@ -381,7 +382,7 @@ describe('路由冒烟', () => {
       const beforeReturn = served;
       await go('/');
       await expectBody(opened.page, '/', [feedCards.first()]);
-      assert.equal(served, beforeReturn, '返回首页沿用新作缓存');
+      assert.equal(served, beforeReturn + 1, '返回首页读取最新新作');
       await go('/junk-files');
       await opened.page.locator('#count [data-junk-filters]').waitFor();
       assert.equal(await opened.page.locator('#feedNew').isHidden(), true, '垃圾文件页不展示订阅新作');

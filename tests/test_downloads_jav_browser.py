@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from peach import downloads as dl
+from peach import downloads as dl, interface_text
 from peach.api import create_app
 from peach.config import PROJECT_ROOT, PeachSettings
 from peach.jav_browser import (
@@ -38,10 +38,9 @@ class BrowserTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
-        self.app = create_app(PeachSettings(
-            db_path=fresh_ledger(self.root), configured=True, token="admin-secret",
-            follow_state_root=self.root / "state", secrets_root=self.root / "secrets"))
-        self.addCleanup(self.app.state.http_transport.close)
+        self.db_path = fresh_ledger(self.root)
+        self.queue = self.root / "state" / "jav-browser-queue.json"
+        self.app = self.start_app()
         self.service = self.app.state.jav_browser
         self.downloads = self.app.state.downloads
         self.remote = Mock()
@@ -53,13 +52,21 @@ class BrowserTests(unittest.TestCase):
         self.downloads.credentials.save(dl.CLOUDDRIVE_CREDENTIAL, {"token": "cloud-secret"})
         self.service.search = Mock(return_value={"items": [{"name": "ABC-123 1080p", "uri": MAGNET}]})
         # 通常版页面的特典版探测会问 DMM；用例里一律答没有，需要时单独替换。
-        self.service.edition_probe = Mock(return_value=False)
+        self.service.edition_probe = Mock(return_value=False, **{"whole.return_value": ""})
         self.client = TestClient(self.app, client=("127.0.0.1", 12345))
         self.headers = {"X-Token": "admin-secret"}
         response = self.configure("enable")
         self.assertEqual(response.status_code, 200, response.text)
         self.token = response.json()["token"]
         self.script_headers = {"Authorization": "Bearer " + self.token, "Origin": "https://missav.ws"}
+
+    def start_app(self):
+        """按同一份数据根起一个服务，重启用例用它模拟换版本后的再次启动。"""
+        app = create_app(PeachSettings(
+            db_path=self.db_path, configured=True, token="admin-secret",
+            follow_state_root=self.root / "state", secrets_root=self.root / "secrets"))
+        self.addCleanup(app.state.http_transport.close)
+        return app
 
     def configure(self, action, provider="115", **extra):
         return self.client.post("/api/configuration/jav-browser", headers=self.headers,
@@ -88,6 +95,33 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(restored.process_one())
         self.assertEqual(restored.status('ABC-123')['state'], 'submitted')
         self.remote.submit.assert_called_once()
+
+    def test_idle_queue_sleeps_until_the_next_retry_and_wakes_on_download_failures(self):
+        """空闲时不再每 30 秒看一次：睡到最近的重试时间，下载任务失败时由下载服务叫醒。"""
+        now = [1_800_000_000.0]
+        self.downloads.clock = lambda: now[0]
+        self.assertIsNone(self.service.idle_wait(), "空队列只等加入叫醒")
+        self.service.search.return_value = {'state': 'error', 'items': [], 'error': '请求超时', 'retry_after': 120.0}
+        self.add()
+        self.service.process_one()
+        self.assertFalse(self.service.process_one())
+        self.assertEqual(self.service.idle_wait(), 120.0)
+        now[0] += 60
+        self.assertEqual(self.service.idle_wait(), 60.0)
+        now[0] += 60
+        self.service.search.return_value = {'items': [{'name': 'ABC-123 1080p', 'uri': MAGNET}]}
+        self.assertTrue(self.service.process_one())
+        self.assertFalse(self.service.process_one())
+        self.assertIsNone(self.service.idle_wait(), "已提交的番号由下载服务负责，不定时扫")
+        task = self.downloads.store.get(self.service.rows['ABC-123']['task_id'])
+        self.service._wake.clear()
+        task.state = dl.FAILED
+        self.downloads.store.save(task)
+        self.assertTrue(self.service._wake.is_set(), "下载任务失败要叫醒入库线程")
+        self.assertEqual(self.service.idle_wait(), 60.0, "到下一次清扫")
+        now[0] += 60
+        self.assertFalse(self.service.process_one())
+        self.assertIsNone(self.service.idle_wait(), "清扫过后回到只等通知")
 
     def test_permanent_search_failure_is_not_automatically_requeued(self):
         self.service.search.return_value = {'state': 'unavailable', 'items': [], 'error': '需要配置索引器'}
@@ -328,6 +362,81 @@ class BrowserTests(unittest.TestCase):
         restored = JavBrowser(self.app.state.web_contract, search=self.service.search)
         self.assertEqual(restored.status("ABC-123")["state"], "queued")
 
+    def queue_backups(self):
+        return sorted(self.queue.parent.glob("jav-browser-queue.corrupt-*.json"))
+
+    def write_queue(self, payload):
+        for backup in self.queue_backups():
+            backup.unlink()
+        self.queue.write_text(json.dumps(payload), encoding="utf-8")
+
+    def restore_queue(self):
+        return JavBrowser(self.app.state.web_contract, search=self.service.search)
+
+    def test_unreadable_queue_file_is_set_aside_and_the_service_still_starts(self):
+        for raw in (b'{"ABC-123": {"state": ', b'["ABC-123"]', b'\xff\xfe{}'):
+            with self.subTest(raw=raw):
+                for backup in self.queue_backups():
+                    backup.unlink()
+                self.queue.write_bytes(raw)
+                with self.assertLogs("peach.jav_browser", level="WARNING") as logs:
+                    app = self.start_app()
+                self.assertEqual(app.state.jav_browser.rows, {})
+                [backup] = self.queue_backups()
+                self.assertEqual(backup.read_bytes(), raw)
+                self.assertFalse(self.queue.exists())
+                self.assertIn(backup.name, "\n".join(logs.output))
+
+    def test_invalid_queue_rows_are_dropped_and_the_rest_kept(self):
+        valid = {"state": "queued", "provider": "115", "source_url": PAGE}
+        cases = {
+            "未知状态": {"ABP-616": {**valid, "state": "paused"}},
+            "键不是番号": {"not a code": valid},
+            "重试次数无效": {"ABP-616": {**valid, "retry_attempt": 99}},
+            "重试时间无效": {"ABP-616": {**valid, "retry_at": "tomorrow"}},
+            "缺少下载渠道": {"ABP-616": {"state": "queued", "source_url": PAGE}},
+            "不是对象": {"ABP-616": "queued"},
+        }
+        for label, bad in cases.items():
+            with self.subTest(label):
+                self.write_queue({"ABC-123": valid, **bad})
+                with self.assertLogs("peach.jav_browser", level="WARNING") as logs:
+                    restored = self.restore_queue()
+                self.assertEqual(restored.rows, {"ABC-123": valid})
+                [backup] = self.queue_backups()
+                self.assertEqual(json.loads(backup.read_text(encoding="utf-8")), {"ABC-123": valid, **bad})
+                self.assertIn("dropped 1 ", logs.output[0])
+                self.assertIn(backup.name, logs.output[0])
+                # 保留的行已经写回，下一次启动不再告警，也不再留底。
+                self.assertEqual(json.loads(self.queue.read_text(encoding="utf-8")), {"ABC-123": valid})
+                with self.assertNoLogs("peach.jav_browser", level="WARNING"):
+                    self.restore_queue()
+                self.assertEqual(len(self.queue_backups()), 1)
+
+    def test_unknown_fields_are_kept_and_old_code_spellings_move_to_the_current_key(self):
+        valid = {"state": "queued", "provider": "115", "source_url": PAGE}
+        self.write_queue({"abp-616": {**valid, "added_by_a_newer_version": 1}, "HEYZO-123": valid,
+                          "ABC-123": {**valid, "retry_attempt": 1, "retry_at": "2026-01-01T00:00:00+00:00"}})
+        with self.assertNoLogs("peach.jav_browser", level="WARNING"):
+            restored = self.restore_queue()
+        self.assertEqual(list(restored.rows), ["ABP-616", "HEYZO-0123", "ABC-123"])
+        self.assertEqual(restored.rows["ABP-616"]["added_by_a_newer_version"], 1)
+        self.assertEqual(self.queue_backups(), [])
+
+    def test_overlong_queue_drops_rows_recorded_elsewhere_before_other_ended_and_pending_ones(self):
+        valid = {"state": "queued", "provider": "115", "source_url": PAGE}
+        no_match = {f"ABC-{number}": {**valid, "state": "no_match"} for number in range(1000, 1900)}
+        submitted = {f"ABD-{number}": {**valid, "state": "submitted"} for number in range(100, 200)}
+        pending = {f"ABP-{number}": valid for number in range(100, 151)}
+        self.write_queue({**submitted, **no_match, **pending})
+        with self.assertLogs("peach.jav_browser", level="WARNING") as logs:
+            restored = self.restore_queue()
+        self.assertEqual(len(restored.rows), 1000)
+        self.assertNotIn("ABD-100", restored.rows)
+        self.assertTrue(set(no_match) | set(pending) <= set(restored.rows))
+        self.assertEqual(len(self.queue_backups()), 1)
+        self.assertIn("dropped 51 ", logs.output[0])
+
     def test_owned_video_is_not_queued_or_searched(self):
         with self.app.state.web_contract.database.write_transaction() as connection:
             connection.execute("INSERT INTO asset(path,name,location,medium,code) VALUES(?,?,?,?,?)",
@@ -391,7 +500,7 @@ class BrowserTests(unittest.TestCase):
             response = self.client.get("/api/jav-browser/identify", params={"source_url": source}, headers=self.script_headers)
             self.assertEqual(response.status_code, 200, response.text)
             return response.json()
-        self.service.edition_probe = Mock(side_effect=lambda cid: cid == "1sdjs00304")
+        self.service.edition_probe = Mock(side_effect=lambda cid: cid == "1sdjs00304", **{"whole.return_value": ""})
         self.assertEqual(identify("https://video.dmm.co.jp/av/content/?id=1sdjs00304v")["edition"], "bonus")
         self.assertEqual(identify("https://clip.fanza.jp/moment?id=img-sdjs00304v-001")["edition"], "bonus")
         self.assertEqual(identify("https://video.dmm.co.jp/av/content/?id=1sdjs00304")["edition"], "regular")
@@ -399,6 +508,36 @@ class BrowserTests(unittest.TestCase):
         self.assertNotIn("edition", identify("https://www.mgstage.com/product/product_detail/300MIUM-1239/"))
         # 特典版页面看商品号就够，只有通常版 DMM 页面才问。
         self.assertEqual([call.args[0] for call in self.service.edition_probe.call_args_list], ["1sdjs00304", "ssis00519"])
+
+    def test_a_part_product_counts_as_the_whole_release_only_when_dmm_sells_the_whole(self):
+        """`sora00613a` 是整片 `sora00613` 的分段；`1dandy00851c` 没有整片，尾字母是另一部作品。"""
+        probe = EditionProbe(self.root, clock=lambda: 0.0)
+        asked = []
+        probe._ask = lambda cid: asked.append(cid) or cid == "sora00613"
+        self.assertEqual(probe.whole("sora00613a"), "sora00613")
+        self.assertEqual(probe.whole("sora00613b"), "sora00613")
+        self.assertEqual(probe.whole("1dandy00851c"), "")
+        self.assertEqual(probe.whole("1sdjs00304v"), "", "特典版另有规则")
+        self.assertEqual(probe.whole("ssis00519"), "", "没有尾字母的不问")
+        self.assertEqual(asked, ["sora00613", "1dandy00851"])
+        self.service.edition_probe = probe
+
+        def identify(source):
+            response = self.client.get("/api/jav-browser/identify", params={"source_url": source}, headers=self.script_headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            return response.json()["code"]
+        self.assertEqual(identify("https://video.dmm.co.jp/av/content/?id=sora00613a"), "SORA-613")
+        self.assertEqual(identify("https://video.dmm.co.jp/av/content/?id=1dandy00851c"), "DANDY-851C")
+        # 之前按分段番号失败的那一行，重试时按整片添加并由整片接替；搜索用整片番号。
+        self.service.rows["SORA-613A"] = {"state": "failed", "provider": "115", "source_url": "", "message": "x"}
+        response = self.add("SORA-613A", source_url="https://video.dmm.co.jp/av/content/?id=sora00613a")
+        self.assertEqual((response.status_code, response.json()["code"]), (200, "SORA-613"))
+        self.assertNotIn("SORA-613A", self.service.rows)
+        self.service.search.return_value = {"items": [{"name": "SORA-613 1080p", "uri": MAGNET}]}
+        self.service.process_one()
+        self.service.search.assert_called_once_with(self.app.state.web_contract, {
+            "code": "SORA-613", "goal": "quality", "min_resolution": 0, "edition_keywords": []})
+        self.assertEqual(self.service.rows["SORA-613"]["state"], "submitted")
 
     def test_edition_probe_asks_each_product_once_and_pauses_after_a_failure(self):
         clock = [0.0]
@@ -418,6 +557,16 @@ class BrowserTests(unittest.TestCase):
         clock[0] += 601
         self.assertFalse(probe("ssis00519"))
         self.assertEqual(asked, ["1sdjs00304v", "broken00001v", "ssis00519v"])
+
+    def test_verified_javbus_pages_match_forum_names_and_edition_suffixes(self):
+        for name in ('第一會所新片@SIS001@546EXM-001', '546EXM-001J', 'EXM-001-UNCENSORED-LEAK'):
+            item = {'name': name, 'uri': 'magnet:?xt=urn:btih:' + 'a' * 40,
+                    'source': 'JavBus', 'source_url': 'https://www.javbus.com/EXM-001'}
+            with self.subTest(name=name):
+                self.assertIs(_download_candidate([item], 'EXM-001'), item)
+        item = {**item, 'name': '546EXM-001J'}
+        self.assertIsNone(_download_candidate([{**item, 'source_url': 'https://www.javbus.com/EXM-002'}], 'EXM-001'))
+        self.assertIsNone(_download_candidate([{**item, 'source_url': 'https://example.test/EXM-001'}], 'EXM-001'))
 
     def test_no_match_requires_an_explicit_retry(self):
         self.service.search.return_value = {"items": []}
@@ -440,6 +589,10 @@ class BrowserTests(unittest.TestCase):
         self.add()
         self.service.process_one()
         self.assertEqual(self.wants(), [("ABC-123", "code", "wanted")])
+        # 这次没搜到记作一次查找，想要的定时查找从这里起算间隔。
+        with self.service.contract.database.read_connection() as connection:
+            self.assertEqual(tuple(connection.execute(
+                "SELECT last_search_outcome, last_search_at IS NOT NULL FROM want_item").fetchone()), ("none", 1))
         self.assertEqual(self.status().json()["want"], {"phase": "searching"})
         self.assertTrue(self.client.get("/api/configuration/jav-browser", headers=self.headers).json()["want_on_no_match"])
         # 关掉之后没搜到的只留在队列里；重试同一个番号也不会补登记。
@@ -450,6 +603,59 @@ class BrowserTests(unittest.TestCase):
         self.service.process_one()
         self.assertEqual(self.service.rows["ABP-616"]["state"], "no_match")
         self.assertEqual(self.wants(), [("ABC-123", "code", "wanted")])
+
+    def browsing_rows(self):
+        import sqlite3
+        from contextlib import closing
+        path = self.service.browsing.path
+        if not path.is_file():
+            return []
+        with closing(sqlite3.connect(path)) as db:
+            return [(kind, subject, site, json.loads(names)) for kind, subject, site, names in
+                    db.execute("SELECT kind,subject,site,names FROM browse_visit ORDER BY id")]
+
+    def test_userscript_browsing_is_recorded_only_when_the_script_asks(self):
+        from datetime import UTC, datetime, timedelta
+        from peach.entities import upsert_asset_entity
+        self.service.contract.taste_history_store = self.root / "taste" / "history.sqlite"
+        with self.service.contract.database.write_transaction() as connection:
+            asset_id = connection.execute('INSERT INTO asset(path,name,location,medium,code) VALUES(?,?,?,?,?)',
+                                          ('R:\\Media\\ABC-123.mp4', 'ABC-123.mp4', 'local', 'video', 'ABC-123')).lastrowid
+            person = upsert_asset_entity(connection, asset_id=asset_id, kind='performer', name='测试演员',
+                                         role='performer', source='user:test')
+        now = [datetime(2026, 11, 15, 1, 0, tzinfo=UTC)]
+        self.service.browsing.clock = lambda: now[0]
+        query = lambda code, **extra: self.client.get("/api/jav-browser", params={"code": code, **extra},
+                                                      headers=self.script_headers)
+        # 列表面板与旧版用户脚本不带 record，回答照旧，什么也不记。
+        self.assertEqual(query("ABC-123").status_code, 200)
+        self.assertEqual(self.browsing_rows(), [])
+        # 刷新与追踪进度的轮询在 30 分钟里只算一次；名字取自本机认得的出演者。
+        self.assertEqual(query("ABC-123", record=1).json()["code"], "ABC-123")
+        query("ABC-123", record=1)
+        self.assertEqual(self.browsing_rows(), [("work", "ABC-123", "", ["测试演员"])])
+        now[0] += timedelta(minutes=31)
+        query("ABC-123", record=1)
+        self.assertEqual(len(self.browsing_rows()), 2)
+        query("SSIS-001", record=1)
+        self.assertEqual(self.browsing_rows()[-1], ("work", "SSIS-001", "", []))
+        identified = self.client.get("/api/jav-browser/identify", headers=self.script_headers,
+                                     params={"source_url": "https://video.dmm.co.jp/av/content/?id=abp00001", "record": 1})
+        self.assertEqual(identified.status_code, 200, identified.text)
+        self.assertEqual(self.browsing_rows()[-1][:3], ("work", "ABP-001", "video.dmm.co.jp"))
+        page = "https://javdb.com/actors/AbCd1"
+        response = self.client.get("/api/jav-browser/performer", headers=self.script_headers,
+                                   params={"source_url": page, "names": ["测试演员"], "record": 1})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.browsing_rows()[-1], ("performer", page, "javdb.com", ["测试演员"]))
+        # 只读汇总：按番号、按女优各档由弱到强。
+        signals = self.client.get("/api/taste/signals", params={"code": "abc-123"}, headers=self.headers).json()
+        self.assertEqual([level["level"] for level in signals["levels"]], ["browse", "download", "want", "follow", "watch"])
+        self.assertEqual(signals["levels"][0]["count"], 2)
+        self.assertEqual(signals["levels"][4]["assets"], 1)
+        browse = self.client.get("/api/taste/signals", params={"performer": person}, headers=self.headers).json()["levels"][0]
+        self.assertEqual((browse["count"], browse["works"], browse["pages"]), (3, 1, 1))
+        self.assertEqual(self.client.get("/api/taste/signals", params={"performer": "x"}, headers=self.headers).status_code, 400)
 
     def test_a_failed_search_is_not_added_to_wants(self):
         self.service.search.return_value = {"state": "unavailable", "items": [], "error": "需要配置索引器"}
@@ -487,6 +693,46 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(self.wants(), [])
         now[0] += 3600
         self.assertFalse(self.service.process_one())
+
+    def test_a_long_source_pause_settles_on_the_other_sources_and_rechecks_after_it_recovers(self):
+        """来源要停一小时以上时不干等：按其余来源记无资源、加入想要，来源恢复后再查一次。"""
+        now = [1_800_000_000.0]
+        self.downloads.clock = lambda: now[0]
+        self.service.search.return_value = {
+            "ok": True, "state": "ready", "items": [], "error": "", "warnings": ["JavDB：未取得"],
+            "unfetched_sources": ["JavDB"], "retry_after": 6 * 3600.0}
+        self.add()
+        self.service.process_one()
+        status = self.status().json()
+        self.assertEqual((status["state"], status["message"]),
+                         ("no_match", "其余来源没找到；JavDB 暂时访问不了，恢复后自动补查"))
+        self.assertNotIn("retry_at", status)
+        self.assertEqual(self.wants(), [("ABC-123", "code", "wanted")])
+        with self.service.contract.database.read_connection() as connection:
+            self.assertEqual(tuple(connection.execute(
+                "SELECT last_search_outcome, search_count FROM want_item").fetchone()), ("error", 0))
+        # 来源恢复前清扫不重查，不去撞其余来源。
+        now[0] += 3 * 3600
+        self.assertFalse(self.service.process_one())
+        self.assertEqual(self.service.search.call_count, 1)
+        self.assertGreater(self.service.idle_wait(), 0)
+        # 恢复之后重查一次，这次来源都答了就按普通无资源收尾。
+        now[0] += 3 * 3600 + 60
+        self.service.search.return_value = {"items": []}
+        self.assertTrue(self.service.process_one())
+        self.service.process_one()
+        self.assertEqual(self.service.search.call_count, 2)
+        self.assertEqual(self.status().json()["state"], "no_match")
+        self.assertTrue(self.service.rows["ABC-123"]["sources_complete"])
+
+    def test_a_failed_search_names_its_reason(self):
+        self.service.search.return_value = {"ok": False, "state": "unavailable", "items": [], "error": "x",
+                                            "error_code": "labels.resourceSearch.noIndexer", "error_params": {}}
+        self.add()
+        self.service.process_one()
+        status = self.status().json()
+        self.assertEqual(status["state"], "failed")
+        self.assertTrue(status["message"].startswith("资源搜索失败："), status["message"])
 
     def test_no_match_recorded_before_the_source_check_is_searched_again_once(self):
         now = [1_800_000_000.0]
@@ -711,6 +957,30 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(self.service.process_one())
         self.assertEqual(self.listed()["paused"], [])
 
+    def test_a_search_pause_names_the_source_it_waits_for(self):
+        """直连来源没查成、后备索引器也没答上时，排着的番号与提示框点名那个来源，不说「资源搜索暂不可用」。"""
+        self.service.search.return_value = {"items": [], "state": "unavailable", "retry_after": 3 * 3600.0,
+                                            "error": "x", "error_code": "labels.resourceSearch.noIndexer",
+                                            "unfetched_sources": ["JavDB"]}
+        for code in ("ABC-123", "ABC-124"):
+            self.add(code)
+        self.service.process_one()
+        self.assertEqual(self.service.rows["ABC-123"]["message"], "JavDB 未取得，等待自动重试")
+        for code in ("ABC-123", "ABC-124"):
+            status = self.client.get("/api/jav-browser", params={"code": code}, headers=self.script_headers).json()
+            self.assertEqual(status["message"], "JavDB 未取得，已暂停；到时自动继续")
+        self.assertEqual([(row["reason"], row["message"]) for row in self.listed()["paused"]],
+                         [("JavDB 未取得", "JavDB 未取得，已暂停；到时自动继续")])
+
+    def test_a_search_pause_without_a_source_to_name_says_the_search_error(self):
+        self.service.search.return_value = {"items": [], "state": "unavailable", "retry_after": 300,
+                                            "error": "x", "error_code": "labels.resourceSearch.noIndexer"}
+        self.add()
+        self.service.process_one()
+        indexer = interface_text.text("server:labels.resourceSearch.noIndexer")
+        self.assertEqual(self.service.rows["ABC-123"]["message"], f"资源搜索失败：{indexer}；等待自动重试")
+        self.assertEqual(self.status().json()["message"], f"资源搜索失败：{indexer}，已暂停；到时自动继续")
+
     def listed(self):
         response = self.client.get("/api/jav-browser/active", headers=self.script_headers)
         self.assertEqual(response.status_code, 200, response.text)
@@ -913,6 +1183,84 @@ class BrowserTests(unittest.TestCase):
         task.origin, task.postprocessed_at, task.updated_at = "wishlist:1", "2026-08-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00"
         self.downloads.store.save(task)
         self.assertEqual(listed(), {})
+
+    def test_dismiss_all_acknowledges_finished_results_across_polling_and_restart(self):
+        """全部已读确认已完成、失败与无资源结果，后续轮询和重启沿用确认记录。"""
+        def listed():
+            return {item["code"]: item for item in self.client.get(
+                "/api/jav-browser/active", headers=self.script_headers).json()["items"]}
+
+        def dismiss(body):
+            response = self.client.post("/api/jav-browser/dismiss", json=body, headers=self.script_headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            return response
+
+        self.service.ended["since"] = "2026-01-01T00:00:00+00:00"
+        self.add()
+        self.service.process_one()
+        task = self.downloads.store.get(self.status().json()["task_id"])
+        task.state, task.postprocess_state = dl.INGESTED, dl.POSTPROCESS_COMPLETE
+        task.updated_at = task.postprocessed_at = "2026-06-02T00:00:00+00:00"
+        self.downloads.store.save(task)
+        self.service.search.return_value = {"items": []}
+        self.add("ABP-616")
+        self.service.process_one()
+        self.service.rows["ABP-616"]["ended_at"] = "2026-06-01T00:00:00+00:00"
+        self.assertEqual({code: (item["state"], item["dismissed"]) for code, item in listed().items()},
+                         {"ABC-123": ("ingested", False), "ABP-616": ("no_match", False)})
+        dismiss({"all": True})
+        self.assertEqual(listed(), {})
+        self.service._save()
+        restored = JavBrowser(self.service.contract, search=self.service.search)
+        self.assertEqual(restored.active()['items'], [])
+        dismiss({"all": True})
+        self.assertGreater(self.service.ended["since"], "2026-06-02")
+
+    def test_dismiss_all_persists_failures_and_keeps_running_and_new_results_unread(self):
+        """下载、整理与搜索失败统一确认，进行中任务和之后的新结果继续显示。"""
+        self.service.ended['since'] = '2026-01-01T00:00:00+00:00'
+        self.service.search.return_value = {'state': 'unavailable', 'items': [], 'error': '索引器未配置'}
+        self.add('EXM-104')
+        self.service.process_one()
+        finished = '2026-06-01T00:00:00+00:00'
+        tasks = []
+        for index, (state, postprocess) in enumerate(((dl.FAILED, dl.POSTPROCESS_NOT_REQUESTED),
+                                                    (dl.INGESTED, dl.POSTPROCESS_FAILED)), start=1):
+            digest = str(index) * 40
+            tasks.append(self.downloads.store.save(dl.DownloadTask(
+                id=0, info_hash=digest, provider='115', source_uri='magnet:?xt=urn:btih:' + digest,
+                display_name=f'EXM-10{index}', code=f'EXM-10{index}', target='/115/Movies',
+                origin='browser:test', state=state, failure='no_source' if state == dl.FAILED else None,
+                postprocess_state=postprocess, updated_at=finished, finished_at=finished,
+                postprocessed_at=finished if postprocess == dl.POSTPROCESS_FAILED else None)))
+            task = tasks[-1]
+            self.service.rows[task.code] = {'state': 'failed' if state == dl.FAILED else 'ingested',
+                                           'task_id': task.id, 'provider': '115', 'source_url': PAGE}
+        running = self.downloads.store.save(dl.DownloadTask(
+            id=0, info_hash='3' * 40, provider='115', source_uri='magnet:?xt=urn:btih:' + '3' * 40,
+            display_name='EXM-103', code='EXM-103', target='/115/Movies', origin='browser:test',
+            state=dl.REMOTE_RUNNING, updated_at=finished))
+        self.add('EXM-105')
+        acknowledged_at = int(time.time())
+        self.service.rows['EXM-104']['ended_at'] = dl.iso(acknowledged_at)
+        self.service._save()
+        before = {item['code']: item for item in self.service.active()['items']}
+        self.assertTrue(all(not before[code]['dismissed'] for code in ('EXM-101', 'EXM-102', 'EXM-104')))
+        with patch('peach.jav_browser.time.time', return_value=acknowledged_at):
+            response = self.client.post('/api/jav-browser/dismiss', json={'all': True}, headers=self.script_headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual({item['code'] for item in response.json()['items'] if not item.get('dismissed')},
+                         {'EXM-103', 'EXM-105'}, response.json())
+        restored = JavBrowser(self.service.contract, search=self.service.search)
+        self.assertEqual({item['code'] for item in restored.active()['items'] if not item.get('dismissed')},
+                         {'EXM-103', 'EXM-105'})
+        self.assertEqual(self.downloads.store.get(running.id).state, dl.REMOTE_RUNNING)
+        self.assertEqual(restored.rows['EXM-105']['state'], 'queued')
+        # 再次结束的整理使用新的结束键，作为新结果显示。
+        tasks[1].postprocessed_at = tasks[1].updated_at = dl.iso(time.time() + 1)
+        self.downloads.store.save(tasks[1])
+        after = {item['code']: item for item in restored.active()['items']}
+        self.assertFalse(after['EXM-102']['dismissed'])
 
     def test_disable_and_rotation_revoke_tokens(self):
         rotated = self.configure("rotate").json()["token"]

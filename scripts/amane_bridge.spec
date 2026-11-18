@@ -8,7 +8,7 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metada
 root = Path(SPECPATH).parent
 bridge = root / "tools/amane-bridge/bridge.py"
 sites = runpy.run_path(str(bridge))["SITES"]
-datas = collect_data_files("amane") + collect_data_files("zhconv")
+datas = collect_data_files("amane")
 binaries, hiddenimports = [], []
 curl_data, curl_binaries, curl_imports = collect_all("curl_cffi")
 datas += curl_data

@@ -7,7 +7,8 @@ from functools import lru_cache
 from urllib.parse import urlsplit
 
 from .catalog_rules import (
-    same_release_code, code_query_variants, code_serial_pattern, normalise_code_key, tokyo_hot_code)
+    DIGIT_LABEL_PATTERN, SUFFIXED_CODE_PATTERN, same_release_code, code_query_variants, code_serial_pattern,
+    normalise_code_key, tokyo_hot_code)
 from .genre_taxonomy import map_genres, unmapped_genre_warning
 from .http import body_text
 from .javdb import LOGIN as JAVDB_LOGIN_PAGE
@@ -64,8 +65,11 @@ def relay_args(error: BaseException) -> tuple[str, dict]:
 
 #: 日期式那一支两种分隔符都放行：`_` 是一本道等片商的标识，不是可替换的写法
 #: （`catalog_rules._CODE_DATE`）。这里拦的是路径、URL 和任意文本，不是分隔符。
+#: KIRARI 的 `MKD-S62` 与登记过尾字母的 `IBW-483Z` 也是番号识别认下的写法，闸门要放它们过去；
+#: 别的尾字母（`ADN-516C` 的中字标记）仍拦着，免得拿版次写法去问来源。
 _SAFE_CODE = re.compile(
-    r"^(?:FC2-PPV-\d{5,}|\d{3}[A-Z]{2,6}-\d{2,5}|[A-Z]{2,8}-\d{2,5}|\d{6}[-_]\d{2,4})$")
+    r"^(?:FC2-PPV-\d{5,}|\d{3}[A-Z]{2,6}-\d{2,5}|[A-Z]{2,8}-\d{2,5}|\d{6}[-_]\d{2,4}|MKB?D-S\d{2,4}|"
+    rf"{DIGIT_LABEL_PATTERN}-\d{{2,5}}|{SUFFIXED_CODE_PATTERN})$")
 CATALOG_EVIDENCE_FIELDS = (
     "title", "original_title", "runtime", "director", "label",
     "poster_url", "cover_url", "screenshot_urls", "trailer_url",
@@ -269,7 +273,7 @@ def _identifies_code(code: str, provider_id: str, content_id: str, source_url: s
     if not blob.strip("|"):
         return False
     value = str(code or "").upper()
-    matched = re.fullmatch(r"(?:\d{3,6})?([A-Z]{2,8})-?(\d{2,5})([A-Z]{0,2})", value)
+    matched = re.fullmatch(rf"(?:\d{{3,6}})?([A-Z]{{2,8}}|{DIGIT_LABEL_PATTERN})-?(\d{{2,5}})([A-Z]{{0,2}})", value)
     if matched:
         letters, digits = matched.group(1).lower(), code_serial_pattern(matched.group(1), matched.group(2))
         suffix = matched.group(3).lower()

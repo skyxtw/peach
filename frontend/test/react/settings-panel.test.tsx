@@ -111,8 +111,9 @@ const settings = (): PanelSettings => ({
   theme: 'system', uiSounds: true, homeGlow: { ...normalizeHomeGlow(null), on: true, preset: 'ash' }, accent: 'blue',
   sidebarOrder: [''], batchSize: 60, defaultSort: 'seed', defaultSortDirection: '', groupCollapse: true,
   javImage: 'cover', performerNameLanguage: 'zh-CN', interfaceLanguage: 'zh-CN', systemLanguage: null, feedAutoScroll: true, feedLimit: 12, feedHideGroupCompilations: true, feedHideSoloCompilations: false,
-  feedHideExcerpts: true, hoverDelaySeconds: 5, detailAutoplay: false, miniplayer: true, seekSeconds: 10,
+  feedHideExcerpts: true, hoverDelaySeconds: 5, hoverPreview: true, touchGestures: true, holdRate: 2, swipeMinutes: 20, doubleTapPercent: 35, autoFullscreen: false, detailAutoplay: false, autoChineseSubtitles: false, afterPlayback: 'next', resumeRestartPercent: 5, miniplayer: true, seekSeconds: 10,
   relatedLimit: 24, searchHistoryLimit: 10, followInitialDays: 30, avatarRefreshDays: 90, faviconRefreshDays: 365,
+  feedNewRows: true, homeShortsLimit: 18, homeTiers: true, homePreviewOnly: false, completionPrompt: true, searchRecommendations: true, ingestNotices: true,
 });
 
 /** 壳 `settingsHost()` 交进来的那一份。 */
@@ -275,6 +276,8 @@ describe('设置面板与壳的接缝', () => {
     for (const [id, field, effect] of [
       ['uiSoundsSetting', 'uiSounds', 'uiSounds'], ['groupCollapseSetting', 'groupCollapse', 'groupCollapse'],
       ['miniplayerSetting', 'miniplayer', 'miniplayer'], ['feedAutoScrollSetting', 'feedAutoScroll', 'feedAutoScroll'],
+      ['feedNewRowsSetting', 'feedNewRows', 'feedNewRows'], ['homeTiersSetting', 'homeTiers', 'homeTiers'],
+      ['searchRecommendationsSetting', 'searchRecommendations', 'searchRecommendations'],
     ] as const) {
       current.changed.mockClear();
       current.save.mockClear();
@@ -286,10 +289,104 @@ describe('设置面板与壳的接缝', () => {
     current.changed.mockClear();
     await click(panel.querySelector('#detailAutoplaySetting'));
     expect([current.value.detailAutoplay, effects(current.changed)]).toEqual([true, []]);
+    /* 自动中文字幕默认关，播放器读记忆时现读这一项，同样只落盘。 */
+    current.changed.mockClear();
+    await click(panel.querySelector('#autoChineseSubtitlesSetting'));
+    expect([current.value.autoChineseSubtitles, effects(current.changed)]).toEqual([true, []]);
+    /* 补全提示条与入库通知由各自的组件当场读这一份偏好，同样只落盘。 */
+    for (const [id, field] of [['completionPromptSetting', 'completionPrompt'], ['ingestNoticesSetting', 'ingestNotices']] as const) {
+      current.changed.mockClear();
+      current.save.mockClear();
+      await click(panel.querySelector(`#${id}`));
+      expect([current.value[field], current.save.mock.calls.length, effects(current.changed)], id).toEqual([false, 1, []]);
+    }
 
     current.changed.mockClear();
     await click(panel.querySelector('#themeSetting input[value="dark"]'));
     expect([current.value.theme, effects(current.changed)]).toEqual(['dark', ['theme']]);
+    await close(current);
+  });
+
+  it('关掉新作行时显示数量与自动滚动收起，合集开关照常；再打开回来', async () => {
+    const current = await setup();
+    const panel = await open(current, 'JAV 与新作');
+    const shown = () => ['#feedLimitSetting', '#feedAutoScrollSetting', '#feedHideGroupSetting'].map((id) => !!panel.querySelector(id));
+    expect(shown()).toEqual([true, true, true]);
+    await click(panel.querySelector('#feedNewRowsSetting'));
+    expect([current.value.feedNewRows, ...shown()]).toEqual([false, false, false, true]);
+    await click(panel.querySelector('#feedNewRowsSetting'));
+    expect([current.value.feedNewRows, ...shown()]).toEqual([true, true, true, true]);
+    await close(current);
+  });
+
+  it('关掉卡片悬停预览：报效果收掉正在放的预览，延迟随之禁用', async () => {
+    const current = await setup();
+    const panel = await open(current, '浏览与播放');
+    current.changed.mockClear();
+    await click(panel.querySelector('#hoverPreviewSetting'));
+    expect([current.value.hoverPreview, effects(current.changed)]).toEqual([false, ['hoverPreview']]);
+    expect(panel.querySelector<HTMLInputElement>('#hoverDelaySetting input[type=number]')?.disabled).toBe(true);
+    await close(current);
+  });
+
+  it('SFW 模式打开时悬停预览延迟禁用并说明原因，关掉后恢复', async () => {
+    const current = await setup();
+    let censored = true;
+    current.host.censored = () => censored;
+    const panel = await open(current, '浏览与播放');
+    const input = () => panel.querySelector<HTMLInputElement>('#hoverDelaySetting input[type=number]');
+    expect(input()?.disabled).toBe(true);
+    expect(panel.querySelector('#hoverDelaySetting')?.closest('[data-setting-row]')?.textContent).toContain('SFW 模式下不预览');
+    censored = false;
+    /* 壳切 SFW 时调 `applyCensor`，它只通知 store 重画。 */
+    await act(async () => { current.host.store.notify() });
+    expect(input()?.disabled).toBe(false);
+    expect(panel.querySelector('#hoverDelaySetting')?.closest('[data-setting-row]')?.textContent).not.toContain('SFW 模式下不预览');
+    await close(current);
+  });
+
+  it('画面手势：长按倍速、拖动幅度与双击区落进偏好；关掉手势后两项数值收起，长按倍速留着', async () => {
+    const current = await setup();
+    const panel = await open(current, '浏览与播放');
+    const rate = panel.querySelector<HTMLElement & { value: string }>('#holdRateSetting > div')!;
+    expect(rate.value).toBe('2');
+    await act(async () => { rate.value = '3'; rate.dispatchEvent(new Event('change', { bubbles: true })) });
+    const swipe = panel.querySelector<HTMLInputElement>('#swipeMinutesSetting input[type=number]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(swipe, '10');
+      swipe.dispatchEvent(new Event('input', { bubbles: true }));
+      swipe.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect([current.value.holdRate, current.value.swipeMinutes]).toEqual([3, 10]);
+    await click(panel.querySelector('#touchGesturesSetting'));
+    expect(current.value.touchGestures).toBe(false);
+    expect(panel.querySelector('#swipeMinutesSetting')).toBeNull();
+    expect(panel.querySelector('#doubleTapPercentSetting')).toBeNull();
+    expect(panel.querySelector('#holdRateSetting')).not.toBeNull();
+    await click(panel.querySelector('#autoFullscreenSetting'));
+    expect(current.value.autoFullscreen).toBe(true);
+    await close(current);
+  });
+
+  it('播完之后与接近片尾从头播：只落盘，不报效果；关掉片尾从头播就是 0', async () => {
+    const current = await setup();
+    const panel = await open(current, '浏览与播放');
+    const field = panel.querySelector<HTMLElement & { value: string }>('#afterPlaybackSetting > div')!;
+    expect(field.value).toBe('next');
+    current.changed.mockClear();
+    current.save.mockClear();
+    await act(async () => { field.value = 'shuffle'; field.dispatchEvent(new Event('change', { bubbles: true })) });
+    expect([current.value.afterPlayback, current.save.mock.calls.length, effects(current.changed)]).toEqual(['shuffle', 1, []]);
+
+    const input = panel.querySelector<HTMLInputElement>('#resumeRestartSetting input[type=number]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '10');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(current.value.resumeRestartPercent).toBe(10);
+    await click(panel.querySelector('#resumeRestartSetting input[role=switch]'));
+    expect([current.value.resumeRestartPercent, effects(current.changed)]).toEqual([0, []]);
     await close(current);
   });
 
@@ -308,6 +405,30 @@ describe('设置面板与壳的接缝', () => {
     expect([current.value.feedLimit, current.save.mock.calls.length, effects(current.changed)]).toEqual([12, 0, []]);
     await commit('30');
     expect([current.value.feedLimit, current.save.mock.calls.length, effects(current.changed)]).toEqual([30, 1, ['feedLimit']]);
+    await close(current);
+  });
+
+  it('首页竖屏带：关掉写 0、报 homeShorts，再开填回原来的张数；张数越界不提交', async () => {
+    const current = await setup();
+    const panel = await open(current, '浏览与播放');
+    expect(panel.querySelector('#homeShortsSetting')?.closest('[data-setting-group]')?.id).toBe('settings-group-1');
+    const toggle = panel.querySelector<HTMLInputElement>('#homeShortsSetting input[type=checkbox]')!;
+    const input = panel.querySelector<HTMLInputElement>('#homeShortsSetting input[type=number]')!;
+    const commit = (value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    current.changed.mockClear();
+    await commit('5');
+    expect([current.value.homeShortsLimit, effects(current.changed)]).toEqual([18, []]);
+    await commit('24');
+    expect([current.value.homeShortsLimit, effects(current.changed)]).toEqual([24, ['homeShorts']]);
+    current.changed.mockClear();
+    await click(toggle);
+    expect([current.value.homeShortsLimit, effects(current.changed)]).toEqual([0, ['homeShorts']]);
+    await click(toggle);
+    expect(current.value.homeShortsLimit).toBe(24);
     await close(current);
   });
 

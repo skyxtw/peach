@@ -100,7 +100,12 @@ def package_manifest(packages: Path, version: str) -> dict:
 
 def probe(root: Path, tag: str, payload: dict) -> dict:
     with tempfile.TemporaryDirectory(prefix="peach-update-compat-") as folder:
-        exported = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", tag, "src/peach"],
+        # 0.58.0 起后端导入时就读 `resources/locales`（ADR-0159），安装包随附；旧标签没有这个目录就不带。
+        paths = ["src/peach"]
+        if subprocess.run(["git", "-C", str(root), "ls-tree", "-d", "--name-only", tag, "resources/locales"],
+                          capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip():
+            paths.append("resources/locales")
+        exported = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", tag, *paths],
                                   capture_output=True, check=True).stdout
         with tarfile.open(fileobj=io.BytesIO(exported)) as archive:
             archive.extractall(folder, filter="data")

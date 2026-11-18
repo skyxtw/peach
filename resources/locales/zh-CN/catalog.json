@@ -1,4 +1,24 @@
 {
+  "seedName": {
+    "title": "贡献中文名",
+    "save": "提交候选",
+    "description": "带 * 的项目为必填。",
+    "original": "来源中的日文艺名",
+    "originalPlaceholder": "选择日文艺名",
+    "originalRequired": "请选择日文艺名。",
+    "identity": "查看人物来源编号",
+    "chinese": "中文名",
+    "nameRequired": "请填写中文名。",
+    "nameInvalid": "请输入包含汉字的中文名。",
+    "traditional": "这是繁体中文写法",
+    "evidence": "公开参考链接（选填）",
+    "evidenceHelp": "有出处时，可附上能核对这两个名字的公开页面。",
+    "evidenceInvalid": "请输入有效的 HTTPS 链接。",
+    "noIdentity": "尚未取得可核对的来源编号与原文艺名。补齐人物资料后再贡献。",
+    "loading": "正在读取人物身份…",
+    "delivery": "候选先保存在本机。开启「公共资料贡献」后才会随每周快照发送复核。",
+    "saved": "中文名候选已保存，分享与采纳状态请在公共资料贡献中查看"
+  },
   "avatarPicker": {
     "backToChoices": "返回备选图片",
     "baseImage": "底图",
@@ -48,6 +68,7 @@
   "catalogFilter": {
     "filterAndSort": "筛选与排序",
     "readout": "{{count, number}} 个符合 · 显示 {{shown, number}}",
+    "showAll": "显示全部",
     "views": "视图",
     "viewsAndTags": "视图与标签"
   },
@@ -76,6 +97,11 @@
     "treeTitle": "文件夹",
     "tryAnotherName": "换个目录名称试试。",
     "viewConflicts": "查看归属冲突"
+  },
+  "columnFilter": {
+    "label": "筛选{{column}}",
+    "search": "搜索{{column}}",
+    "noOptions": "没有匹配的筛选项"
   },
   "catalogList": {
     "climaxCount": "高潮计数",
@@ -215,6 +241,10 @@
   "detailSource": {
     "checkingDirectory": "正在核对目录…",
     "locating": "正在定位",
+    "recollect": "重新采集资料",
+    "recollectBusy": "另一趟处理正在进行，等它结束后再重新采集",
+    "recollectStarted": "已开始重新采集，进度见任务",
+    "recollectTip": "不用缓存，向各来源重新取这部片的资料；你改过或批准过的字段不会被覆盖",
     "reveal": "定位源文件",
     "revealTip": "在文件管理器里打开源文件所在目录",
     "syncDeletions": "同步删除",
@@ -224,17 +254,50 @@
     "openRegion": "打开同产地的作品",
     "regionInferred": "{{region}}（推断）"
   },
-  "detailTags": {
-    "add": "添加标签",
-    "added": "已添加标签「{{tag}}」",
-    "alreadyTagged": "标签「{{tag}}」已存在",
-    "notRemoved": "标签未删除",
-    "remove": "删除标签",
-    "removed": "已删除标签「{{tag}}」"
-  },
   "detailTrace": {
     "actuallyWatched": "真实观看",
     "leftOffAt": "离开位置"
+  },
+  "itemEdit": {
+    "open": "编辑资料",
+    "title": "编辑资料",
+    "save": "保存",
+    "saved": "资料已保存",
+    "nothingChanged": "没有改动",
+    "sectionCover": "封面",
+    "coverUpload": "上传图片",
+    "coverFrame": "用播放器当前画面",
+    "coverSample": "从样张选",
+    "coverRestore": "恢复刮削封面",
+    "coverPending": "保存后换上这张",
+    "coverRestorePending": "保存后换回刮削封面",
+    "coverNone": "还没有封面",
+    "coverNoFrame": "播放器还没有画面，先播放到想要的位置再取",
+    "sectionBasic": "基本",
+    "sectionCredits": "归属",
+    "sectionTags": "标签",
+    "fieldTitle": "标题",
+    "fieldOriginalTitle": "原题",
+    "fieldCode": "番号",
+    "fieldReleaseDate": "发行日期",
+    "fieldRegion": "产地",
+    "fieldStudio": "厂牌",
+    "fieldSeries": "系列",
+    "datePlaceholder": "2025-11-04",
+    "sourceUser": "你改过",
+    "sourceScan": "文件名",
+    "sourceReview": "复核：{{source}}",
+    "sourceScript": "脚本：{{source}}",
+    "restore": "恢复",
+    "restoreTip": "交回自动采集，下次采集时重新填写",
+    "restorePending": "保存后交回自动采集",
+    "undoRestore": "撤销",
+    "searchOrCreate": "搜索或新建",
+    "createNamed": "新建「{{name}}」",
+    "searching": "正在搜索",
+    "removeNamed": "移除 {{name}}",
+    "clearNamed": "清空 {{field}}",
+    "userCreated": "自建"
   },
   "entityFacts": {
     "age": "· {{age}} 岁",
@@ -358,10 +421,12 @@
   "externalPlayback": {
     "defaultPlayerNoResume": "系统默认播放器不能接收起播位置，也不会回传进度；要续播请选 VLC、mpv 或 IINA。",
     "detectingPlayers": "正在检测播放器…",
+    "androidChooser": "系统选择播放器",
     "externalPlayer": "外部播放器",
     "m3uPlaylist": "M3U 播放列表",
     "openInPlayer": "使用外部播放器打开",
     "redetect": "重新检测播放器",
+    "schemeHint": "没有反应说明这台设备没装该播放器，可复制地址改用其他播放器；链接 6 小时内有效。",
     "streamUrl": "网络播放地址",
     "streamUrlHint": "链接 6 小时内有效，播放设备需要能访问当前 Peach 地址。",
     "streamUrlVr": "网络播放地址 / VR"
@@ -446,6 +511,7 @@
     "performers": "出演者",
     "releaseDate": "发行日期",
     "resources": "资源",
+    "retryPreview": "重新取视频预览：{{reason}}",
     "sampleVideo": "视频预览",
     "sampleVideoFailed": "视频预览未取得"
   },
@@ -526,6 +592,7 @@
     "selectPage": "全选本页",
     "selectedCount": "已选 {{count, number}} 部",
     "wantAdded": "已加入想要 {{count, number}} 部",
+    "wantConfirm": "将选中的 {{count, number}} 部加入想要。",
     "wantPartialFailed": "已加入 {{count, number}} 部；{{code}} 未完成：{{error}}"
   },
   "javSort": {
@@ -790,6 +857,17 @@
     "tabPlayback": "播放",
     "tabShortcuts": "快捷键"
   },
+  "playerGestures": {
+    "backward": "快退 {{delta}}　{{to}} / {{total}} · 松手跳转",
+    "deviceVolume": "此浏览器请用设备音量键",
+    "durationUnknown": "时长尚未取得，暂时无法跳转",
+    "forward": "快进 {{delta}}　{{to}} / {{total}} · 松手跳转",
+    "holdKey": "{{rate}}× 快进",
+    "holdTouch": "{{rate}}× 倍速 · 松手恢复",
+    "seekFailed": "暂时无法跳转，请稍后重试",
+    "seekTo": "跳转到 {{time}}",
+    "volume": "音量 {{percent}}%"
+  },
   "playerShell": {
     "buffering": "正在缓冲",
     "cannotPlay": "视频暂时无法播放",
@@ -1025,6 +1103,12 @@
     "turnOff": "关闭字幕",
     "turnOn": "开启字幕"
   },
+  "sortControls": {
+    "customize": "自定义排序项",
+    "reset": "恢复默认排序项",
+    "syncFailed": "已在本机保存，同步未完成。{{error}}",
+    "title": "排序项"
+  },
   "tagCategories": {
     "appearance": "外貌身材",
     "locations": "情境场所",
@@ -1041,9 +1125,11 @@
   },
   "tagFilters": {
     "blockedContent": "已屏蔽内容",
+    "blockedCount": "已屏蔽内容 {{count, number}}",
     "clearSelection": "清空",
     "editTag": "编辑标签 {{name}}",
     "hidden": "已隐藏",
+    "hiddenCount": "已隐藏 {{count, number}}",
     "inUse": "使用中",
     "jumpToLetter": "按首字跳转",
     "label": "标签筛选",
@@ -1058,8 +1144,11 @@
   },
   "tagManager": {
     "actions": "标签管理操作",
+    "blockByName": "添加屏蔽标签",
     "blockContent": "屏蔽内容",
     "clearSelection": "清空选择",
+    "deleteContent": "删除标签下的作品",
+    "deleteTag": "删除标签",
     "filterTags": "过滤标签",
     "hide": "隐藏",
     "label": "标签管理",
@@ -1071,18 +1160,21 @@
     "unhide": "恢复"
   },
   "tagOperations": {
-    "blockConfirm": "屏蔽带有{{names}}任一标签的内容及其其它版本，涉及 {{count, number}} 个资源。可在「已屏蔽内容」中恢复。",
+    "blockConfirm": "屏蔽带有{{names}}任一标签的内容及其其它版本，涉及 {{count, number}} 个资源。",
+    "blockNameConfirm": "屏蔽带有{{names}}标签的内容，现有 {{count, number}} 个资源，以后抓到的也不显示。",
+    "deleteConfirm": "删除 {{count, number}} 个标签及其在 {{assets, number}} 部作品上的关联，作品保留。",
     "doneBlock": "已屏蔽内容",
+    "doneDelete": "已删除标签",
     "doneHide": "已隐藏标签",
     "doneMerge": "已合并标签",
     "doneRename": "已重命名标签",
     "doneRepair": "已整理重复标签",
     "doneUnblock": "已恢复内容",
     "doneUnhide": "已恢复标签",
-    "hideConfirm": "隐藏 {{count, number}} 个标签，涉及 {{assets, number}} 个资源。可在“已隐藏”中恢复。",
+    "hideConfirm": "隐藏 {{count, number}} 个标签，涉及 {{assets, number}} 个资源。",
     "hideTags": "隐藏标签",
     "keep": "保留",
-    "mergeConfirm": "合并 {{count, number}} 个标签，涉及 {{assets, number}} 个资源（重叠关联 {{overlap, number}} 个）。旧名称保留为别名，无法直接撤销。",
+    "mergeConfirm": "合并 {{count, number}} 个标签，涉及 {{assets, number}} 个资源（重叠关联 {{overlap, number}} 个），旧名称保留为别名。",
     "mergeTags": "合并标签",
     "previewImpact": "预览影响范围",
     "renameConfirm": "{{names}}将更名为{{newName}}，涉及 {{count, number}} 个资源。旧名称保留为别名。",
@@ -1153,7 +1245,7 @@
     "listedDate": "收录日期",
     "moreLinks": "更多资源（{{count, number}} 条）",
     "noneYet": "暂未找到资源链接。",
-    "notFound": "资源链接未取得",
+    "notFound": "资源查询失败",
     "partialComments": "来源只返回了部分评论，资源链接可能不完整。",
     "protocolMagnet": "磁链",
     "protocolWeb": "网页链接",
@@ -1173,6 +1265,7 @@
     "backToSearching": "{{name}} 回到待找",
     "cloudPrimaryOnly": "云下载只在写入端可用。",
     "codePlaceholder": "输入番号，例如 SSIS-950",
+    "dockLabel": "所选想要的操作",
     "downloadSettingsFailed": "下载配置未取得",
     "empty": "还没有想要的作品",
     "emptyHint": "输入番号，添加想看的作品。",
@@ -1183,6 +1276,8 @@
     "hasMagnet": "有磁链",
     "importedOn": "入库于 {{date}}",
     "itemUnit": "条",
+    "lastSearchError": "{{date}} 查找失败，稍后重试",
+    "lastSearchNone": "{{date}} 没查到资源",
     "loadFailed": "想要清单读取失败",
     "loading": "正在读取想要",
     "magnetFilter": "待找磁链筛选",
@@ -1197,10 +1292,59 @@
     "phaseSearching": "待找",
     "phaseUnreleased": "未发售",
     "releaseDate": "{{date}} 发售",
+    "removeMany": "移除所选想要",
+    "removeManyBody": "将从想要里移除选中的 {{count, number}} 部，已入库的作品不受影响。",
     "removed": "已移除：{{name}}",
+    "removedMany": "已从想要里移除 {{count, number}} 部",
     "searchAgain": "重新查找",
+    "searchAgainDone": "已放回待找 {{count, number}} 部",
+    "searchAgainMany": "重新查找所选",
+    "searchAgainManyBody": "将把选中的 {{count, number}} 部已放弃的想要放回待找，查找次数清零。",
     "searchCount": "查过 {{count, number}} 次",
+    "searchingResources": "正在给待找的作品查资源。",
+    "selectAll": "全选",
+    "selectRow": "选择 {{name}}",
     "sourcePage": "来源页",
     "tryOtherSearch": "试试其他番号、女优或标题。"
+  },
+  "rosterActions": {
+    "delete": "删除",
+    "deleteMenu": "删除…",
+    "deleteConfirm": "所选 {{count, number}} 项档案，名下共有 {{assets, number}} 个馆藏文件，占用 {{size}}。请选择删除范围。",
+    "deleteShared": "其中 {{count, number}} 个文件也关联其他档案，永久删除后会同时从这些档案下消失。",
+    "deleteChoice": { "profile": "仅删资料", "trash": "馆藏移入回收站", "purge": "永久删除全部" },
+    "deleteDescription": {
+      "profile": "删除档案、别名和身份关联，馆藏作品与媒体文件保留。再次扫描或刮削可能重新建立档案。",
+      "trash": "删除档案，名下馆藏移入回收站，媒体文件保留。之后可从回收站还原作品。",
+      "purge": "删除档案及其名下馆藏，包括媒体文件和对应观看记录。删除失败的文件及其档案保留，并显示原因。"
+    },
+    "deleteDone": {
+      "profile": "已删除 {{count, number}} 项档案",
+      "trash": "已删除 {{count, number}} 项档案，{{assets, number}} 个馆藏文件已移入回收站",
+      "purge": "已删除 {{count, number}} 项档案及 {{assets, number}} 个馆藏文件"
+    },
+    "deleteBlocked": "已删除 {{profiles, number}} 项档案及 {{assets, number}} 个馆藏文件，{{retained, number}} 项档案仍有未删除文件，已保留。请关闭此弹窗后重新选择删除范围。\n{{failures}}",
+    "deselectAll": "取消全选",
+    "dockLabel": "名册批量操作",
+    "exit": "取消选择",
+    "followConfirm": "为 {{count, number}} 位订阅新作，已订阅的不变。",
+    "followDone": "已为 {{count, number}} 位订阅新作",
+    "followDonePartly": "已为 {{count, number}} 位订阅新作，{{skipped, number}} 位没有站上编号、订不了",
+    "hiddenView": "已隐藏 {{count, number}}",
+    "hide": "从名册隐藏",
+    "hideConfirm": "从名册隐藏 {{count, number}} 项，作品与资料保留。",
+    "hideDone": "已从名册隐藏 {{count, number}} 项",
+    "selectAll": "全选",
+    "selectedCount": "已选 {{count, number}} 项",
+    "tagTrashConfirm": "把 {{count, number}} 个标签下的 {{assets, number}} 部作品移入回收站，标签保留。",
+    "trash": "删除作品",
+    "trashConfirm": "把 {{count, number}} 项名下的 {{assets, number}} 部作品移入回收站，名册与资料保留。",
+    "trashDone": "已把 {{count, number}} 部作品移入回收站",
+    "trashRecovery": "完成后可在回执里撤销，也能从回收站还原。",
+    "unfollowConfirm": "取消 {{count, number}} 位的新作订阅，已发现的新作保留。",
+    "unfollowDone": "已取消 {{count, number}} 位的新作订阅",
+    "unhide": "恢复显示",
+    "unhideConfirm": "{{count, number}} 项回到名册。",
+    "unhideDone": "已恢复显示 {{count, number}} 项"
   }
 }

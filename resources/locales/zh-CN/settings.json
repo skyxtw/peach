@@ -1,4 +1,31 @@
 {
+  "seedSharing": {
+    "title": "公共资料贡献",
+    "enable": "分享资料以完善种子",
+    "description": "每周分享一次已有的公开资料与纠错候选，减少重复刮削。默认关闭。",
+    "independent": "与馆藏口味研究独立。个人统称和自定义昵称不会自动成为公共中文名。",
+    "fields": "分享哪些资料",
+    "works": "作品番号、原文标题、演员、厂牌、系列、发行日期与字段来源。",
+    "entities": "人物、厂牌和事务所的公开来源编号、采集别名、资料与关系。",
+    "decisions": "人工修改的公开字段、词表内手动标签、标签映射决定，以及主动提交的女优中文名和引用。",
+    "images": "公开封面引用与手动裁切的图片摘要、尺寸和坐标，不发送图片。",
+    "sources": "已保存的来源命中、明确未收录、失败类别、观测时间及耗时。",
+    "excluded": "不包含影片、图片字节、文件名、路径、凭据、评分或观看记录。无法安全投影的值不发送，并在预览中计数。",
+    "notice": "资料经独立研究接收端发送到 Sentry，维护者可下载复核。作品组合仍可能反映馆藏，接收服务会接触连接 IP。只有复核后的公开事实进入发行种子；多人一致不代表自动采纳。关闭只停止后续发送，已接收资料不会由此撤回。",
+    "unavailable": "未配置资料接收端",
+    "preview": "预览本机资料",
+    "previewData": "查看待共享内容",
+    "summary": "本次有 {{count}} 条候选，跳过 {{omitted}} 个不符合公开字段要求的值，原始大小 {{size}} KiB。",
+    "consent": "我已查看内容，同意按以上范围每周分享，用于复核及公共种子分发。",
+    "agree": "同意并开启",
+    "saved": "公共资料贡献设置已保存",
+    "readFailed": "未取得资料贡献状态，可刷新重试。",
+    "acceptedHelp": "接收端已接受请求；附件留存、复核与种子采纳需要另外确认。",
+    "names": "本机中文名候选：待采纳 {{pending}} 项，当前版本已收录 {{adopted}} 项，已撤销 {{withdrawn}} 项。",
+    "refresh": "刷新状态",
+    "download": "下载完整预览",
+    "status": { "queued": "等待发送", "accepted": "接收端已接受", "failed": "发送未完成", "unknown": "发送结果未知", "blocked": "发送已停止", "waiting-data": "暂无可分享资料" }
+  },
   "accessAddress": {
     "alternateIp": "备用 IP 地址",
     "backToNetwork": "返回网络与访问",
@@ -239,7 +266,7 @@
     "backupProgress": "备份进度",
     "count": "共 {{count, number}} 份可恢复的备份",
     "empty": "还没有备份",
-    "help": "账本保存全部资料、观看记录与复核结论。手动和写入前的自动备份保留最近 5 份及 24 小时内的。",
+    "help": "账本保存全部资料、观看记录与复核结论；自动备份留几份见下方「保留期限」。",
     "jobIncomplete": "任务没有完成",
     "loading": "正在读取备份列表",
     "manual": "手动",
@@ -405,16 +432,14 @@
     "avatarRefresh": "每 3 个月",
     "checking": "正在检查来源更新",
     "consecutiveFailures": "已连续失败 {{count, number}} 次",
-    "everyHours": "每 {{count, number}} 小时",
-    "everyMinutes": "每 {{count, number}} 分钟",
     "faviconRefresh": "每年",
-    "feedOff": "已关闭",
+    "feedScheduleHelp": "每个订阅源按这个间隔拉取新作，「想要」也在这一轮里查资源",
+    "feedScheduleInterval": "订阅源拉取间隔",
     "fetchingFeeds": "正在拉取订阅源",
     "initialRangeSaved": "已保存首次采集范围",
     "invalidInterval": "请输入 15–10080 的整数（分钟）。",
     "lastCheckFailed": "上次自动检查失败",
     "lastFetchFailed": "上次自动拉取失败",
-    "loadingFeedInterval": "正在读取订阅源拉取间隔",
     "nextRun": "下一轮 {{time}}",
     "primaryOnly": "只在写入端可用",
     "retryFailed": "没有重试：{{error}}"
@@ -657,6 +682,7 @@
     "mode": "处理方式",
     "modeLabel": "{{name}} 处理方式",
     "notIncluded": "不做",
+    "previewsOff": "已关闭视频预览生成，九宫格这一步不会执行。",
     "step": "步骤",
     "stepAvatars": "联网补人物图片",
     "stepContactSheet": "生成九宫格预览",
@@ -752,6 +778,7 @@
     "unitEntries": "条",
     "unitItems": "个",
     "unitMinutes": "分钟",
+    "unitPercent": "%",
     "unitSeconds": "秒",
     "unitVideos": "部"
   },
@@ -766,9 +793,12 @@
     "url": "代理地址"
   },
   "performerNameLanguage": {
-    "chinese": "中文",
-    "help": "名称与别名只显示所选语言的写法；缺少对应时保留当前名称。",
-    "japanese": "日文原文",
+    "chinese": "中文化（译名）",
+    "help": "本地语言跟界面语言走；缺少对应写法时显示原文。",
+    "japanese": "日语原文",
+    "japaneseThenLocal": "日语原文（本地语言）",
+    "localThenJapanese": "本地语言（日语原文）",
+    "romaji": "英文（罗马音）",
     "saveFailed": "保存名称显示偏好",
     "saved": "已保存名称显示偏好",
     "title": "女优名称",
@@ -798,24 +828,52 @@
     "waiting": "等待登录",
     "waitingBrowser": "等你在浏览器窗口里登录 PikPak"
   },
+  "playbackEnd": {
+    "next": "顺序播放",
+    "repeatAll": "列表循环",
+    "repeatOne": "单片循环",
+    "restart": "片尾从头播",
+    "restartHelp": "离片尾不到这个比例，下次打开从头播。",
+    "shuffle": "随机播放",
+    "stop": "停下",
+    "title": "播完之后"
+  },
+  "playbackGestures": {
+    "autoFullscreen": "手机上播放横版视频时自动全屏",
+    "doubleTapPercent": "双击快进快退的区域宽度",
+    "holdRate": "长按倍速",
+    "swipeMinutes": "横向拖过整个画面跳转",
+    "touch": "画面手势（长按、拖动、双击）"
+  },
   "playbackTranscode": {
+    "qualitySaved": "已保存画质上限",
     "saved": "已保存转码方式",
     "software": "软件编解码"
   },
   "preferencesPanel": {
+    "autoChineseSubtitles": "自动打开中文字幕",
+    "autoChineseSubtitlesHelp": "没选过字幕的影片打开同目录的中文字幕",
     "autoScroll": "自动滚动",
     "batchSize": "每批加载作品",
     "batchSizeInput": "每批作品",
     "close": "关闭设置",
+    "completionPrompt": "缺图补全提示",
     "defaultImage": "默认图片",
     "defaultSort": "默认排序",
     "defaultSortDirection": "默认排序方向",
     "detailAutoplay": "打开详情自动播放",
     "feedLimit": "显示数量",
     "feedLimitInput": "新作显示数量",
+    "feedNewRows": "首页与人物页显示新作",
     "groupEditions": "合并分卷与版本",
+    "homePreviewOnly": "首页只显示有预览图的作品",
+    "homeShorts": "首页竖屏短片带",
+    "homeTiers": "首页显示女优与厂牌头像",
     "hoverDelay": "悬停预览延迟",
+    "hoverDelaySfw": "SFW 模式下不预览。",
+    "hoverPreview": "卡片悬停时播放视频预览",
     "increaseContrast": "增加对比度",
+    "ingestNotices": "入库通知",
     "interfaceSounds": "界面音效",
     "miniPlayer": "离开详情后小窗播放",
     "navCaption": "设置",
@@ -829,6 +887,7 @@
     "relatedLimit": "相关推荐数量",
     "searchHistoryInput": "搜索记录",
     "searchHistoryLimit": "搜索记录数量",
+    "searchRecommendations": "空搜索时显示推荐",
     "sectionsLabel": "设置分区",
     "seekStep": "快进 / 快退步长",
     "seekStepInput": "快进 / 快退",
@@ -845,6 +904,7 @@
   "pushDiscovery": {
     "addPrefix": "添加前缀",
     "cloudPrefixes": "云端路径前缀",
+    "cloudPrefixesHelp": "云通知和云下载都按这张表把网盘路径对应到媒体目录。",
     "configCopied": "已复制 CloudDrive2 配置",
     "configLabel": "CloudDrive2 配置",
     "copyConfig": "复制配置",
@@ -869,6 +929,7 @@
   "releaseUpdates": {
     "appAndTools": "应用与工具",
     "appUpdatePackage": "应用更新包",
+    "changelogTitle": "{{versions}} 更新重点",
     "channel": "更新通道",
     "check": "检查更新",
     "checkDone": "检查完成",
@@ -879,6 +940,7 @@
     "dockerUpdateBody": "Watchtower 会拉取 Peach {{version}} 的镜像并重建容器，/data 数据卷保留，进行中的任务在启动后续跑。",
     "downloadAndInstall": "下载并安装",
     "downloadNewVersion": "下载新版本",
+    "highlightTitle": "{{title}}：",
     "includesMediaTools": "本次更新包含媒体工具。",
     "installAfterRestart": "Peach {{version}} 将在重启后安装。",
     "installation": "安装方式",
@@ -918,15 +980,35 @@
     "tunnelToken": "隧道令牌"
   },
   "repairCenter": {
+    "applyBody_one": "将改动 {{count, number}} 处。执行前先备份账本，可从账本备份恢复。",
+    "applyBody_other": "将改动 {{count, number}} 处。执行前先备份账本，可从账本备份恢复。",
+    "applyTitle": "执行「{{title}}」？",
     "awaitingConfirmation": "等你确认",
     "backupCleaned": "修复前的备份已清理",
     "changedCount": "改动 {{count, number}} 项",
+    "deferReasonCount": "{{reason}} {{count, number}} 部",
+    "deferReasons": {
+      "mount": "所在目录读不到",
+      "cooldown": "资料来源冷却中",
+      "cost": "计费来源未确认",
+      "retry": "等待自动重试"
+    },
+    "deferred": "已延后",
+    "deferredNote": "延后 {{count, number}} 部：{{reason}}",
     "deleteBody": "将删除 {{amount}}，删除后不能恢复。每个关注来源最近 3 份快照和条目引用的快照会保留。",
     "deleteSnapshots": "删除快照",
     "deleteTitle": "删除{{title}}",
     "empty": "没有要修复或迁移的内容。",
     "estimating": "正在统计",
+    "failedNote": "失败 {{count, number}} 部，可在{{place}}重试",
     "filesAndSize": "{{count, number}} 个文件 · {{size}}",
+    "groups": {
+      "files": "馆藏文件",
+      "catalog": "作品资料",
+      "people": "人物与厂牌",
+      "follow": "关注、新作与想要",
+      "records": "下载与任务记录"
+    },
     "history": "历史记录",
     "itemProgress": "{{title}}进度",
     "itemsHeading": "修复项目",
@@ -934,10 +1016,35 @@
     "needsRetry": "需要重试",
     "noChanges": "无改动",
     "nothingToDo": "无需处理",
+    "pendingChecks_one": "{{count, number}} 条待核对",
+    "pendingChecks_other": "{{count, number}} 条待核对",
+    "pendingFixes_one": "待修正 {{count, number}} 处",
+    "pendingFixes_other": "待修正 {{count, number}} 处",
+    "pendingCovers": "{{count, number}} 张封面待处理",
     "pendingRecheck": "{{count, number}} 部待补测",
     "preRepairBackup": "修复前的账本备份",
     "queued": "等待执行",
-    "reclaimable": "可回收 {{size}}"
+    "reclaimable": "可回收 {{size}}",
+    "startAll": "全部开始",
+    "startAllTitle": "开始全部等确认的修复",
+    "startGroup": "开始这一组",
+    "startGroupTitle": "开始「{{group}}」里等确认的修复",
+    "startManyBody": "依次开始。改账本的项先备份账本，可从账本备份恢复。",
+    "startManyBodyDelete": "依次开始。改账本的项先备份账本，可从账本备份恢复；删除的快照不能恢复。",
+    "startManyItem": "{{title}}：{{amount}}",
+    "waitingCount_one": "{{count, number}} 项修复等你确认",
+    "waitingCount_other": "{{count, number}} 项修复等你确认"
+  },
+  "retention": {
+    "backups": "账本自动备份",
+    "backupsHelp": "写入前留下的整库备份保留最近几份，24 小时内的都留。",
+    "copies": "{{count, number}} 份",
+    "days": "{{count, number}} 天",
+    "halfYear": "半年",
+    "logs": "日志",
+    "logsHelp": "多久没再写入的日志会被删除。",
+    "oneYear": "1 年",
+    "title": "保留期限"
   },
   "runtimeInfo": {
     "logDirectory": "日志目录",
@@ -1191,6 +1298,10 @@
   "transcoding": {
     "mode": "转码方式",
     "modeHelp": "用于播放时的视频转码。",
+    "original": "原画",
+    "quality": "画质上限",
+    "qualityHeight": "{{height}}p",
+    "qualityHelp": "只管需要重新编码的片子，网络慢时调低。",
     "title": "视频播放"
   },
   "uninstall": {
@@ -1202,6 +1313,8 @@
     "title": "卸载 Peach"
   },
   "upgradeRepairs": {
+    "deferred": "延后",
+    "deferredHelp": "剩下的要等挂载恢复或来源放开，到时间自动继续。",
     "downloadReviewLog": "下载复核记录",
     "itemCount": "{{value}} 项",
     "needsReview": "需要复核",
@@ -1254,5 +1367,38 @@
   },
   "videoProcessing": {
     "autoHardwareFirst": "自动（硬件优先）"
+  },
+  "wantSearch": {
+    "attempts": "{{count, number}} 次",
+    "daily": "每天",
+    "everyDays": "每 {{count, number}} 天",
+    "giveUp": "查不到就放弃",
+    "giveUpHelp": "老片连续这么多次没查到就暂时放弃，可在清单上重新查。",
+    "interval": "老片再查间隔",
+    "intervalHelp": "发售超过 90 天、上次没查到的作品隔多久再查。",
+    "never": "一直查",
+    "title": "想要查资源"
+  },
+  "sourceBudget": {
+    "gigabyteCount": "{{count, number}} GB",
+    "gigabytes": "每趟下载上限",
+    "hourCount": "{{count, number}} 小时",
+    "hours": "每趟采集时长",
+    "requestCount": "{{count, number}} 次",
+    "requests": "每趟请求上限",
+    "requestsHelp": "一趟扫描与采集向外部来源要的总量，三项哪项先到就停在哪，剩下的下一趟接着采。",
+    "saved": "已保存每趟采集上限"
+  },
+  "scrapingBrowser": {
+    "headless": "无窗口",
+    "mode": "后台采集浏览器",
+    "modeHelp": "保留窗口时窗口在屏幕外、不抢前台，验证过不了可从任务栏点开手动点；无窗口时过不了就暂停该来源。",
+    "title": "采集浏览器",
+    "window": "保留窗口"
+  },
+  "coverFallback": {
+    "title": "封面",
+    "javdb": "没有别的封面时用 JavDB 带水印的图",
+    "javdbHelp": "默认关闭。官方与本地封面始终优先，之后取到不带水印的封面会自动换掉"
   }
 }

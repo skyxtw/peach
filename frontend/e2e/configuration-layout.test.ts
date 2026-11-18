@@ -62,7 +62,7 @@ describe('配置表单与行间距', () => {
       try {
         await page.route('**/api/configuration', async route => {
           const data = await (await route.fetch()).json();
-          await route.fulfill({ json: { ...data, updates: { ...data.updates, installation: '独立测试包',
+          await route.fulfill({ json: { ...data, updates: { ...data.updates, installation: '独立测试包', installation_code: 'standalone',
             state: 'available', latest_version: '1.0.0', message: '有新版本可下载。', package_kind: 'update',
             asset_size: 12 * 1048576, release_url: 'https://github.com/peach-mitao/peach/releases/tag/v1.0.0' },
             update_job: { state: 'idle', progress: 0 } } });

@@ -1,7 +1,7 @@
-/* 垃圾文件队列（`/junk-files`，由路由树画进 `#grid`）：计数行加一屏逐项处置的卡片。
+/* 垃圾文件队列（`/junk-files`，由路由树画进 `#grid`）：筛选浮层加一屏逐项处置的卡片。
  *
- * 页面画在壳的 `#grid` 里，计数行经 portal 画进 `#count` 里自己建的一个 `.peach-react` 容器：
- * 那一行本身归壳（目录页也用它，换页时由壳清空），里面的摘要与分类条归这里。
+ * 页面画在壳的 `#grid` 里，浮层经 portal 画进 `#count` 里自己建的一个 `.peach-react` 容器：
+ * 那一行本身归壳（目录页也用它，换页时由壳清空），里面的分类条、读数与「全选」归这里。
  *
  * 首屏不在 `prefetch` 里等。分类条由地址决定、此刻就画得出最终样子，等的只有读数，所以一打开
  * 就画：计数行是等待态（`#count[aria-busy]`、摘要里一条占位），网格是壳那份骨架，数据到了
@@ -22,9 +22,13 @@ import { EmptyState } from '../components/empty-state';
 import { LOAD_MORE_MARGIN, RetryNote, useSkeletonReveal } from '../components/grid-reveal';
 import { spriteGlyph } from '../components/sprite-glyph';
 import { JunkCard } from './junk-card';
+import { JunkList } from './junk-list';
+import { useCatalogView } from '../catalog-grid/catalog-view';
+import { useQueueSort } from '../components/queue-sort';
 import { JunkCount } from './junk-count';
-import { fetchJunkPage, junkQueryKey, type JunkPage, type JunkQueueProps, type JunkRoute } from './junk-queue';
+import { fetchJunkPage, groupJunkCopies, junkQueryKey, type JunkItem, type JunkPage, type JunkQueueProps, type JunkRoute } from './junk-queue';
 import { t } from '../../i18n';
+import type { TableFilters, RemoteTableFilters } from '../components/use-table-filters';
 
 const CheckGlyph = spriteGlyph('check');
 
@@ -32,9 +36,13 @@ const sameRoute = (key: readonly unknown[], route: JunkRoute) => key[1] === rout
 
 export function JunkQueuePage(props: JunkQueueProps) {
   const route: JunkRoute = { kind: props.kind, view: props.view };
+  const [filters, setFilters] = useState<TableFilters>({});
+  const view = useCatalogView();
+  const activeFilters = view === 'list' ? filters : {};
+  const encoded = JSON.stringify(activeFilters);
   const query = useQuery<JunkPage, Error>({
-    queryKey: junkQueryKey(route, props.revision),
-    queryFn: ({ signal }) => fetchJunkPage(route, signal),
+    queryKey: encoded === '{}' ? junkQueryKey(route, props.revision) : [...junkQueryKey(route, props.revision), encoded],
+    queryFn: ({ signal }) => fetchJunkPage(route, signal, encoded === '{}' ? undefined : activeFilters),
     placeholderData: (previous, previousQuery) =>
       (previousQuery && sameRoute(previousQuery.queryKey, route) ? previous : undefined),
   });
@@ -57,16 +65,25 @@ export function JunkQueuePage(props: JunkQueueProps) {
     if (host && query.data) popBadges(host, 'junk');
   }, [host, query.data]);
 
-  const { navigate } = props.actions;
+  /* 排序键在浮层上、排的是网格里那一份，所以在这一层持有。 */
+  const order = useQueueSort<JunkItem>('junk-files', { size: (item) => Number(item.size || 0), new: (item) => item.id });
+  const { navigate, selectAll } = props.actions;
+  const loaded = (query.data?.items || []).map((item) => item.id);
+  const pickAll = query.data && !query.isFetching && !query.isError ? { loaded, picked: loaded.filter((id) => props.selected.has(id)).length,
+    onChange: (on: boolean) => selectAll(loaded, on) } : null;
   const count = host
-    ? createPortal(
-      <JunkCount route={route} page={query.data} failed={query.isError && !query.data} onNavigate={navigate} />, host)
+    ? createPortal(<JunkCount route={route} page={query.data} failed={query.isError && !query.data} pickAll={pickAll}
+      sorts={order.sorts} onSort={order.onSort} onNavigate={navigate}
+      onDisposeAll={!query.isFetching && !query.isError && route.view === 'pending' && Number(query.data?.total || 0) > 0
+        ? () => encoded === '{}' ? props.actions.disposeAll(route.kind, Number(query.data!.total))
+          : props.actions.disposeAll(route.kind, Number(query.data!.total), encoded) : undefined} />, host)
     : null;
   return (
     <>
       {count}
       <JunkBody key={`${route.view}:${route.kind}`} props={props} data={query.data} pending={waiting}
-        error={query.data ? null : query.error} retry={() => void query.refetch()} />
+        filters={{ values: activeFilters, facets: query.data?.column_facets ?? {}, onChange: setFilters }}
+        error={query.error} busy={query.isFetching || query.isError} retry={() => void query.refetch()} order={order} />
     </>
   );
 }
@@ -86,14 +103,32 @@ function useCountHost(row: HTMLElement | null): HTMLElement | null {
 }
 
 /** 一个分类、一个视图的网格：骨架、卡片、往下露的下一段与空态。 */
-function JunkBody({ props, data, pending, error, retry }: {
+function JunkBody({ props, data, pending, error, retry, order, filters, busy }: {
   props: JunkQueueProps; data: JunkPage | undefined; pending: boolean; error: Error | null; retry(): void;
+  order: ReturnType<typeof useQueueSort<JunkItem>>;
+  filters: RemoteTableFilters;
+  busy: boolean;
 }) {
+  const view = useCatalogView();
   const reveal = useSkeletonReveal(pending, props.skeletonHtml);
   const batch = Math.max(1, props.batchSize || 60);
   const [segments, setSegments] = useState(1);
-  const items = data?.items || [];
-  const shown = items.slice(0, segments * batch);
+  const items = order.sort(data?.items || []);
+  const groups = groupJunkCopies(items);
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+  const toggleCopies = (id: number) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const visible = (group: JunkItem[]) => expanded.has(group[0]!.id) ? group : group.slice(0, 1);
+  const shown = groups.slice(0, segments * batch).flatMap(visible);
+  const copyGroups = new Map(groups.filter((group) => group.length > 1).map((group) => [group[0]!.id, group]));
+  const copyInfo = (item: JunkItem) => {
+    const group = copyGroups.get(item.id);
+    return group ? { count: group.length, bytes: group.reduce((sum, member) => sum + Number(member.size || 0), 0),
+      expanded: expanded.has(item.id), toggle: () => toggleCopies(item.id) } : undefined;
+  };
   const { canLoadMore } = props;
   const more = useCallback(() => {
     if (canLoadMore?.() === false) return;
@@ -103,7 +138,7 @@ function JunkBody({ props, data, pending, error, retry }: {
   const content = () => {
     if (pending) return null;
     if (!data) return <RetryNote message={requestErrorMessage(error)} onRetry={retry} />;
-    if (!items.length) {
+    if (!items.length && view !== 'list') {
       const dismissed = props.view === 'dismissed';
       return (
         <EmptyState icon={CheckGlyph} title={dismissed ? t('cleanup:junk.emptyExcluded') : t('cleanup:junk.emptyUndecided')}
@@ -112,17 +147,23 @@ function JunkBody({ props, data, pending, error, retry }: {
         </EmptyState>
       );
     }
+    /* 列表版式一次画齐：整批已经在手上，表格行比卡矮，不用往下一段段露。 */
+    if (view === 'list') return <>
+      <JunkList items={groups.flatMap(visible)} copies={copyInfo} view={props.view} selected={props.selected} selecting={props.selectMode} actions={props.actions} order={order} filters={filters} busy={busy} />
+      {Number(data.total || 0) > items.length ? <p data-junk-truncated="" className="py-6 text-center text-caption-1-regular text-text-secondary">
+        {t('cleanup:junk.truncated', { shown: items.length.toLocaleString(), count: Number(data.total) })}</p> : null}
+    </>;
     return (
       <>
         <div data-media-grid="" data-junk-grid="" data-select-mode={props.selectMode ? '' : undefined}>
           {shown.map((item) => (
             <JunkCard key={item.id} item={item} view={props.view} selected={props.selected.has(item.id)}
-              selectMode={props.selectMode} helpers={props.helpers} actions={props.actions} />
+              selectMode={props.selectMode} helpers={props.helpers} actions={props.actions} copies={copyInfo(item)} />
           ))}
         </div>
-        {shown.length < items.length ? <RevealMore key={segments} onMore={more} /> : null}
+        {segments * batch < groups.length ? <RevealMore key={segments} onMore={more} /> : null}
         {/* 队列一次只取前 200 条：露到底了还有没取的，说清楚是截断而不是全部。 */}
-        {shown.length >= items.length && Number(data.total || 0) > items.length
+        {segments * batch >= groups.length && Number(data.total || 0) > items.length
           ? <p data-junk-truncated="" className="py-6 text-center text-caption-1-regular text-text-secondary">
               {t('cleanup:junk.truncated', { shown: items.length.toLocaleString(), count: Number(data.total) })}
             </p>
@@ -133,6 +174,7 @@ function JunkBody({ props, data, pending, error, retry }: {
   return (
     <div data-junk-body="" data-grid-reveal={reveal.fading ? '' : undefined}>
       {reveal.layer}
+      {data && error ? <RetryNote message={requestErrorMessage(error)} onRetry={retry} /> : null}
       {content()}
     </div>
   );

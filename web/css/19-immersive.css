@@ -13,7 +13,6 @@
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
   .count::-webkit-scrollbar{display:none}
   .count>span:first-child{line-height:36px;white-space:nowrap}
-  .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
   .reviewtabs button{height:44px}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开。只裁横向：竖向也裁的话，
      那几枚玻璃按钮往下落的投影在顶栏下沿被切平，头像那一排上方就多出一条横线。 */
@@ -40,8 +39,10 @@
   .top:has(.search.open) .brand,
   .top:has(.search.open) #searchBtn,
   .top:has(.search.open) #immerseBtn,
+  .top:has(.search.open) #wallBtn,
   .top:has(.search.open) #selectMode,
-  .top:has(.search.open) #settingsBtn{display:none!important}
+  .top:has(.search.open) #settingsBtn,
+  .top:has(.search.open) #tutorialBtn{display:none!important}
   .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:calc(50% - 18px);z-index:6}
   /* 下拉栏以搜索框为包含块（搜索框自身是 absolute），往左伸 40px 盖过返回键那一列，
      和顶栏两侧同样留 8。不用 fixed：玻璃层的 backdrop-filter 会让搜索框成为 fixed 元素的

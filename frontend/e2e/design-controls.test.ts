@@ -7,12 +7,48 @@ import { ITEM, openItemPage } from './item-fixture.ts';
 import {
   DESKTOP, MOBILE, tokenColor, openAccess, settledRun, openActivity, qualityGoal, openQualityGoals,
   openScraping, openProcessing, openCatalog, openCatalogBars, openCatalogFixture, RUNNING_JOB, FAILED_JOB,
-  installDesignBrowser, openReview,
+  installDesignBrowser, openReview, openJunkWith, junkItem,
 } from './design-fixture.ts';
 
 describe('设计决定：控件、状态与首页顶部', () => {
   let browser: Browser;
   installDesignBrowser((next) => { browser = next; });
+
+  it('垃圾单项回收单击执行，全部回收在确认弹窗长按执行', { timeout: 60_000 }, async () => {
+    for (const viewport of [DESKTOP, MOBILE]) {
+      const opened = await openJunkWith(browser, [junkItem(1, 'video', 'promo.mp4'), junkItem(2, 'image', 'promo.jpg')], viewport);
+      try {
+        const { page, state } = opened;
+        const controls = page.locator('[data-junk-filters-frame]');
+        const shapes = await controls.locator('[data-select-all], [data-junk-dispose-all]').evaluateAll(elements =>
+          elements.map(element => ({ height: element.getBoundingClientRect().height, radius: getComputedStyle(element).borderRadius })));
+        assert.equal(shapes.length, 2);
+        assert.deepEqual(shapes, [{ height: 32, radius: '8px' }, { height: 32, radius: '8px' }]);
+        await page.locator('#grid [data-junk-action="dispose"]').first().click();
+        await page.waitForFunction(() => document.querySelectorAll('#grid [data-junk-card]').length === 1);
+        assert.deepEqual(state.batches, [{ ids: [1], operation: 'dispose', disposal_reason: 'junk' }]);
+
+        const disposed: unknown[] = [];
+        await page.route('**/api/ads/dispose-all', route => {
+          disposed.push(JSON.parse(route.request().postData() || '{}'));
+          state.items = [];
+          return route.fulfill({ json: { ok: true, changed: 1, ids: [2] } });
+        });
+        await page.locator('[data-junk-dispose-all]').click();
+        const confirm = page.locator('dialog[open] [data-hold-confirm]');
+        await confirm.waitFor();
+        await confirm.click();
+        assert.deepEqual(disposed, []);
+        await confirm.focus();
+        await page.keyboard.down('Space');
+        await page.waitForFunction(() => !document.querySelector('dialog[open] [data-hold-confirm]'));
+        await page.keyboard.up('Space');
+        assert.deepEqual(disposed, [{ kind: '', status: 'pending', expected: 1 }]);
+      } finally {
+        await opened.close();
+      }
+    }
+  });
 
   it('复核状态沿用首页玻璃控件尺寸，空分类保留选中玻璃与状态入口', { timeout: 60_000 }, async () => {
     for (const viewport of [DESKTOP, MOBILE]) {
@@ -226,20 +262,22 @@ describe('设计决定：控件、状态与首页顶部', () => {
     }
   });
 
-  it('高清版卡片的封面是 150px 宽的 16/10 方块，长标题从头显示、最多两行', { timeout: 60_000 }, async () => {
+  it('高清版卡片是探索卡那一副：封面铺满卡宽、16:9，长标题从头显示、最多两行', { timeout: 60_000 }, async () => {
     const long = '这是一个长到必须省略才放得下的文件名，用来盯住标题从头显示而番号不被截掉.mp4';
     const opened = await openQualityGoals(browser, [
       qualityGoal(1, long), qualityGoal(2, 'short.mp4'),
     ]);
     try {
-      const cover = opened.page.locator('li[data-goal-id="1"] button').first();
-      const box = await cover.evaluate((element) => ({
-        width: getComputedStyle(element).width,
-        ratio: getComputedStyle(element).aspectRatio,
-      }));
-      assert.equal(box.width, '150px');
-      assert.equal(box.ratio.replaceAll(' ', ''), '16/10');
-      const title = opened.page.locator('li[data-goal-id="1"] h3 button');
+      const card = opened.page.locator('[data-goal-id="1"]');
+      const box = await card.evaluate((element) => {
+        const pic = element.querySelector('[data-media-pic]')!;
+        return { card: element.getBoundingClientRect().width, cover: pic.getBoundingClientRect().width,
+          ratio: getComputedStyle(pic).aspectRatio };
+      });
+      assert.ok(Math.abs(box.cover - box.card) < 1, `封面没铺满卡宽：${JSON.stringify(box)}`);
+      const [w, h] = box.ratio.split('/').map(Number);
+      assert.ok(Math.abs(w! / h! - 16 / 9) < 0.001, `封面不是 16:9：${box.ratio}`);
+      const title = card.locator('[data-media-title]');
       await title.waitFor({ timeout: 5_000 });
       const shown = await title.evaluate((element) => ({
         clamp: getComputedStyle(element).webkitLineClamp,

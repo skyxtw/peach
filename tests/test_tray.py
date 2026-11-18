@@ -49,6 +49,7 @@ from peach.versioning import UpdateResult, VersionSnapshot
 from peach.windows_update import PendingWindowsUpdate, WindowsUpdatePreparation
 from peach.settings_file import SettingsFileError
 from peach.user_messages import UserValueError
+from support.processes import finishes_within, grandchild_alive, hanging_program, kill_grandchild
 
 
 class Response:
@@ -88,6 +89,23 @@ class TrayTests(unittest.TestCase):
                 self.assertNotIn("--no-mdns", spec.command)
             else:
                 self.assertIn("--redirect-origin", spec.command)
+
+    @unittest.skipUnless(
+        os.name == "nt", "macOS 走 build_macos_service_specs，不发布 LAN 地址"
+    )
+    def test_windows_https_listens_dual_stack_and_pins_only_the_published_ipv4(self):
+        """HTTPS 监听所有网卡才收得到 IPv6；`--mdns-address` 只钉 A 记录与健康检查地址。"""
+        with tempfile.TemporaryDirectory() as directory:
+            tls_dir = Path(directory)
+            for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+                (tls_dir / name).write_text("test-only", encoding="utf-8")
+            specs = {spec.name: spec for spec in build_service_specs(lan_address="192.0.2.10",
+                                                                     tls_dir=tls_dir)}
+        command = specs["https"].command
+        self.assertEqual(command[command.index("--host") + 1], "0.0.0.0")
+        self.assertEqual(command[command.index("--mdns-address") + 1], "192.0.2.10")
+        self.assertNotIn("--ipv4-only", command)
+        self.assertEqual(specs["https"].health_url, "https://192.0.2.10/healthz")
 
     @unittest.skipUnless(
         os.name == "nt", "macOS 走 build_macos_service_specs，不发布 LAN 地址"
@@ -324,6 +342,24 @@ class ServiceStatusTests(unittest.TestCase):
         self.assertEqual(
             manager._run.call_args.kwargs["env"]["PYTHONIOENCODING"], "utf-8",
         )
+
+    @patch("peach.tray.DATABASE_PATH", Path("/local/ledger.db"))
+    @patch("peach.tray.SHARED_DATABASE_PATH", Path("/shared/ledger.db"))
+    def test_a_sync_that_never_returns_is_stopped_and_the_services_come_back(self):
+        """服务停着、操作锁占着时 `ledger-sync` 卡住：到期收掉整棵进程树，照常恢复服务。"""
+        directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.addCleanup(kill_grandchild, directory)
+        program = hanging_program(directory)
+        manager = ServiceManager(tuple(), ledger_plan=lambda: SyncPlan("pull", "共享副本更新"))
+        with patch("peach.tray.LEDGER_SYNC_SECONDS", 2),                 patch.object(manager, "start_missing") as start,                 patch.object(manager, "wait_until_ready", return_value=True):
+            ok, message = finishes_within(lambda: manager.sync_ledger(program), 30)
+        self.assertFalse(ok)
+        self.assertIn("超过 2 秒没有结束", message)
+        start.assert_called_once_with(reason="restore after database sync")
+        deadline = time.monotonic() + 10
+        while grandchild_alive(directory) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertFalse(grandchild_alive(directory), "ledger-sync 起的孙进程还活着")
 
     def test_take_ownership_is_an_explicit_ledger_command(self):
         manager = ServiceManager(
@@ -718,7 +754,8 @@ class LogRetentionAtStartupTests(unittest.TestCase):
     def check_log_sweep(self, root, platform, tray, settings_file):
         config = settings_file.PeachConfig(root, root / "config.toml")
         events = []
-        def sweep(_):
+        def sweep(_, *, retention):
+            self.assertEqual(retention, tray.log_retention.RETENTION)
             events.append("sweep")
             raise OSError("log busy")
         def manager(*args, **kwargs):
@@ -839,6 +876,13 @@ class SourceSyncTests(unittest.TestCase):
 
         self.assertFalse(launchd_owns_this_process(
             Mock(return_value=Mock(returncode=113, stdout="")), uid=501))
+
+    def test_launchctl_that_never_returns_counts_as_not_owned_and_a_failed_restart(self):
+        hung = Mock(side_effect=subprocess.TimeoutExpired(["launchctl"], 30))
+        self.assertFalse(launchd_owns_this_process(hung, uid=501))
+        self.assertEqual(hung.call_args.kwargs["timeout"], tray_module.LAUNCHCTL_SECONDS)
+        self.assertNotEqual(restart_tray_process(hung, uid=501).returncode, 0)
+        self.assertEqual(hung.call_args.kwargs["timeout"], tray_module.LAUNCHCTL_SECONDS)
 
     def test_windows_tray_lists_source_sync_next_to_ledger(self):
         source = inspect.getsource(PeachTray.__init__)
@@ -1204,6 +1248,9 @@ class MacMenuBarTests(unittest.TestCase):
             self.assertIn("--port", command)
             self.assertGreater(int(command[command.index("--port") + 1]), 1024)
             self.assertNotIn("--mdns-address", command)
+            # pf 只转发 IPv4 的 80/443；IPv6 客户端按 AAAA 连过来会落到没人监听的端口。
+            if "0.0.0.0" in command:
+                self.assertIn("--ipv4-only", command)
 
     def test_https_spec_only_appears_with_real_tls_material(self):
         """macOS 这份是开发环境：没有本机 CA 也应该能用，不像 Windows 那样直接报错。"""

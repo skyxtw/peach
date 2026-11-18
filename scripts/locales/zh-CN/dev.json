@@ -525,10 +525,9 @@
     "windowsOnly": "无控制台 runner 启动器仅用于 Windows"
   },
   "machine_lock": {
-    "description": "拿着整机的重负载锁运行一条命令，结束后释放。\n\n本机 CI runner 的构建、冒烟与镜像作业用它和本机测试排同一把锁（`test_evidence.machine_lock_path`）；\n测试入口自己会拿这把锁，经测试入口的作业不要再套一层，否则会自己等自己。\n\n用法：python scripts/machine_lock.py [--wait 秒] -- 命令 参数...\n",
+    "description": "占满整机测试名额运行一条命令，结束后释放。\n\n本机 CI runner 的构建、冒烟与镜像作业用它和本机测试排同一组名额（`scripts/test_slots.py`，ADR-0172），像全量一样取满全部名额；\n命令里再调用测试入口时，入口看到名额已被父进程持有，不会再排一次。\n\n用法：python scripts/machine_lock.py [--wait 秒] -- 命令 参数...\n",
     "waitHelp": "最多等多少秒；CI 作业时限内足够让本机一轮全量跑完",
-    "commandMissing": "缺少要运行的命令",
-    "timedOut": "等了 {{seconds}} 秒仍拿不到整机重负载锁（{{holder}}）。"
+    "commandMissing": "缺少要运行的命令"
   },
   "commit_subject": {
     "badForm": "提交主题「{{subject}}」须为 type(scope): 描述，如 {{example}}",
@@ -727,6 +726,11 @@
   "upgrade_audited_covers": {
     "description": "按核查清单重探官方高清候选，逐番号保留备份和处理结果。",
     "liveHelp": "通过现有官方链在线补查，无需已有快照"
+  },
+  "judge_cover_portraits": {
+    "description": "取 DMM 配套竖版图，给已装的封面补判是不是封套，独立海报装成竖版正封。",
+    "allHelp": "标准封套比例上已找到折痕的也一起补判",
+    "coversHelp": "改判这个目录里的封面（默认是数据根的 generated/covers），先在副本上试用"
   },
   "sync_brand_marks": {
     "description": "把本机已取得的厂牌标识收进 `resources/marks/`，随仓库分发（ADR-0026）。"
@@ -1843,6 +1847,7 @@
     "description": "取 YuNet 与 SFace 两个人脸模型及其许可证，逐个校验 SHA-256 后放进发行包的模型目录。\n\nWindows 构建放进程序目录的 `tools/face-models`，macOS 放 `Peach.app/Contents/Resources/tools/face-models`，\n运行时由 `peach.face_detect.bundled_model` 认这一份；Docker 镜像在 Dockerfile 里按同一组地址与哈希取。\n下载先落到缓存目录，缓存里哈希对得上的文件不再联网。\n"
   },
   "adopt_dependency_bump": {
+    "ocrRuntime": "OCR 独立 Python 依赖",
     "stepPreflight": "提交后预检（工作树根目录，PowerShell 7）：{{command}}",
     "stepTest": "测试：{{command}}",
     "stepDeliver": "交付：推送工作者分支并创建交付 PR，核对当前提交的 CI；ready 后由协调者 integrate",
@@ -1965,8 +1970,10 @@
     "dueUrgent": "有{{groups}}，这类不等周期",
     "moreEntries": "（另有 {{count}} 条）",
     "unlabeledEntries": "{{file}} 的 {{version}} 一节还有未归类条目：{{preview}}{{remainder}}",
+    "entriesWithoutReference": "{{file}} 的 {{version}} 一节有条目没带来源编号，句末补上（#issue 或 PR 编号）：{{preview}}{{remainder}}",
     "longEntry": "{{version}}：{{line}}…",
-    "entriesTooLong": "{{file}} 有条目超过 {{limit}} 字，改成一句话：{{preview}}{{remainder}}",
+    "entriesTooLong": "{{file}} 有条目中文超过 {{limit}} 字或英文超过 {{english_limit}} 个字符，改成一句话：{{preview}}{{remainder}}",
+    "notBilingual": "{{file}} 的 {{version}} 一节有行没写成「英文 / 中文」，或英文还是 TODO：{{preview}}{{remainder}}",
     "noSectionForNotes": "{{file}} 里没有 {{version}} 这一节，Release 正文无从生成",
     "noLinkForNotes": "{{file}} 底部缺少 `[{{version}}]:` 链接，Release 正文无从附上完整变更",
     "sectionExists": "{{file}} 里已经有 {{version}} 这一节",
@@ -1984,7 +1991,7 @@
     "notesNotGenerated": "Release 正文未生成",
     "changelogNotUpdated": "变更日志未更新",
     "failed": "{{what}}：{{error}}",
-    "description": "变更日志：从 Conventional Commits 起草，发布时把未发布节定版。\n\n格式遵循 Keep a Changelog 1.1.0（https://keepachangelog.com/zh-CN/1.1.0/），版本号遵循\nSemantic Versioning 2.0.0（https://semver.org/lang/zh-CN/spec/v2.0.0.html）：`## [未发布]`\n常在，每个发布一节 `## [X.Y.Z] - YYYY-MM-DD`，分组标题固定，底部给 compare 链接。\n\n草稿按提交主题分组，措辞要人改成使用者读得懂的话——规范的第一条原则就是变更日志写给\n人看，不是 `git log` 的转储。只改开发过程的提交（`docs`、`test`、`chore`、`refactor`）\n不进日志。定版时未发布节里人润色过的内容整段搬进版本节，那一节空着才用草稿兜底。\n\n每个条目再带一个区域标签（`- **播放**：…`）：分组标题按变化性质分，标签按使用者看到的\n区域分。认得的 scope 自动换成标签，草稿里还留着英文 scope 的条目就是等人定标签的。\n\n    python scripts/changelog.py                                # 起草未发布区间\n    python scripts/changelog.py --range v0.16.0..v0.27.1       # 起草任意区间\n    python scripts/changelog.py --release 0.30.0 --apply       # 把未发布节定版为 0.30.0\n    python scripts/changelog.py --notes 0.30.0 --to NOTES.md   # 生成这一版的 Release 正文\n"
+    "description": "变更日志：从 Conventional Commits 起草，发布时把未发布节定版。\n\n格式遵循 Keep a Changelog 1.1.0（https://keepachangelog.com/zh-CN/1.1.0/），版本号遵循\nSemantic Versioning 2.0.0（https://semver.org/lang/zh-CN/spec/v2.0.0.html）：`## [Unreleased]`\n常在，每个发布一节 `## [X.Y.Z] - YYYY-MM-DD`，分组标题固定，底部给 compare 链接。\n\n草稿按提交主题分组，措辞要人改成使用者读得懂的话——规范的第一条原则就是变更日志写给\n人看，不是 `git log` 的转储。只改开发过程的提交（`docs`、`test`、`chore`、`refactor`）\n不进日志。定版时未发布节里人润色过的内容整段搬进版本节，那一节空着才用草稿兜底。\n\n每个条目再带一个区域标签：分组标题按变化性质分，标签按使用者看到的区域分。认得的 scope\n自动换成标签，草稿里还留着英文 scope 的条目就是等人定标签的。\n\n每一行英文在前、中文在后，中间用 ` / ` 隔开：`- **Playback**: English (#1). / **播放**：中文（#1）。`\nRelease 正文与应用内的更新说明都按第一个 ` / ` 拆成两种语言。\n\n    python scripts/changelog.py                                # 起草未发布区间\n    python scripts/changelog.py --range v0.16.0..v0.27.1       # 起草任意区间\n    python scripts/changelog.py --release 0.30.0 --apply       # 把未发布节定版为 0.30.0\n    python scripts/changelog.py --notes 0.30.0 --to NOTES.md   # 生成这一版的 Release 正文\n"
   },
   "check_commit_message": {
     "pendingLabel": "待提交",
@@ -2289,6 +2296,9 @@
     "tagExists": "{{tag}} 已存在，不覆盖；发布新版本请先推进 __version__",
     "auditFailed": "依赖审计发现高危漏洞（{{projects}}）；先升级依赖再发布",
     "noticeMissing": "{{version}} 还没有更新公告：先在 src/peach/release_notices.py 写好这一版的新入口与自动进行的事",
+    "noticeReviewMissing": "{{version}} 的更新公告还没审阅：按 src/peach/release_notices.py 的规则逐条判断，写进 {{path}}（version、digest={{digest}}、items 每条的 perceptible 与 icon 理由、omitted 写其余更新日志条目为什么不进公告）",
+    "noticeReviewStale": "{{version}} 的公告审阅对不上当前公告（版本或摘要变了，当前 digest={{digest}}），按改后的公告重新审阅",
+    "noticeReviewIncomplete": "{{version}} 的公告审阅缺理由或理由太短：{{items}}",
     "nextReview": "核对上面 {{version}} 那一节的措辞，它是使用者唯一读到的说明",
     "nextShip": "确认后跑 --ship --apply：提交、推送、等 Test 转绿、打标签一次做完",
     "sectionMissing": "{{file}} 缺少 {{version}} 一节；先用 --bump 起草再润色",
@@ -2378,15 +2388,18 @@
     "uvMissing": "未取得 uv：PATH 与 WinGet 安装目录里都没有。",
     "syncing": "按 uv.lock 同步测试环境：{{path}}",
     "syncFailed": "测试依赖同步失败（退出码 {{code}}）；未启动测试。",
+    "frontendDrift": "前端依赖与 frontend/package-lock.json 不一致（{{package}}）；未启动测试。先执行：{{command}}",
     "description": "正式测试入口的依赖准备，只在隔离工作树自动同步环境。"
   },
   "test_evidence": {
     "snapshotFailed": "无法为文件生成验证快照：{{name}}",
     "queueAhead": "；前面还有 {{count}} 个在排队",
-    "waiting": "等待 {{lock}}（{{holder}}{{place}}），最长 {{seconds}} 秒。",
+    "waiting": "等待 {{lock}}（{{holder}}{{place}}），{{limit}}。",
     "holderUnknown": "持有者信息暂未取得",
     "holderGone": "持有者刚退出或没留记录",
-    "holderSince": "{{time}} 起"
+    "holderSince": "{{time}} 起",
+    "waitLimit": "最长 {{seconds}} 秒",
+    "waitQueued": "按到达先后一直排队"
   },
   "test_focus": {
     "browserOutside": "浏览器用例不存在或超出 e2e 目录：{{selector}}",
@@ -2462,12 +2475,12 @@
     "helpResume": "正式验证续跑，full 也复用有效的完成证明",
     "helpFocus": "定向调试指定 Python/浏览器用例，不签发记录",
     "helpRerunFailures": "定向运行失败后把失败文件单独重跑一次，通过的记为偶发（CI 浏览器分片用）",
-    "helpLockTimeout": "全量锁等待秒数；0 表示锁忙时立即返回",
+    "helpLockTimeout": "全量锁等待秒数；默认按到达先后一直排队，0 表示锁忙时立即返回",
     "helpBase": "CI 选测的已验证 Git 基线",
     "helpTimings": "分片子进程把成败与逐用例耗时写到这个文件，供父进程汇总",
     "helpShardPlan": "父进程按耗时划好的逐片文件名；不给时按文件名轮转",
     "helpJobs": "本机同时跑几个分片子进程；auto 按核数定。默认串行，正式入口传 auto",
-    "lockTimeoutRange": "锁等待时间必须在 0～1800 秒之间",
+    "lockTimeoutRange": "锁等待时间不能为负数",
     "shardRange": "分片总数必须为正数，编号从 0 开始且小于总数",
     "resumePlanParentOnly": "恢复计划仅供正式父运行的分片使用",
     "rerunFailuresFocusOnly": "--rerun-failures 只用于定向运行；正式入口本来就会单独重跑失败文件",
@@ -2485,7 +2498,16 @@
     "coverage": "单项覆盖：复用 {{reused}} 项，待验证 {{pending}} 项。",
     "phaseTimings": "分阶段耗时（测试执行包含各测试阶段）：{{phases}}",
     "slowTest": "慢测试 {{seconds}}s：{{name}}",
-    "inputsChanged": "验证期间输入改变；保留 {{kept}} 项未受影响的结果，请运行 auto 补齐。"
+    "inputsChanged": "验证期间输入改变；保留 {{kept}} 项未受影响的结果，请运行 auto 补齐。",
+    "unknownScope": "未知测试域：{{scope}}"
+  },
+  "test_slots": {
+    "waiting": "等待整机测试名额（本次要 {{need}} 个，共 {{total}} 个{{place}}），按到达先后排队，每分钟报告一次占用",
+    "holder": "名额 {{slot}}：{{scope}}，pid {{pid}}，{{root}}，{{since}} 起，已运行 {{minutes}} 分钟",
+    "holdersUnknown": "占用者信息暂未取得（刚退出或还没写记录）",
+    "timedOut": "等了 {{minutes}} 分钟仍没有空闲的整机测试名额，本次没有运行测试。",
+    "badCount": "{{variable}} 必须是不小于 1 的整数，当前为 {{value}}",
+    "waitLimit": "；最长再等 {{minutes}} 分钟"
   },
   "test_shard_results": {
     "badFields": "分片报告字段无效",

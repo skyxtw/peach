@@ -525,10 +525,9 @@
     "windowsOnly": "The console-less runner launcher is Windows only"
   },
   "machine_lock": {
-    "description": "Run one command while holding the machine-wide heavy-load lock, then release it.\n\nThe local CI runner's build, smoke and image jobs use it to queue on the same lock as local tests (`test_evidence.machine_lock_path`);\nthe test entry takes this lock itself, so jobs that go through the test entry must not wrap it again or they will wait on themselves.\n\nUsage: python scripts/machine_lock.py [--wait SECONDS] -- COMMAND ARGS...\n",
+    "description": "Run one command while holding every machine-wide test slot, then release them.\n\nThe local CI runner's build, smoke and image jobs use it to queue on the same slots as local tests (`scripts/test_slots.py`, ADR-0172), taking all of them like a full run;\nif the command calls the test entry again, the entry sees the slots are held by its parent and does not queue a second time.\n\nUsage: python scripts/machine_lock.py [--wait SECONDS] -- COMMAND ARGS...\n",
     "waitHelp": "Maximum seconds to wait; within the CI job time limit this is enough for one full local run",
-    "commandMissing": "No command to run",
-    "timedOut": "Waited {{seconds}} seconds and still could not get the machine-wide heavy-load lock ({{holder}})."
+    "commandMissing": "No command to run"
   },
   "commit_subject": {
     "badForm": "Commit subject \"{{subject}}\" must be type(scope): description, e.g. {{example}}",
@@ -727,6 +726,11 @@
   "upgrade_audited_covers": {
     "description": "Re-check official high-resolution candidates from the audit list, keeping a backup and result for each code.",
     "liveHelp": "Look up online through the existing official chain; no existing snapshot needed"
+  },
+  "judge_cover_portraits": {
+    "description": "Fetch the matching DMM portrait to re-judge whether installed covers are sleeves, installing separately designed posters as the front image.",
+    "allHelp": "Also re-judge standard-ratio sleeves whose fold was already found",
+    "coversHelp": "Judge the covers in this directory instead of the data root's generated/covers, e.g. a copy for a trial run"
   },
   "sync_brand_marks": {
     "description": "Copy the label marks already on this device into `resources/marks/` so they ship with the repository (ADR-0026)."
@@ -1843,6 +1847,7 @@
     "description": "Fetch the YuNet and SFace face models and their licenses, verify each SHA-256, and place them in the release package's model directory.\n\nWindows builds put them in `tools/face-models` under the program directory, macOS in\n`Peach.app/Contents/Resources/tools/face-models`, and at runtime `peach.face_detect.bundled_model` picks up this copy;\nthe Docker image fetches them in the Dockerfile from the same URLs and hashes. Downloads land in a cache directory\nfirst; files in the cache whose hashes match are not downloaded again.\n"
   },
   "adopt_dependency_bump": {
+    "ocrRuntime": "isolated OCR Python dependencies",
     "stepPreflight": "After committing, preflight (worktree root, PowerShell 7): {{command}}",
     "stepTest": "Test: {{command}}",
     "stepDeliver": "Deliver: push the worker branch, open a delivery PR and check CI for the current commit; after ready, the coordinator runs integrate",
@@ -1965,8 +1970,10 @@
     "dueUrgent": "There are {{groups}} entries, which do not wait for the cycle",
     "moreEntries": " ({{count}} more)",
     "unlabeledEntries": "The {{version}} section of {{file}} still has entries without an area label: {{preview}}{{remainder}}",
+    "entriesWithoutReference": "The {{version}} section of {{file}} has entries without a source number; end each with (#issue or PR number): {{preview}}{{remainder}}",
     "longEntry": "{{version}}: {{line}}…",
-    "entriesTooLong": "{{file}} has entries over {{limit}} characters; rewrite each as one sentence: {{preview}}{{remainder}}",
+    "entriesTooLong": "{{file}} has entries whose Chinese is over {{limit}} characters or whose English is over {{english_limit}}; rewrite each as one sentence: {{preview}}{{remainder}}",
+    "notBilingual": "The {{version}} section of {{file}} has lines not written as `English / 中文`, or English still reading TODO: {{preview}}{{remainder}}",
     "noSectionForNotes": "{{file}} has no {{version}} section, so the Release body cannot be generated",
     "noLinkForNotes": "{{file}} lacks the `[{{version}}]:` link at the bottom, so the Release body cannot link the full changes",
     "sectionExists": "{{file}} already has a {{version}} section",
@@ -1984,7 +1991,7 @@
     "notesNotGenerated": "Release body not generated",
     "changelogNotUpdated": "Changelog not updated",
     "failed": "{{what}}: {{error}}",
-    "description": "Changelog: draft from Conventional Commits, and finalize the Unreleased section at release time.\n\nFormat follows Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/), and version numbers\nfollow Semantic Versioning 2.0.0 (https://semver.org/spec/v2.0.0.html): `## [未发布]` is\nalways present, each release gets a section `## [X.Y.Z] - YYYY-MM-DD`, group headings are fixed, and\ncompare links go at the bottom.\n\nThe draft groups commits by subject, and a person must rewrite the wording into something users\nunderstand: the spec's first principle is that a changelog is written for humans, not a dump of\n`git log`. Commits that only touch the development process (`docs`, `test`, `chore`, `refactor`)\nstay out. At release, human-polished content in the Unreleased section moves into the version\nsection as a whole; the draft is a fallback only when that section is empty.\n\nEach entry also carries an area tag (`- **播放**：…`): group headings sort by the nature of the change,\ntags by the area users see. Recognized scopes are replaced with tags automatically; draft entries\nstill carrying an English scope are waiting for someone to pick a tag.\n\n    python scripts/changelog.py                                # draft the unreleased range\n    python scripts/changelog.py --range v0.16.0..v0.27.1       # draft any range\n    python scripts/changelog.py --release 0.30.0 --apply       # finalize Unreleased as 0.30.0\n    python scripts/changelog.py --notes 0.30.0 --to NOTES.md   # generate this version's Release notes\n"
+    "description": "Changelog: draft from Conventional Commits, and finalize the Unreleased section at release time.\n\nFormat follows Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/), and version numbers\nfollow Semantic Versioning 2.0.0 (https://semver.org/spec/v2.0.0.html): `## [Unreleased]` is\nalways present, each release gets a section `## [X.Y.Z] - YYYY-MM-DD`, group headings are fixed, and\ncompare links go at the bottom.\n\nThe draft groups commits by subject, and a person must rewrite the wording into something users\nunderstand: the spec's first principle is that a changelog is written for humans, not a dump of\n`git log`. Commits that only touch the development process (`docs`, `test`, `chore`, `refactor`)\nstay out. At release, human-polished content in the Unreleased section moves into the version\nsection as a whole; the draft is a fallback only when that section is empty.\n\nEach entry also carries an area tag: group headings sort by the nature of the change, tags by the\narea users see. Recognized scopes are replaced with tags automatically; draft entries still carrying\nan English scope are waiting for someone to pick a tag.\n\nEvery line puts English first and Chinese second, separated by ` / `:\n`- **Playback**: English (#1). / **播放**：中文（#1）。` Release notes and the in-app changelog\nsplit each line at the first ` / `.\n\n    python scripts/changelog.py                                # draft the unreleased range\n    python scripts/changelog.py --range v0.16.0..v0.27.1       # draft any range\n    python scripts/changelog.py --release 0.30.0 --apply       # finalize Unreleased as 0.30.0\n    python scripts/changelog.py --notes 0.30.0 --to NOTES.md   # generate this version's Release notes\n"
   },
   "check_commit_message": {
     "pendingLabel": "pending commit",
@@ -2289,6 +2296,9 @@
     "tagExists": "{{tag}} already exists and will not be overwritten; bump __version__ first to release a new version",
     "auditFailed": "The dependency audit found high-severity vulnerabilities ({{projects}}); upgrade dependencies before releasing",
     "noticeMissing": "{{version}} has no update notice yet: first write this version's new entry points and automatic tasks in src/peach/release_notices.py",
+    "noticeReviewMissing": "The {{version}} update notice has not been reviewed: judge each entry against the rules in src/peach/release_notices.py and write {{path}} (version, digest={{digest}}, items with perceptible and icon reasons per entry, omitted explaining why the other changelog entries stay out)",
+    "noticeReviewStale": "The {{version}} notice review does not match the current notice (version or digest changed, current digest={{digest}}); review the updated notice again",
+    "noticeReviewIncomplete": "The {{version}} notice review is missing reasons or they are too short: {{items}}",
     "nextReview": "Check the wording of the {{version}} section above; it is the only description users read",
     "nextShip": "Once confirmed, run --ship --apply: it commits, pushes, waits for Test to turn green and tags in one go",
     "sectionMissing": "{{file}} has no {{version}} section; draft it with --bump first, then polish it",
@@ -2378,15 +2388,18 @@
     "uvMissing": "uv not found: neither on PATH nor in the WinGet install directory.",
     "syncing": "Syncing the test environment from uv.lock: {{path}}",
     "syncFailed": "Syncing test dependencies failed (exit code {{code}}); tests were not started.",
+    "frontendDrift": "Frontend dependencies do not match frontend/package-lock.json ({{package}}); tests were not started. Run first: {{command}}",
     "description": "Dependency preparation for the formal test entry; syncs the environment automatically only in isolated worktrees."
   },
   "test_evidence": {
     "snapshotFailed": "Cannot build a verification snapshot for file: {{name}}",
     "queueAhead": "; {{count}} ahead in the queue",
-    "waiting": "Waiting for {{lock}} ({{holder}}{{place}}), up to {{seconds}} seconds.",
+    "waiting": "Waiting for {{lock}} ({{holder}}{{place}}), {{limit}}.",
     "holderUnknown": "holder details not available yet",
     "holderGone": "holder just exited or left no record",
-    "holderSince": "since {{time}}"
+    "holderSince": "since {{time}}",
+    "waitLimit": "up to {{seconds}} seconds",
+    "waitQueued": "queued in arrival order with no time limit"
   },
   "test_focus": {
     "browserOutside": "Browser test missing or outside the e2e directory: {{selector}}",
@@ -2462,12 +2475,12 @@
     "helpResume": "Resume a formal verification; full also reuses valid completion proofs",
     "helpFocus": "Debug the given Python/browser tests without issuing a record",
     "helpRerunFailures": "After a focused run fails, rerun the failed files once alone and record passes as flaky (for CI browser shards)",
-    "helpLockTimeout": "Seconds to wait for the full-suite lock; 0 returns at once when it is busy",
+    "helpLockTimeout": "Seconds to wait for the full-suite lock; by default it queues in arrival order with no limit, 0 returns at once when it is busy",
     "helpBase": "Verified Git baseline for CI test selection",
     "helpTimings": "File where a shard subprocess writes its result and per-test durations for the parent to collect",
     "helpShardPlan": "Per-shard file names planned by the parent by duration; without it, files rotate by name",
     "helpJobs": "How many shard subprocesses run at once on this device; auto picks by core count. Serial by default; the formal entry passes auto",
-    "lockTimeoutRange": "The lock wait must be between 0 and 1800 seconds",
+    "lockTimeoutRange": "The lock wait cannot be negative",
     "shardRange": "The shard count must be positive, and the index must start at 0 and be less than the count",
     "resumePlanParentOnly": "A resume plan is only for shards of a formal parent run",
     "rerunFailuresFocusOnly": "--rerun-failures is only for focused runs; the formal entry already reruns failed files alone",
@@ -2485,7 +2498,16 @@
     "coverage": "Per-item coverage: {{reused}} reused, {{pending}} to verify.",
     "phaseTimings": "Time per phase (test execution includes each test stage): {{phases}}",
     "slowTest": "Slow test {{seconds}}s: {{name}}",
-    "inputsChanged": "Inputs changed during verification; kept {{kept}} unaffected results. Run auto to fill in the rest."
+    "inputsChanged": "Inputs changed during verification; kept {{kept}} unaffected results. Run auto to fill in the rest.",
+    "unknownScope": "Unknown test scope: {{scope}}"
+  },
+  "test_slots": {
+    "waiting": "Waiting for machine-wide test slots (this run needs {{need}} of {{total}}{{place}}), queued in arrival order; holders are reported every minute",
+    "holder": "slot {{slot}}: {{scope}}, pid {{pid}}, {{root}}, since {{since}}, running {{minutes}} min",
+    "holdersUnknown": "holder details not available yet (just exited or not yet recorded)",
+    "timedOut": "Waited {{minutes}} minutes and no machine-wide test slot came free; no tests were run.",
+    "badCount": "{{variable}} must be a whole number of at least 1; got {{value}}",
+    "waitLimit": "; at most {{minutes}} more minutes"
   },
   "test_shard_results": {
     "badFields": "Invalid shard report fields",

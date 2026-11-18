@@ -1,7 +1,9 @@
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { confirmModal } from '@peach/legacy/ui';
 import { TagManager, type ManagedTag } from '../../src/react/index/tag-manager';
+import { TagEditor } from '../../src/react/index/tag-operations';
 import { queryClient } from '../../src/react/query';
 import { buttonNamed, click, mount, mountRoot, settle, submit, type } from './render';
 
@@ -46,12 +48,60 @@ function backend(failPreview = false) {
   return fetcher;
 }
 
+/** 状态药丸带着数量（「已隐藏 3」），按开头的档名找。 */
+const statePill = (host: ParentNode, name: string) =>
+  [...host.querySelectorAll('[data-tag-pill]')].find((pill) => pill.textContent?.trim().startsWith(name));
+
 async function open() {
   const host = await mount(<QueryClientProvider client={queryClient}><TagManager /></QueryClientProvider>);
   await settle(); return host;
 }
 
 describe('标签管理', () => {
+  it('按别名联想在线标签，选中候选填写名称并等待影响范围预览', async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, json: async () => ({ items: [
+      { id: 'outdoors', k: 'outdoors', aliases: ['户外'], n: 2, hidden: false },
+    ] }) }));
+    vi.stubGlobal('fetch', fetcher);
+    await mount(<QueryClientProvider client={queryClient}><TagEditor operation="block" scope="online" selected={[]} close={vi.fn()} done={vi.fn()} /></QueryClientProvider>);
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="标签名称"]')!;
+    await act(async () => input.focus());
+    await type(input, '户外');
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) });
+    await settle();
+    const request = new URL(fetcher.mock.calls[0]![0] as string, 'http://localhost');
+    expect(request.searchParams.get('scope')).toBe('online');
+    expect(request.searchParams.get('q')).toBe('户外');
+    await click(document.querySelector('[role="option"][data-key="outdoors"]'));
+    expect(input.value).toBe('outdoors');
+    expect(buttonNamed('预览影响范围')?.disabled).toBe(false);
+    expect(fetcher.mock.calls.every(([, init]) => !init?.body)).toBe(true);
+  });
+
+  it('输入法合成期间不请求候选，清空名称后停用影响范围预览', async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, json: async () => ({ items: [] }) }));
+    vi.stubGlobal('fetch', fetcher);
+    await mount(<QueryClientProvider client={queryClient}><TagEditor operation="block" scope="online" selected={[]} close={vi.fn()} done={vi.fn()} /></QueryClientProvider>);
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="标签名称"]')!;
+    await act(async () => { input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })) });
+    await type(input, 'zhong');
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) });
+    expect(fetcher).not.toHaveBeenCalled();
+    await type(input, '中文');
+    await act(async () => { input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) });
+    await settle();
+    expect(new URL(fetcher.mock.calls[0]![0], 'http://localhost').searchParams.get('q')).toBe('中文');
+    expect(input.value).toBe('中文');
+    expect(buttonNamed('预览影响范围')?.disabled).toBe(false);
+    await type(input, '');
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(buttonNamed('预览影响范围')?.disabled).toBe(true);
+  });
+
   it('按页请求并跨页保留选择，分类筛选回到首页', async () => {
     const rows = Array.from({ length:230 }, (_, index) => ({ entity_id:index + 1, k:`tag-${index}`, n:230-index,
       aliases:[], hidden:false, cat:index < 120 ? 'general' : 'role' }));
@@ -59,7 +109,9 @@ describe('标签管理', () => {
     vi.stubGlobal('fetch', fetcher);
     const host = await open();
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(100);
-    expect(new URL(fetcher.mock.calls[0]![0], 'http://localhost').searchParams.get('limit')).toBe('100');
+    // 状态药丸的计数另发 `limit=1` 的请求；清单本身按页取 100 个。
+    const pages = () => fetcher.mock.calls.map(([url]) => new URL(url, 'http://localhost')).filter((url) => url.searchParams.has('offset'));
+    expect(pages()[0]!.searchParams.get('limit')).toBe('100');
     await click(host.querySelector('[data-tag-chip][data-k="tag-0"]'));
     await click(buttonNamed('下一页', host)); await settle();
     expect(host.querySelector('[data-tag-chip][data-k="tag-0"]')).toBeNull();
@@ -71,7 +123,7 @@ describe('标签管理', () => {
     await click(buttonNamed('角色设定', host)); await settle();
     expect(host.querySelector('[data-tag-chip][data-k="tag-120"]')).not.toBeNull();
     expect(host.querySelector('[aria-label="标签管理操作"]')).toBeNull();
-    const last = new URL(fetcher.mock.calls.at(-1)![0], 'http://localhost');
+    const last = pages().at(-1)!;
     expect(last.searchParams.get('offset')).toBe('0');
     expect(last.searchParams.get('category')).toBe('role');
   });
@@ -94,13 +146,14 @@ describe('标签管理', () => {
     expect(commands).toEqual([{ operation: 'block', ids: ['outdoors'], scope: 'online' },
       { operation: 'block', ids: ['outdoors'], scope: 'online', token: 'content-plan' }]);
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(0);
-    await click(buttonNamed('已隐藏', host));
+    expect(statePill(host, '已屏蔽内容')?.textContent).toBe('已屏蔽内容 1');
+    await click(statePill(host, '已隐藏'));
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(0);
-    await click(buttonNamed('已屏蔽内容', host));
+    await click(statePill(host, '已屏蔽内容'));
     await click(host.querySelector('[data-tag-chip]'));
     await click(buttonNamed('恢复内容', host)); await settle();
     expect(commands.at(-1)).toEqual({ operation: 'unblock', ids: ['outdoors'], scope: 'online', token: 'content-plan' });
-    await click(buttonNamed('使用中', host));
+    await click(statePill(host, '使用中'));
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(1);
   });
 
@@ -112,7 +165,8 @@ describe('标签管理', () => {
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(1);
     expect(host.textContent).toContain('眼镜');
     await view.rerender(<QueryClientProvider client={queryClient}><TagManager search="" /></QueryClientProvider>);
-    await click(buttonNamed('已隐藏', host));
+    expect(statePill(host, '已隐藏')?.textContent).toBe('已隐藏 1');
+    await click(statePill(host, '已隐藏'));
     expect(host.querySelectorAll('[data-tag-chip]')).toHaveLength(1);
     expect(host.textContent).toContain('旧标签');
   });

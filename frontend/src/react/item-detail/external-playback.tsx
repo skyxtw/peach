@@ -9,11 +9,16 @@ import { t } from '../../i18n';
 import { serverLabel } from '../../core/server-text';
 import { markExternalPlayback } from '../../player/progress';
 import { queryClient } from '../../query/client';
+import { schemePlayers, type SchemePlayer } from '../../player/external-schemes';
 
 const TARGET_KEY = 'peach.playback-target.v1';
 /** 本机播放器：`label` 是播放器名或服务端按 zh-CN 渲染的「系统默认播放器」，后者带 `label_code`。 */
 type LocalPlayer = { id: string; label: string; label_code?: string };
 const NETWORK_TARGETS = [['m3u', t('catalog:externalPlayback.m3uPlaylist')], ['url', t('catalog:externalPlayback.streamUrlVr')]] as const;
+const schemeLabel = (player: SchemePlayer) => player.label || t('catalog:externalPlayback.androidChooser');
+/** 链接调起的播放器按客户端平台给；本机已检测到的同名播放器走服务端打开，不重复列。 */
+const schemeTargets = (players: LocalPlayer[] | null) =>
+  schemePlayers(undefined, (players || []).map(item => item.id)).map(player => [`scheme:${player.id}`, player] as const);
 
 function savedTarget(): string | null {
   try {
@@ -37,7 +42,9 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
       if (controller.signal.aborted) return;
       setPlayers(result.players);
       setPlayer(current => {
-        const valid = result.players.some(item => `local:${item.id}` === current) || NETWORK_TARGETS.some(([key]) => key === current);
+        const valid = result.players.some(item => `local:${item.id}` === current)
+          || NETWORK_TARGETS.some(([key]) => key === current)
+          || schemeTargets(result.players).some(([key]) => key === current);
         if (pinned && valid) return current;
         /* 没存过选择时优先挑能回传进度的本机播放器；系统默认播放器仍可手动选。 */
         const preferred = result.players.find(item => item.id !== 'default') ?? result.players[0];
@@ -46,7 +53,8 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
     }).catch(cause => {
       if (controller.signal.aborted) return;
       setPlayers([]);
-      setPlayer(current => NETWORK_TARGETS.some(([key]) => key === current) ? current : 'm3u');
+      setPlayer(current => NETWORK_TARGETS.some(([key]) => key === current)
+        || schemeTargets([]).some(([key]) => key === current) ? current : 'm3u');
       setLoadError(String(cause.message || cause));
     });
     return () => controller.abort();
@@ -117,8 +125,9 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
     }
     setLinks(result);
     if (player === 'url') return;
+    const scheme = schemeTargets(players).find(([key]) => key === player)?.[1];
     const link = document.createElement('a');
-    link.href = result.playlist;
+    link.href = scheme ? scheme.link(result.url) : result.playlist;
     link.rel = 'noreferrer';
     document.body.append(link);
     link.click();
@@ -126,14 +135,15 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
   });
   return <div data-local-playback="">
     <div data-local-playback-row="">
-      {players === null ? null : <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
-        options={[...players.map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const), ...NETWORK_TARGETS]}
-        value={player} disabled={!!action.busy} epoch={epoch * 2 + 1} onPick={value => {
+      <SelectField id={`external-player-${id}`} label={t('catalog:externalPlayback.externalPlayer')}
+        options={[...(players || []).map(item => [`local:${item.id}`, serverLabel(item.label_code ?? '', item.label)] as const),
+          ...schemeTargets(players).map(([key, item]) => [key, schemeLabel(item)] as const), ...NETWORK_TARGETS]}
+        value={player} disabled={players === null || !!action.busy} epoch={epoch * 2 + Number(players !== null)} onPick={value => {
           setPlayer(value); setPinned(true);
           setLinks(null);
           action.setError('');
           try { localStorage.setItem(TARGET_KEY, value) } catch { /* 浏览器未允许保存偏好。 */ }
-        }} />}
+        }} />
       <Button variant="secondary" aria-label={t('catalog:externalPlayback.openInPlayer')} disabled={players === null}
         {...busyProps(action.busy === 'open')} onClick={open}>{t('catalog:shared.open')}</Button>
     </div>
@@ -144,7 +154,7 @@ export function ExternalPlayback({ id, onOpened }: { id: number; onOpened?(): vo
       onClick={() => { setLoadError(''); setPlayers(null); setEpoch(value => value + 1) }}>{t('catalog:externalPlayback.redetect')}</Button> : null}
     {links ? <>
       <Input label={t('catalog:externalPlayback.streamUrl')} value={links.url} isReadOnly />
-      <Help>{t('catalog:externalPlayback.streamUrlHint')}</Help>
+      <Help>{player.startsWith('scheme:') ? t('catalog:externalPlayback.schemeHint') : t('catalog:externalPlayback.streamUrlHint')}</Help>
     </> : null}
   </div>;
 }

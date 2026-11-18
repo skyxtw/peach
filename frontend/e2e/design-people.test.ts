@@ -380,6 +380,9 @@ describe('设计决定：人物与厂牌资料页', () => {
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#888"/></svg>' };
       await page.route(/\/entity-image\?/, (route) => route.fulfill(square));
       await page.route(/\/logo\?/, (route) => route.fulfill(square));
+      // 换成番号作品后详情会问来源资料；这条只量出演区，资料由桩回答，服务不去问外站。
+      await page.route(/\/api\/jav\/detail\?/, (route) => route.fulfill({ json: {
+        code: new URL(route.request().url()).searchParams.get('code'), state: 'ready', preview_count: 0 } }));
       await page.goto(new URL(`/assets/${requiredEnv('PEACH_E2E_ITEM')}`, page.url()).href, { waitUntil: 'load' });
       await page.locator('[data-item-identity] [data-id-group="studio"] [data-id-name]').waitFor({ timeout: 15_000 });
       const edges = await page.evaluate(() => Object.fromEntries(
@@ -547,6 +550,46 @@ describe('设计决定：人物与厂牌资料页', () => {
         const least = viewport.mobile ? 44 : 36;
         const alias = await page.locator('[data-namepick-alias]').evaluate((item) => item.getBoundingClientRect().height);
         assert.ok([...rows.map((row) => row.height), alias].every((height) => height >= least - 0.5), `菜单行矮于 ${least}px`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`删除菜单悬停保留红底白字，三个长按范围与右侧取消键完整可见（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const page = opened.page;
+        await page.route('**/api/entity-batch/plan?*', route => route.fulfill({ status: 200,
+          contentType: 'application/json', body: JSON.stringify({names:[PROFILED.name],assets:3,bytes:1024,shared:1,token:'demo'}) }));
+        await page.locator('[data-namepick-toggle]').click();
+        const entry = page.locator('[data-namepick-delete]');
+        await entry.hover();
+        const hover = await entry.evaluate(element => ({
+          background: getComputedStyle(element).backgroundImage,
+          color: getComputedStyle(element).color,
+        }));
+        assert.notEqual(hover.background, 'none');
+        assert.equal(hover.color, 'rgb(255, 255, 255)');
+        await entry.click();
+        const modal = page.locator('dialog[data-modal-choices]');
+        await modal.waitFor({state:'visible'});
+        assert.equal(await modal.locator('[data-modal-confirm][data-hold-confirm]').count(), 3);
+        const bounds = await modal.evaluate(element => {
+          const modal = element.getBoundingClientRect();
+          const cancel = element.querySelector('[data-modal-cancel]')!.getBoundingClientRect();
+          const body = element.querySelector('.ui-geist-modal-body')!;
+          return {modal:{left:modal.left,right:modal.right},cancelRight:cancel.right,
+            expectedRight:modal.right-parseFloat(getComputedStyle(body).paddingRight),
+            overflow:body.scrollWidth-body.clientWidth};
+        });
+        assert.ok(bounds.modal.left >= 0 && bounds.modal.right <= viewport.width);
+        assert.ok(Math.abs(bounds.cancelRight-bounds.expectedRight)<1);
+        assert.ok(bounds.overflow <= 1);
+        await page.mouse.click(1, 1);
+        await modal.waitFor({state:'hidden'});
         assert.deepEqual(opened.problems, []);
       } finally {
         await opened.close();

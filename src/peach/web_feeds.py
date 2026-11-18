@@ -21,6 +21,7 @@ from . import (
 )
 from .catalog_rules import normalise_code_key
 from .coded_text import Said, from_error
+from .follow_scheduler import CHECK_WAIT_SECONDS
 from .followups import Attempts, attempts_root
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
@@ -365,7 +366,8 @@ def _plan_followups(contract, codes: list[str], *, automatic: bool) -> tuple[lis
         if not stock:
             return feed_followup.plan(fresh[:feed_followup.MAX_BATCH]), False
         batch = feed_followup.scrape_batch(
-            connection, fresh, exclude=[*codes, *busy], retry_after=retry_after, hidden=hidden)
+            connection, fresh, exclude=[*codes, *busy], retry_after=retry_after, hidden=hidden,
+            cover_root=contract.cover_root)
         covers = feed_followup.cover_backlog(
             connection, contract.cover_root, exclude=[*codes, *batch, *busy],
             retry_after=retry_after, hidden=hidden)
@@ -422,8 +424,11 @@ def w_feed_check(contract, body) -> dict:
     """拉一轮订阅。不带参数只拉到期的源，`all` 拉全部启用的源。
 
     定时那一跳没有到期的源就什么也不起：每半小时一跳（`feeds.TICK_MINUTES`），任务中心
-    不该每半小时多一行空跑。
+    不该每半小时多一行空跑。定时那一跳也顺带给「想要」查资源：有到期的才起一轮，与订阅源到没到期无关。
     """
+    if body.get("automatic") and not body.get("background"):
+        # 续跑的那一次带 `background`，跑在订阅源任务的恢复上下文里，不顺带起别的任务。
+        web_wants.start_search(contract)
     if body.get("automatic") and "sources" not in body and not body.get("all"):
         with contract.database.read_connection() as connection:
             if not feeds.due_sources(connection):
@@ -452,7 +457,8 @@ def w_feed_check(contract, body) -> dict:
         return started
     if started["request_id"] != request_id:
         return {"ok": False, "busy": True, "checked": 0, "results": []}
-    finished.wait()
+    # 到期还没跑完（多半在任务中心被暂停了）就先回现状，`status` 仍是 running；见 `CHECK_WAIT_SECONDS`。
+    finished.wait(CHECK_WAIT_SECONDS)
     return contract.feed_job.snapshot() or started
 
 
@@ -467,6 +473,17 @@ def q_feed_schedule(contract, _args) -> dict:
         return {"ok": True, "available": False, "enabled": False,
                 "interval_minutes": feeds.DEFAULT_INTERVAL_MINUTES, "running": False, "next_run_at": None}
     return scheduler.status()
+
+
+def w_feed_schedule(contract, body) -> dict:
+    """订阅源定时拉取的开关与每个源的间隔，校验与关注那一份同一套（15 分钟到一周）。"""
+    scheduler = contract.feed_scheduler
+    if scheduler is None:
+        raise UserValueError("api.feeds.scheduleDisabled")
+    return scheduler.update(
+        enabled=body.get("enabled", True),
+        interval_minutes=body.get("interval_minutes", feeds.DEFAULT_INTERVAL_MINUTES),
+    )
 
 
 def w_feed_schedule_run(contract, _body) -> dict:
@@ -654,6 +671,8 @@ def q_feed_lookup(contract, args) -> dict:
 
 def _search_javdb(contract, url: str) -> str:
     """取一页 JavDB 演员搜索结果；冷却、限流、断网、登入页都按原因报 ValueError。"""
+    from .sources.javdb import SEARCH_LIMITER
+    SEARCH_LIMITER.wait(url)
     try:
         response = _transport(contract)(HttpRequest("GET", url, {"Accept": "text/html"}),
                                         LOOKUP_TIMEOUT, FETCH_MAX_BYTES)
@@ -778,7 +797,7 @@ DISCOVERY_LIMIT = 24
 LISTED = (
     "(normalise_code_key(d.code) IS NULL OR normalise_code_key(d.code) NOT IN"
     " (SELECT key FROM (SELECT normalise_code_key(a.code) AS key FROM asset a"
-    " WHERE a.code IS NOT NULL AND COALESCE(a.disposal,'')<>'vanished') WHERE key IS NOT NULL))",
+    " WHERE a.medium='video' AND a.code IS NOT NULL AND COALESCE(a.disposal,'')<>'vanished') WHERE key IS NOT NULL))",
     "NOT is_feed_hidden(d.title,d.performers,d.studio)",
     "NOT is_cover_pending(d.code,d.release_date)",
 )
