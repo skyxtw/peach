@@ -104,9 +104,9 @@ function BrowserForm({ initial, receipt }: { initial: State; receipt(message: st
         placeholder={t('settings:javBrowser.editionKeywordsPlaceholder')} isReadOnly={Boolean(action.busy)}
         onChange={setKeywords} />
       <Help>{t('settings:javBrowser.editionKeywordsHelp')}</Help>
-      <div><Button variant="secondary" type="button" disabled={Boolean(action.busy)}
+      <div><Button type="button" disabled={Boolean(action.busy)}
         onClick={savePreferences} {...busyProps(action.busy === 'preferences')}>
-        {t('follow:followManagePage.saveSettings')}
+        {t('settings:shared.saveSettings')}
       </Button></div>
       {state.enabled && state.active_provider && !state.providers.some(item => item.key === state.active_provider)
         ? <Help>{t('settings:browserAdd.channelUnavailable')}</Help> : null}
