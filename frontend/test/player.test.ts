@@ -386,6 +386,12 @@ function fakePlayer(state: { time: number; duration: number }) {
     on(events: string | string[], fn: () => void) {
       for (const event of [events].flat()) handlers.set(event, [...handlers.get(event) || [], fn]);
     },
+    off(events: string | string[], fn?: () => void) {
+      for (const event of [events].flat()) {
+        const list = handlers.get(event) || [];
+        handlers.set(event, fn ? list.filter((item) => item !== fn) : []);
+      }
+    },
     currentTime(value?: number) { if (value !== undefined) state.time = value; return state.time },
     duration: () => state.duration,
     playbackRate: () => 1,

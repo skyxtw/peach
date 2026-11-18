@@ -29,7 +29,6 @@ import { AddFeed } from './add-feed';
 import { AliasManager } from './alias-manager';
 import { ButtonLink } from '@/components/base/buttons/button';
 import { FeedSources } from './feed-sources';
-import { MergeStudiosForm } from '../jav/studio-subscriptions';
 import {
   credentialDone, DEFAULT_SORT, FEEDS_KEY, fetchCredentials, fetchFeeds, fetchFollow, FOLLOW_CREDENTIALS_KEY,
   FOLLOW_MANAGE_KEY, groupByAuthor, isBroken, isLayout, keepSelected, pageSizeOf,
@@ -177,10 +176,6 @@ export function FollowManagePage(props: FollowManageProps) {
         </div> : null}
 
       </div>
-      <details className="rounded-xl border border-separator-border bg-background-secondary-default">
-        <summary className="cursor-pointer px-4 py-3 text-body-2-medium text-text-primary">{t('catalog:studioSubscriptions.mergeEntry')}</summary>
-        <div className="px-4 pb-4"><MergeStudiosForm close={() => undefined} /></div>
-      </details>
       <div><ButtonLink variant="secondary" href="/settings/subscriptions">{pending ? t('follow:followManagePage.feedSettingsPending', { count: pending }) : t('follow:followManagePage.feedSettings')}</ButtonLink></div>
     </Page>
   );

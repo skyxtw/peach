@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Note } from '../components/note';
 import { apiGet, errorMessage } from '../../api';
-import { t } from '../../i18n';
+import { interfaceLanguage, t } from '../../i18n';
 
 interface FeedSource {
   id: number; kind: string; kind_label: string; name: string; entity_name?: string | null;
@@ -17,7 +17,7 @@ interface ActorRow {
   newCount: number; seen: number; lastFetchedAt?: string | null;
 }
 
-const stamp = (value?: string | null) => value ? new Date(value).toLocaleString() : t('catalog:actorSubscriptions.neverFetched');
+const stamp = (value?: string | null) => value ? new Date(value).toLocaleString(interfaceLanguage) : t('catalog:actorSubscriptions.neverFetched');
 
 function actors(sources: FeedSource[]): ActorRow[] {
   const byId = new Map<number, ActorRow>();

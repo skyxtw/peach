@@ -15,7 +15,7 @@ describe('应用导航词表', () => {
     const keys = NAV_CATALOG.map(([key]) => key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(NAV_CATALOG.find(([key]) => key === 'follow')?.[1]).toBe('关注');
-    expect(NAV_CATALOG.find(([key]) => key === 'follow-manage')?.[1]).toBe('关注管理');
+    expect(NAV_CATALOG.find(([key]) => key === 'follow-manage')?.[1]).toBe('订阅管理');
   });
 
   it('配置入口只在本机可改时出现在管理菜单，其余入口顺序不动', () => {

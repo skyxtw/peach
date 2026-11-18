@@ -24,7 +24,11 @@ function storedPosition(key: string): StoredPosition | null {
     const raw = localStorage.getItem(`${KEY}:${key}`);
     if (raw === null || !raw.trim()) return null;
     try {
-      const parsed = JSON.parse(raw) as { time?: unknown; at?: unknown };
+      const parsed = JSON.parse(raw) as { time?: unknown; at?: unknown } | number;
+      // 旧记录是纯数字（上游格式）：JSON 能解析成数字，按位置原样接，不当坏数据丢掉。
+      if (typeof parsed === 'number') {
+        return Number.isFinite(parsed) && parsed >= 0 ? { time: parsed, at: 0 } : null;
+      }
       const time = Number(parsed?.time), at = Number(parsed?.at);
       if (Number.isFinite(time) && time >= 0) return { time, at: Number.isFinite(at) && at > 0 ? at : 0 };
       return null;

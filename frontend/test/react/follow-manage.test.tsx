@@ -728,7 +728,7 @@ it('一条来源都没有时说清这里会显示什么', async () => {
 it('关注列表空状态直接切换添加页签并保留页面宿主', async () => {
   const { host, props } = await open({ data: follow({ sources: [] }) });
   const empty = [...host.querySelectorAll('[data-empty-state]')].find(node => node.textContent?.includes('还没有关注来源'))!;
-  const overview = host.querySelector('[aria-label="关注概览"]');
+  const overview = host.querySelector('[aria-label="订阅概览"]');
   const button = buttonNamed('添加关注', empty);
   expect(button).not.toBeNull();
   // 这一屏的主动作就是它：工具条和「检查全部」只在有来源时才画。
@@ -736,7 +736,7 @@ it('关注列表空状态直接切换添加页签并保留页面宿主', async (
   await click(button);
   await settle();
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('添加关注');
-  expect(host.querySelector('[aria-label="关注概览"]')).toBe(overview);
+  expect(host.querySelector('[aria-label="订阅概览"]')).toBe(overview);
   expect(props.route).toHaveBeenLastCalledWith(expect.objectContaining({ tab: 'add' }));
 });
 
@@ -808,9 +808,9 @@ it('厂牌订阅源用 /logo；无标识或取图失败才退首字母', async (
   const row = (name: string) => [...host.querySelectorAll('[role="rowheader"]')]
     .find((cell) => cell.textContent?.includes(name))!;
   const logo = row('S1 片商').querySelector('img')!;
-  expect(logo.getAttribute('src')).toBe(`/logo?studio=${encodeURIComponent('S1 片商')}&v=${encodeURIComponent('logo 7')}`);
+  expect(logo.getAttribute('src')).toBe(`/logo?studio=${encodeURIComponent('S1 片商')}&variant=icon&v=${encodeURIComponent('logo 7')}`);
   expect(row('内置片商').querySelector('img')?.getAttribute('src'))
-    .toBe(`/logo?studio=${encodeURIComponent('内置片商')}`);
+    .toBe(`/logo?studio=${encodeURIComponent('内置片商')}&variant=icon`);
   expect(row('無名片商').querySelector('img')).toBeNull();
   expect(row('無名片商').querySelector('[aria-hidden]')?.textContent).toBe('無');
   expect(row('甲 的新作').querySelector('img')?.getAttribute('src'))
@@ -872,7 +872,7 @@ it('同一个人的两页各一行，旧艺名那页在名字旁写出站上的�
   const names = [...host.querySelectorAll('[role="rowheader"]')].map(shown);
   // 只有一行的人不写页名：站上标题栏那串写法摆出来只是噪音。
   expect(names).toEqual(['森日向子白石アイリ', '森日向子', '凉森玲梦']);
-  const readings = [...host.querySelector('[aria-label="关注概览"]')!.children].map((card) => card.textContent);
+  const readings = [...host.querySelector('[aria-label="订阅概览"]')!.children].map((card) => card.textContent);
   expect(readings.slice(-2)).toEqual(['JAV 订阅2 位', '未看新作81 条']);
 });
 

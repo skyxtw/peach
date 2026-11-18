@@ -675,6 +675,15 @@ def photo_set_heading(directory: str, key: str = "title") -> dict:
     return coded(key, photo_set_title(directory) or Said(PHOTO_SET_UNTITLED_CODE))
 
 
+def _photo_seed_order(seed) -> str:
+    """图集/图墙的种子排序：同一粒种子顺序固定，换一粒就是换一批。
+
+    乘数用种子本身对 99991 取余（0 回退为 7）：旧式子 `(a.id * seed) % 99991`
+    在 id 是 99991 的倍数时会被整除，整批挤到同一格上，翻页就重了。"""
+    sd = int(seed or 1) % 99991 or 7
+    return f"((a.id * {sd}) % 99991), a.id"
+
+
 def q_entity_photos(contract: WebContract, args):
     """实体名下的照片：本地图片分页放在 `items`；`sets` 是分组，`kind` 为 `dir` 的是本地目录图集，
     为 `code` 的是番号样张集（`entity_code_sets`）。`total` 只数本地图片，`sample_total` 数样张。"""
@@ -687,7 +696,7 @@ def q_entity_photos(contract: WebContract, args):
         offset = max(0, int(args.get("offset") or 0))
         # 带种子是「换一批」；不带就按目录、文件名排，一套图的编号顺序不被打乱。
         seed = str(args.get("seed") or "")
-        order = seeded_order(seed) if seed else "dir,a.name,a.id"
+        order = _photo_seed_order(seed) if seed else "dir,a.name,a.id"
     except (TypeError, ValueError):
         return {"error": "invalid pagination"}
     with contract.read_connection() as c:
@@ -745,7 +754,7 @@ def q_photo_set(contract: WebContract, args):
     limit = max(1, min(int(args.get("limit") or 120), 600))
     offset = max(0, int(args.get("offset") or 0))
     seed = str(args.get("seed") or "")
-    order = seeded_order(seed) if seed else "a.name,a.id"
+    order = _photo_seed_order(seed) if seed else "a.name,a.id"
     with contract.read_connection() as c:
         anchor = c.execute(
             "SELECT id,location,path,name FROM asset "

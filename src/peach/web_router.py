@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 
-from . import media_libraries, settings_file, studio_merge
+from . import media_libraries, settings_file
 from .follow_discovery import MAX_SUGGESTIONS, MAX_TERM_LENGTH
 from .review_csv import candidate_root_version
 from .web_activity import (
@@ -486,8 +486,6 @@ POST_HANDLERS = {
     "/api/feeds/check": w_feed_check,
     "/api/feeds/source": w_feed_source,
     "/api/feeds/bind-studio": w_bind_studio,
-    "/api/feeds/merge-studio": studio_merge.merge,
-    "/api/feeds/merge-duplicate-studios": studio_merge.merge_duplicates,
     "/api/feeds/discovery": w_feed_discovery,
     "/api/feeds/schedule": w_feed_schedule,
     "/api/feeds/schedule/run": w_feed_schedule_run,
